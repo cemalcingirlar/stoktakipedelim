@@ -17,8 +17,9 @@ export default async function UygulamaDuzeni({ children }: LayoutProps<"/">) {
   const oturum = await oturumGerekli();
 
   const ayar = await prisma.ayar.findUnique({ where: { anahtar: "firma_adi" } });
+  // Alış faturaları ve ayarlar yalnızca yöneticinin menüsünde.
   const menu = adminMi(oturum)
-    ? [...TEMEL_MENU, { etiket: "Ayarlar", yol: "/ayarlar" }]
+    ? [...TEMEL_MENU, { etiket: "Faturalar", yol: "/faturalar" }, { etiket: "Ayarlar", yol: "/ayarlar" }]
     : TEMEL_MENU;
 
   return (

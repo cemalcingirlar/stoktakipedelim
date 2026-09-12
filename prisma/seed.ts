@@ -15,11 +15,15 @@ const MAGAZALAR = [
   { kod: "M3", ad: "3 Nolu Mağaza", merkezMi: false },
 ];
 
-const KATEGORILER: { ad: string; alt: string[] }[] = [
-  { ad: "Cep Telefonu", alt: ["Sıfır", "İkinci El"] },
-  { ad: "Aksesuar", alt: ["Kulaklık", "Saat", "Güç Grubu", "Kılıf", "Kablo / Şarj"] },
-  { ad: "Tablet / Notebook", alt: ["Tablet", "Notebook"] },
-  { ad: "İkinci El Telefon", alt: ["Garantili", "Garantisiz"] },
+const KATEGORILER: { ad: string; alt: string[]; seriNoZorunlu: boolean }[] = [
+  { ad: "Cep Telefonu", alt: ["Sıfır", "İkinci El"], seriNoZorunlu: true },
+  {
+    ad: "Aksesuar",
+    alt: ["Kulaklık", "Saat", "Güç Grubu", "Kılıf", "Kablo / Şarj"],
+    seriNoZorunlu: false,
+  },
+  { ad: "Tablet / Notebook", alt: ["Tablet", "Notebook"], seriNoZorunlu: true },
+  { ad: "İkinci El Telefon", alt: ["Garantili", "Garantisiz"], seriNoZorunlu: true },
 ];
 
 const TEDARIKCILER = ["Yılmaz Telekom", "Vatan Toptan", "Özkan Ticaret", "İstanbul Toptancı"];
@@ -42,8 +46,8 @@ async function main() {
   for (const [sira, k] of KATEGORILER.entries()) {
     const kategori = await prisma.kategori.upsert({
       where: { ad: k.ad },
-      update: { sira },
-      create: { ad: k.ad, sira },
+      update: { sira, seriNoZorunlu: k.seriNoZorunlu },
+      create: { ad: k.ad, sira, seriNoZorunlu: k.seriNoZorunlu },
     });
     for (const [altSira, altAd] of k.alt.entries()) {
       await prisma.altKategori.upsert({

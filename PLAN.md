@@ -22,14 +22,14 @@ Ayrıntılı gereksinimler: [SPEC.md](SPEC.md)
 ## Faz 2 — Cihaz / Stok Yönetimi
 8. [ ] Kategori + alt kategori yönetimi
 9. [ ] Tedarikçi yönetimi
-10. [ ] Alış faturası ekranı (sadece admin): fatura başlığı + vade seçimi (yok/21/45)
-11. [ ] Fatura satırı ekleme: barkod/IMEI okutma, IMEI tekillik kontrolü
-12. [ ] Kaydetmede stok kalemlerinin transaction içinde oluşturulması
-13. [ ] Cihaz listesi: durum/depo/kategori/tarih/vade filtreleri, sayfalama, sıralama
-14. [ ] Vade renklendirme (geçmiş → kırmızı, 7 gün kala → sarı)
-15. [ ] Üst şerit: cihaz adedi + toplam stok değeri + mağaza bazlı değer
-16. [ ] Arama kutusu: model/IMEI/barkod/satıcı/müşteri/not; tam IMEI eşleşmesinde detaya yönlendirme
-17. [ ] Cihaz detay sayfası + hareket/sevkiyat tarihçesi zaman çizelgesi
+10. [x] Alış faturası ekranı (sadece admin): fatura başlığı + vade seçimi (yok/21/45)
+11. [x] Fatura satırı ekleme: barkod/IMEI okutma, IMEI tekillik kontrolü
+12. [x] Kaydetmede stok kalemlerinin transaction içinde oluşturulması
+13. [x] Cihaz listesi: durum/depo/kategori/tarih/vade filtreleri, sayfalama, sıralama
+14. [x] Vade renklendirme (geçmiş → kırmızı, 7 gün kala → sarı)
+15. [x] Üst şerit: cihaz adedi + toplam stok değeri + mağaza bazlı değer
+16. [x] Arama kutusu: model/IMEI/barkod/satıcı/müşteri/not; tam IMEI eşleşmesinde detaya yönlendirme
+17. [x] Cihaz detay sayfası + hareket/sevkiyat tarihçesi zaman çizelgesi
 
 ## Faz 3 — Transfer ve Satış
 18. [ ] Transfer oluşturma (gönderen): ürün okutma, hedef mağaza, gönder

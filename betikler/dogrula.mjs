@@ -11,7 +11,7 @@ const SIFRE = "Stok2026!";
 const tarayici = await chromium.launch(
   process.env.CHROME_YOLU ? { executablePath: process.env.CHROME_YOLU } : {},
 );
-const sayfa = await tarayici.newPage({ viewport: { width: 1440, height: 900 } });
+const sayfa = await tarayici.newPage({ viewport: { width: 1440, height: 900 }, locale: "tr-TR" });
 
 const hatalar = [];
 sayfa.on("console", (m) => { if (m.type() === "error") hatalar.push(m.text()); });

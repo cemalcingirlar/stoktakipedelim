@@ -71,6 +71,10 @@ model Kategori {
   sira  Int     @default(0)
   aktif Boolean @default(true)
 
+  /// Telefon/tablet gibi seri numarası ile takip edilen kategorilerde true.
+  /// Aksesuarlarda IMEI olmadığı için false bırakılır.
+  seriNoZorunlu Boolean @default(false)
+
   altKategoriler AltKategori[]
   stokKalemleri  StokKalemi[]
 }
@@ -181,6 +185,11 @@ model StokKalemi {
 
   not String?
 
+  /// Marka, model, seri no, barkod, tedarikçi, müşteri ve notun
+  /// normalleştirilmiş (Türkçe karakterler ASCII'ye indirgenmiş) birleşimi.
+  /// Arama kutusu bu alan üzerinde çalışır — src/lib/metin.ts
+  aramaMetni String @default("")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -197,6 +206,7 @@ model StokKalemi {
   sayimKalemleri  SayimKalemi[]
 
   @@index([barkod])
+  @@index([aramaMetni])
   @@index([magazaId, durum])
   @@index([durum])
   @@index([kategoriId])

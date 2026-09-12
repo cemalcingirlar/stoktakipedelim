@@ -22,7 +22,13 @@ export function kurusuTLYazSembollu(kurus: number | null | undefined): string {
 
 /**
  * Kullanıcının yazdığı tutarı kuruşa çevirir.
- * "1.234,56", "1234,56", "1234.56" ve "1234" kabul edilir.
+ *
+ * Türkçe yazımda nokta binlik, virgül ondalık ayıracıdır. Sadece nokta
+ * içeren girdi belirsizdir; şu kural uygulanır:
+ *   - Virgül varsa: noktalar binlik ayıracı, virgül ondalık  ("1.234,56" -> 123456)
+ *   - Birden çok nokta varsa: hepsi binlik ayıracı          ("1.234.567" -> 123456700)
+ *   - Tek nokta ve ardından tam 3 hane varsa: binlik        ("9.750"    -> 975000)
+ *   - Diğer tek nokta durumları: ondalık                    ("9.75"     -> 975)
  * Geçersiz girdide null döner.
  */
 export function tlyiKurusaCevir(metin: string | number | null | undefined): number | null {
@@ -33,18 +39,32 @@ export function tlyiKurusaCevir(metin: string | number | null | undefined): numb
 
   const temiz = metin.trim().replace(/\s/g, "");
   if (temiz === "") return null;
+  if (!/^-?[\d.,]+$/.test(temiz)) return null;
 
-  // Binlik ayıracı olarak nokta, ondalık ayıracı olarak virgül kullanımını normalize et.
+  const eksi = temiz.startsWith("-");
+  const govde = eksi ? temiz.slice(1) : temiz;
+
   let normal: string;
-  if (temiz.includes(",")) {
-    normal = temiz.replace(/\./g, "").replace(",", ".");
+  if (govde.includes(",")) {
+    // Virgül ondalık ayıracı; noktalar binlik.
+    if ((govde.match(/,/g) ?? []).length > 1) return null;
+    normal = govde.replace(/\./g, "").replace(",", ".");
   } else {
-    normal = temiz;
+    const noktalar = (govde.match(/\./g) ?? []).length;
+    if (noktalar === 0) {
+      normal = govde;
+    } else if (noktalar > 1) {
+      normal = govde.replace(/\./g, "");
+    } else {
+      const [tam, kesir] = govde.split(".");
+      // "9.750" -> binlik ayıracı; "9.75" -> ondalık.
+      normal = kesir.length === 3 && tam.length > 0 ? tam + kesir : govde;
+    }
   }
 
-  if (!/^-?\d+(\.\d+)?$/.test(normal)) return null;
+  if (!/^\d+(\.\d+)?$/.test(normal)) return null;
 
   const sayi = Number(normal);
   if (!Number.isFinite(sayi)) return null;
-  return Math.round(sayi * 100);
+  return Math.round(sayi * 100) * (eksi ? -1 : 1);
 }
