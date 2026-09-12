@@ -74,6 +74,7 @@ node betikler/ayarlar-dogrula.mjs   # kategori ve tedarikçi yönetimi
 node betikler/magaza-dogrula.mjs    # mağaza ekleme, düzenleme, silme korumaları
 node betikler/faz3-dogrula.mjs      # çift onaylı sevkiyat, kısmi kabul, red, satış
 node betikler/faz4-dogrula.mjs      # mağaza bazlı sayım, eksik/fazla tespiti, Excel raporu
+node betikler/faz5-dogrula.mjs      # sütun seçici, Excel çıktıları, raporlar, loglar, kullanıcılar
 ```
 
 `@playwright/test` kurulu olmalıdır. Tarayıcı ikilisi farklı bir yerdeyse

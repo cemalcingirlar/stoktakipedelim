@@ -50,12 +50,12 @@ Ayrıntılı gereksinimler: [SPEC.md](SPEC.md)
 - [x] Mağaza yönetimi: yeni şube ekleme, düzenleme, merkez depo işaretleme,
       stoklu mağazayı pasife alma/silme koruması
 
-## Faz 5 — Rapor, Excel, Log
-29. [ ] Sütun seçici ("Sütunlar" menüsü), seçim kullanıcı bazında kalıcı
-30. [ ] Excel'e aktar: aktif filtre + seçili sütunlar (altyapı src/lib/excel.ts hazır)
-31. [ ] Raporlar: mağaza stok, vade, giriş-çıkış, satış/kâr, transfer, sayım
-32. [ ] Log kaydı (tüm kritik işlemler) + log görüntüleme ekranı (admin)
-33. [~] Panel (dashboard): ilk sürüm hazır — mağaza kartları, vadesi geçen sayısı, bekleyen sevkiyat, son hareketler, grafik
+## Faz 5 — Rapor, Excel, Log ✅ tamamlandı
+29. [x] Sütun seçici ("Sütunlar" menüsü), seçim kullanıcı bazında kalıcı
+30. [x] Excel'e aktar: aktif filtre + seçili sütunlar
+31. [x] Raporlar: mağaza stok, vade, giriş-çıkış, satış/kâr, transfer, sayım
+32. [x] Log kaydı (tüm kritik işlemler) + log görüntüleme ekranı (admin)
+33. [x] Panel (dashboard): mağaza kartları, vadesi geçen sayısı, bekleyen sevkiyat, son hareketler, grafik
 
 ## Faz 6 — Yedekleme ve Dağıtım
 34. [ ] Google Drive servis hesabı entegrasyonu

@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { AylikGrafik } from "@/bilesenler/AylikGrafik";
 import { Kart, SayiKarti } from "@/bilesenler/Kart";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { HAREKET_TIP_ETIKET, type HareketTip } from "@/lib/sabitler";
+import { aylikHareketRaporu } from "@/lib/raporlar";
 import {
   bekleyenSevkiyatlar,
   magazaStokOzeti,
@@ -17,11 +19,12 @@ export default async function PanelSayfasi() {
   const oturum = await oturumGerekli();
   const yonetici = adminMi(oturum);
 
-  const [ozetler, vadesiGecen, bekleyen, hareketler] = await Promise.all([
+  const [ozetler, vadesiGecen, bekleyen, hareketler, aylar] = await Promise.all([
     magazaStokOzeti(),
     vadesiGecenFaturalar(),
     bekleyenSevkiyatlar(yonetici ? null : oturum.magazaId),
     sonHareketler(10),
+    aylikHareketRaporu(12),
   ]);
 
   const toplamAdet = ozetler.reduce((t, o) => t + o.adet, 0);
@@ -128,6 +131,10 @@ export default async function PanelSayfasi() {
           )}
         </Kart>
       </div>
+
+      <Kart baslik="Son 12 Ay — Giriş ve Satış">
+        <AylikGrafik aylar={aylar} />
+      </Kart>
 
       <Kart baslik="Son Hareketler">
         {hareketler.length === 0 ? (

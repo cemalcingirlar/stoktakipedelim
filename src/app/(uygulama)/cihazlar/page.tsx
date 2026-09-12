@@ -3,11 +3,13 @@ import { redirect } from "next/navigation";
 import { CihazTablosu } from "@/bilesenler/CihazTablosu";
 import { FiltreCubugu } from "@/bilesenler/FiltreCubugu";
 import { Sayfalama } from "@/bilesenler/Sayfalama";
+import { SutunSecici } from "@/bilesenler/SutunSecici";
 import {
   CIHAZ_ICERIK,
   SAYFA_BOYUTU,
   filtredenWhere,
   filtreyiCoz,
+  filtreyiSorguyaCevir,
 } from "@/lib/cihazFiltre";
 import { kodNormalize } from "@/lib/metin";
 import { kurusuTLYazSembollu } from "@/lib/para";
@@ -67,18 +69,28 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-slate-900">Cihazlar</h1>
-        {stokEkleyebilirMi(oturum) ? (
-          <Link
-            href="/faturalar/yeni"
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+        <div className="flex flex-wrap items-center gap-2">
+          <SutunSecici secili={sutunlar} />
+          {/* Dışa aktarma o anki filtreyi ve seçili sütunları aynen kullanır. */}
+          <a
+            href={`/cihazlar/excel${filtreyiSorguyaCevir(params, { sayfa: null })}`}
+            className="rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-sm font-medium text-emerald-800 transition hover:bg-emerald-100"
           >
-            + Yeni Alış Faturası
-          </Link>
-        ) : (
-          <span className="text-xs text-slate-500">
-            Stok girişi yalnızca yönetici tarafından yapılabilir.
-          </span>
-        )}
+            Excel&apos;e Aktar
+          </a>
+          {stokEkleyebilirMi(oturum) ? (
+            <Link
+              href="/faturalar/yeni"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+            >
+              + Yeni Alış Faturası
+            </Link>
+          ) : (
+            <span className="text-xs text-slate-500">
+              Stok girişi yalnızca yöneticide.
+            </span>
+          )}
+        </div>
       </div>
 
       <FiltreCubugu

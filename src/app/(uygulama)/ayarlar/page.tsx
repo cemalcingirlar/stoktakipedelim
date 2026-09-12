@@ -43,12 +43,14 @@ function Bolum({ baslik, aciklama, yol, sayi, faz }: BolumProps) {
 export default async function AyarlarSayfasi() {
   await adminSayfasi();
 
-  const [kategoriSayisi, tedarikciSayisi, magazaSayisi, kullaniciSayisi] = await Promise.all([
-    prisma.kategori.count({ where: { aktif: true } }),
-    prisma.tedarikci.count({ where: { aktif: true } }),
-    prisma.magaza.count({ where: { aktif: true } }),
-    prisma.kullanici.count({ where: { aktif: true } }),
-  ]);
+  const [kategoriSayisi, tedarikciSayisi, magazaSayisi, kullaniciSayisi, logSayisi] =
+    await Promise.all([
+      prisma.kategori.count({ where: { aktif: true } }),
+      prisma.tedarikci.count({ where: { aktif: true } }),
+      prisma.magaza.count({ where: { aktif: true } }),
+      prisma.kullanici.count({ where: { aktif: true } }),
+      prisma.log.count(),
+    ]);
 
   return (
     <div className="space-y-5">
@@ -78,13 +80,15 @@ export default async function AyarlarSayfasi() {
         />
         <Bolum
           baslik="Kullanıcılar ve Roller"
-          aciklama={`${kullaniciSayisi} aktif kullanıcı. Kullanıcı ekleme, rol ve mağaza ataması.`}
-          faz="Faz 5"
+          aciklama="Kullanıcı ekleme, rol ve mağaza ataması, şifre sıfırlama."
+          yol="/ayarlar/kullanicilar"
+          sayi={`${kullaniciSayisi} aktif`}
         />
         <Bolum
           baslik="İşlem Logları"
-          aciklama="Kim ne zaman hangi işlemi yaptı."
-          faz="Faz 5"
+          aciklama="Kim ne zaman hangi işlemi yaptı. Kayıtlar silinmez."
+          yol="/ayarlar/loglar"
+          sayi={`${logSayisi} kayıt`}
         />
         <Bolum
           baslik="Google Drive Yedekleme"

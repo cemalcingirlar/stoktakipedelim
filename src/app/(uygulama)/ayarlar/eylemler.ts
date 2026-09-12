@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { logYaz } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
-import { LOG_ISLEM } from "@/lib/sabitler";
+import { LOG_ISLEM, ROLLER, type Rol } from "@/lib/sabitler";
+import { sifreHashle } from "@/lib/sifre";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
 
 export type AyarDurumu = { hata?: string; basari?: string };
@@ -33,6 +34,7 @@ function tazele() {
   revalidatePath("/cihazlar");
   revalidatePath("/faturalar/yeni");
   revalidatePath("/panel");
+  revalidatePath("/ayarlar/kullanicilar");
 }
 
 // ------------------------------------------------------------------ Kategori
@@ -429,3 +431,161 @@ export async function magazaSil(_onceki: AyarDurumu, form: FormData): Promise<Ay
     return { basari: `"${magaza.ad}" silindi.` };
   });
 }
+
+// ----------------------------------------------------------------- Kullanıcı
+
+const KULLANICI_ADI_DESENI = /^[a-z0-9._-]+$/;
+
+const kullaniciSemasi = z.object({
+  kullaniciAdi: z
+    .string()
+    .trim()
+    .min(3, "Kullanıcı adı en az 3 karakter olmalı.")
+    .max(30, "Kullanıcı adı en fazla 30 karakter olabilir.")
+    .transform((v) => v.toLowerCase())
+    .refine(
+      (v) => KULLANICI_ADI_DESENI.test(v),
+      "Kullanıcı adı yalnız küçük harf, rakam, nokta, tire ve alt çizgi içerebilir.",
+    ),
+  adSoyad: z.string().trim().min(2, "Ad soyad zorunlu.").max(80),
+  rol: z.enum(Object.values(ROLLER) as [string, ...string[]], "Rol seçin."),
+  magazaId: z.number().int().positive().nullable(),
+});
+
+function kullaniciFormunuOku(form: FormData) {
+  const magazaHam = String(form.get("magazaId") ?? "").trim();
+  return kullaniciSemasi.safeParse({
+    kullaniciAdi: form.get("kullaniciAdi"),
+    adSoyad: form.get("adSoyad"),
+    rol: form.get("rol"),
+    magazaId: magazaHam ? Number(magazaHam) : null,
+  });
+}
+
+/** Yönetici dışındaki roller mutlaka bir mağazaya bağlı olmalı. */
+function magazaKurali(rol: string, magazaId: number | null): string | null {
+  if (rol === ROLLER.ADMIN) return null;
+  if (!magazaId) return "Mağaza sorumlusu ve personeli bir mağazaya bağlanmalı.";
+  return null;
+}
+
+export async function kullaniciEkle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+  return calistir(async (oturum) => {
+    const sonuc = kullaniciFormunuOku(form);
+    if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
+
+    const sifre = String(form.get("sifre") ?? "");
+    if (sifre.length < 8) return { hata: "Şifre en az 8 karakter olmalı." };
+
+    const kuralHatasi = magazaKurali(sonuc.data.rol, sonuc.data.magazaId);
+    if (kuralHatasi) return { hata: kuralHatasi };
+
+    const mevcut = await prisma.kullanici.findUnique({
+      where: { kullaniciAdi: sonuc.data.kullaniciAdi },
+    });
+    if (mevcut) return { hata: "Bu kullanıcı adı zaten kullanılıyor." };
+
+    const kullanici = await prisma.kullanici.create({
+      data: {
+        kullaniciAdi: sonuc.data.kullaniciAdi,
+        adSoyad: sonuc.data.adSoyad,
+        rol: sonuc.data.rol,
+        magazaId: sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId,
+        sifreHash: await sifreHashle(sifre),
+      },
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Kullanici",
+      hedefId: kullanici.id,
+      detay: `Kullanıcı eklendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})`,
+    });
+    tazele();
+    return { basari: `"${sonuc.data.adSoyad}" eklendi.` };
+  });
+}
+
+export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+  return calistir(async (oturum) => {
+    const id = Number(form.get("id"));
+    if (!Number.isInteger(id) || id <= 0) return { hata: "Kullanıcı bulunamadı." };
+
+    const sonuc = kullaniciFormunuOku(form);
+    if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
+
+    const kuralHatasi = magazaKurali(sonuc.data.rol, sonuc.data.magazaId);
+    if (kuralHatasi) return { hata: kuralHatasi };
+
+    const cakisan = await prisma.kullanici.findUnique({
+      where: { kullaniciAdi: sonuc.data.kullaniciAdi },
+    });
+    if (cakisan && cakisan.id !== id) return { hata: "Bu kullanıcı adı başkasında." };
+
+    const aktif = form.get("aktif") === "on";
+
+    // Son yönetici kilitlenmesin: sistemde en az bir aktif yönetici kalmalı.
+    if (sonuc.data.rol !== ROLLER.ADMIN || !aktif) {
+      const mevcut = await prisma.kullanici.findUnique({ where: { id }, select: { rol: true } });
+      if (mevcut?.rol === ROLLER.ADMIN) {
+        const digerAdminler = await prisma.kullanici.count({
+          where: { rol: ROLLER.ADMIN, aktif: true, id: { not: id } },
+        });
+        if (digerAdminler === 0) {
+          return { hata: "Sistemde en az bir aktif yönetici kalmalı." };
+        }
+      }
+    }
+
+    await prisma.kullanici.update({
+      where: { id },
+      data: {
+        kullaniciAdi: sonuc.data.kullaniciAdi,
+        adSoyad: sonuc.data.adSoyad,
+        rol: sonuc.data.rol,
+        magazaId: sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId,
+        aktif,
+      },
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Kullanici",
+      hedefId: id,
+      detay: `Kullanıcı güncellendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})${aktif ? "" : " · pasif"}`,
+    });
+    tazele();
+    return { basari: "Kullanıcı güncellendi." };
+  });
+}
+
+export async function sifreSifirla(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+  return calistir(async (oturum) => {
+    const id = Number(form.get("id"));
+    const sifre = String(form.get("yeniSifre") ?? "");
+    if (!Number.isInteger(id) || id <= 0) return { hata: "Kullanıcı bulunamadı." };
+    if (sifre.length < 8) return { hata: "Şifre en az 8 karakter olmalı." };
+
+    const kullanici = await prisma.kullanici.findUnique({
+      where: { id },
+      select: { kullaniciAdi: true },
+    });
+    if (!kullanici) return { hata: "Kullanıcı bulunamadı." };
+
+    await prisma.kullanici.update({
+      where: { id },
+      data: { sifreHash: await sifreHashle(sifre) },
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Kullanici",
+      hedefId: id,
+      detay: `${kullanici.kullaniciAdi} şifresi sıfırlandı`,
+    });
+    tazele();
+    return { basari: `${kullanici.kullaniciAdi} için yeni şifre kaydedildi.` };
+  });
+}
+
+export type { Rol };
