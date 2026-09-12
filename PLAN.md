@@ -39,12 +39,12 @@ Ayrıntılı gereksinimler: [SPEC.md](SPEC.md)
 22. [x] Müşteri kayıt/arama ekranı
 23. [x] Kâr hesabı ve satış kaydı
 
-## Faz 4 — Sayım
-24. [ ] Mağaza bazlı sayım başlatma (sadece o mağazanın stoğu)
-25. [ ] Okutma ekranı: "Stokta bulundu" / başka mağazada / kayıtsız / tekrar okutma uyarıları
-26. [ ] Canlı sayaç: okutulan / toplam / okutulmayan / fazla
-27. [ ] Sayım kapatma + sonuç raporu (eksik, fazla, sayılan) + Excel
-28. [ ] Sayım geçmişi
+## Faz 4 — Sayım ✅ tamamlandı
+24. [x] Mağaza bazlı sayım başlatma (sadece o mağazanın stoğu)
+25. [x] Okutma ekranı: "Stokta bulundu" / başka mağazada / kayıtsız / tekrar okutma uyarıları
+26. [x] Canlı sayaç: okutulan / toplam / okutulmayan / fazla
+27. [x] Sayım kapatma + sonuç raporu (eksik, fazla, sayılan) + Excel
+28. [x] Sayım geçmişi
 
 ### Faz 2 ekleri
 - [x] Mağaza yönetimi: yeni şube ekleme, düzenleme, merkez depo işaretleme,
@@ -52,7 +52,7 @@ Ayrıntılı gereksinimler: [SPEC.md](SPEC.md)
 
 ## Faz 5 — Rapor, Excel, Log
 29. [ ] Sütun seçici ("Sütunlar" menüsü), seçim kullanıcı bazında kalıcı
-30. [ ] Excel'e aktar: aktif filtre + seçili sütunlar
+30. [ ] Excel'e aktar: aktif filtre + seçili sütunlar (altyapı src/lib/excel.ts hazır)
 31. [ ] Raporlar: mağaza stok, vade, giriş-çıkış, satış/kâr, transfer, sayım
 32. [ ] Log kaydı (tüm kritik işlemler) + log görüntüleme ekranı (admin)
 33. [~] Panel (dashboard): ilk sürüm hazır — mağaza kartları, vadesi geçen sayısı, bekleyen sevkiyat, son hareketler, grafik

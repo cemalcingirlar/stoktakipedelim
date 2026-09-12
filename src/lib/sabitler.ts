@@ -85,6 +85,7 @@ export const SAYIM_DURUM = {
 export const SAYIM_SONUC = {
   BULUNDU: "BULUNDU",
   BASKA_MAGAZADA: "BASKA_MAGAZADA",
+  SATILMIS: "SATILMIS",
   KAYITSIZ: "KAYITSIZ",
   EKSIK: "EKSIK",
 } as const;
@@ -93,6 +94,7 @@ export type SayimSonuc = (typeof SAYIM_SONUC)[keyof typeof SAYIM_SONUC];
 export const SAYIM_SONUC_ETIKET: Record<SayimSonuc, string> = {
   BULUNDU: "Stokta bulundu",
   BASKA_MAGAZADA: "Başka mağazada kayıtlı",
+  SATILMIS: "Satılmış görünüyor",
   KAYITSIZ: "Sistemde kayıtlı değil",
   EKSIK: "Okutulmadı (eksik)",
 };

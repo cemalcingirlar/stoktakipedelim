@@ -15,7 +15,7 @@ Tarayıcı üzerinden çalışır, kendi sunucunuzda barındırılır.
 | Veritabanı | SQLite + Prisma 7 (`@prisma/adapter-better-sqlite3`) |
 | Oturum | HttpOnly çerezde imzalı JWT (`jose`) |
 | Şifre | Node `crypto.scrypt` — harici bağımlılık yok, VPS'te derleme sorunu çıkarmaz |
-| Excel | `exceljs` |
+| Excel | `exceljs` (`src/lib/excel.ts`) |
 
 Para birimi alanları **kuruş cinsinden tam sayı** olarak saklanır; kayan nokta yuvarlama
 hatası oluşmaz. Biçimlendirme `src/lib/para.ts` içindedir.
@@ -73,6 +73,7 @@ node betikler/faz2-dogrula.mjs      # fatura girişi, cihaz listesi, filtre, IME
 node betikler/ayarlar-dogrula.mjs   # kategori ve tedarikçi yönetimi
 node betikler/magaza-dogrula.mjs    # mağaza ekleme, düzenleme, silme korumaları
 node betikler/faz3-dogrula.mjs      # çift onaylı sevkiyat, kısmi kabul, red, satış
+node betikler/faz4-dogrula.mjs      # mağaza bazlı sayım, eksik/fazla tespiti, Excel raporu
 ```
 
 `@playwright/test` kurulu olmalıdır. Tarayıcı ikilisi farklı bir yerdeyse
