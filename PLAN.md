@@ -46,6 +46,10 @@ Ayrıntılı gereksinimler: [SPEC.md](SPEC.md)
 27. [ ] Sayım kapatma + sonuç raporu (eksik, fazla, sayılan) + Excel
 28. [ ] Sayım geçmişi
 
+### Faz 2 ekleri
+- [x] Mağaza yönetimi: yeni şube ekleme, düzenleme, merkez depo işaretleme,
+      stoklu mağazayı pasife alma/silme koruması
+
 ## Faz 5 — Rapor, Excel, Log
 29. [ ] Sütun seçici ("Sütunlar" menüsü), seçim kullanıcı bazında kalıcı
 30. [ ] Excel'e aktar: aktif filtre + seçili sütunlar

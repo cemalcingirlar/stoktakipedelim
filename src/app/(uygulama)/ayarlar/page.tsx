@@ -71,8 +71,14 @@ export default async function AyarlarSayfasi() {
           sayi={`${tedarikciSayisi} tedarikçi`}
         />
         <Bolum
-          baslik="Mağazalar ve Kullanıcılar"
-          aciklama={`${magazaSayisi} mağaza, ${kullaniciSayisi} kullanıcı. Rol ve yetki yönetimi.`}
+          baslik="Mağazalar"
+          aciklama="Yeni şube ekleyin, mağaza bilgilerini ve merkez depoyu düzenleyin."
+          yol="/ayarlar/magazalar"
+          sayi={`${magazaSayisi} mağaza`}
+        />
+        <Bolum
+          baslik="Kullanıcılar ve Roller"
+          aciklama={`${kullaniciSayisi} aktif kullanıcı. Kullanıcı ekleme, rol ve mağaza ataması.`}
           faz="Faz 5"
         />
         <Bolum

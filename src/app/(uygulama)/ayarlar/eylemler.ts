@@ -26,10 +26,13 @@ async function calistir(
 }
 
 function tazele() {
+  revalidatePath("/ayarlar");
   revalidatePath("/ayarlar/kategoriler");
   revalidatePath("/ayarlar/tedarikciler");
+  revalidatePath("/ayarlar/magazalar");
   revalidatePath("/cihazlar");
   revalidatePath("/faturalar/yeni");
+  revalidatePath("/panel");
 }
 
 // ------------------------------------------------------------------ Kategori
@@ -260,5 +263,169 @@ export async function tedarikciGuncelle(_onceki: AyarDurumu, form: FormData): Pr
     });
     tazele();
     return { basari: "Tedarikçi güncellendi." };
+  });
+}
+
+// ------------------------------------------------------------------- Mağaza
+
+const magazaSemasi = z.object({
+  kod: z
+    .string()
+    .trim()
+    .min(1, "Mağaza kodu boş olamaz.")
+    .max(10, "Mağaza kodu en fazla 10 karakter olabilir.")
+    .regex(/^[A-Za-z0-9-]+$/, "Mağaza kodu yalnız harf, rakam ve tire içerebilir.")
+    .transform((v) => v.toUpperCase()),
+  ad: adSemasi,
+  adres: z.string().trim().max(200).nullable(),
+  telefon: z.string().trim().max(30).nullable(),
+});
+
+function magazaFormunuOku(form: FormData) {
+  const bos = (ad: string) => {
+    const v = String(form.get(ad) ?? "").trim();
+    return v === "" ? null : v;
+  };
+  return magazaSemasi.safeParse({
+    kod: form.get("kod"),
+    ad: form.get("ad"),
+    adres: bos("adres"),
+    telefon: bos("telefon"),
+  });
+}
+
+export async function magazaEkle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+  return calistir(async (oturum) => {
+    const sonuc = magazaFormunuOku(form);
+    if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
+
+    const mevcut = await prisma.magaza.findUnique({ where: { kod: sonuc.data.kod } });
+    if (mevcut) return { hata: `"${sonuc.data.kod}" kodlu bir mağaza zaten var.` };
+
+    const magaza = await prisma.magaza.create({ data: sonuc.data });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Magaza",
+      hedefId: magaza.id,
+      detay: `Mağaza eklendi: ${sonuc.data.kod} · ${sonuc.data.ad}`,
+    });
+    tazele();
+    return { basari: `"${sonuc.data.ad}" eklendi. Kullanıcı atamasını unutmayın.` };
+  });
+}
+
+export async function magazaGuncelle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+  return calistir(async (oturum) => {
+    const id = Number(form.get("id"));
+    if (!Number.isInteger(id) || id <= 0) return { hata: "Mağaza bulunamadı." };
+
+    const sonuc = magazaFormunuOku(form);
+    if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
+
+    const cakisan = await prisma.magaza.findUnique({ where: { kod: sonuc.data.kod } });
+    if (cakisan && cakisan.id !== id) return { hata: `"${sonuc.data.kod}" kodu başka mağazada.` };
+
+    const aktif = form.get("aktif") === "on";
+    const merkezMi = form.get("merkezMi") === "on";
+
+    // Stoğu olan mağaza pasife alınamaz; cihazlar görünmez hale gelirdi.
+    if (!aktif) {
+      const stokAdedi = await prisma.stokKalemi.count({
+        where: { magazaId: id, durum: { in: ["STOKTA", "TRANSFERDE"] } },
+      });
+      if (stokAdedi > 0) {
+        return {
+          hata: `Bu mağazada ${stokAdedi} cihaz duruyor. Pasife almadan önce cihazları başka mağazaya sevk edin.`,
+        };
+      }
+    }
+
+    await prisma.magaza.update({
+      where: { id },
+      data: { ...sonuc.data, aktif, merkezMi },
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Magaza",
+      hedefId: id,
+      detay: `Mağaza güncellendi: ${sonuc.data.kod} · ${sonuc.data.ad}${aktif ? "" : " (pasif)"}`,
+    });
+    tazele();
+    return { basari: "Mağaza güncellendi." };
+  });
+}
+
+export async function magazaSil(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+  return calistir(async (oturum) => {
+    const id = Number(form.get("id"));
+    if (!Number.isInteger(id) || id <= 0) return { hata: "Mağaza bulunamadı." };
+
+    const magaza = await prisma.magaza.findUnique({
+      where: { id },
+      select: {
+        ad: true,
+        kod: true,
+        _count: {
+          select: {
+            stokKalemleri: true,
+            kullanicilar: true,
+            alisFaturalari: true,
+            gonderilenTransfer: true,
+            alinanTransfer: true,
+            sayimlar: true,
+          },
+        },
+      },
+    });
+    if (!magaza) return { hata: "Mağaza bulunamadı." };
+
+    const bagli =
+      magaza._count.stokKalemleri +
+      magaza._count.alisFaturalari +
+      magaza._count.gonderilenTransfer +
+      magaza._count.alinanTransfer +
+      magaza._count.sayimlar;
+
+    // Geçmiş kayıtları olan mağaza silinmez; raporlar ve tarihçe bozulurdu.
+    if (bagli > 0) {
+      const stokta = await prisma.stokKalemi.count({
+        where: { magazaId: id, durum: { in: ["STOKTA", "TRANSFERDE"] } },
+      });
+      if (stokta > 0) {
+        return {
+          hata: `Bu mağazada ${stokta} cihaz duruyor. Önce cihazları başka mağazaya sevk edin.`,
+        };
+      }
+
+      await prisma.magaza.update({ where: { id }, data: { aktif: false } });
+      await logYaz(oturum, {
+        islem: LOG_ISLEM.AYAR_DEGISTIR,
+        hedefTip: "Magaza",
+        hedefId: id,
+        detay: `Mağaza pasife alındı (geçmiş kayıtları var): ${magaza.kod}`,
+      });
+      tazele();
+      return {
+        basari: `"${magaza.ad}" geçmiş kayıtları olduğu için silinmedi, pasife alındı. Raporlarda görünmeye devam eder.`,
+      };
+    }
+
+    if (magaza._count.kullanicilar > 0) {
+      return {
+        hata: `Bu mağazaya bağlı ${magaza._count.kullanicilar} kullanıcı var. Önce onları başka mağazaya taşıyın.`,
+      };
+    }
+
+    await prisma.magaza.delete({ where: { id } });
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Magaza",
+      hedefId: id,
+      detay: `Mağaza silindi: ${magaza.kod} · ${magaza.ad}`,
+    });
+    tazele();
+    return { basari: `"${magaza.ad}" silindi.` };
   });
 }

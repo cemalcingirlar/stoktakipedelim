@@ -1,7 +1,9 @@
 # Çok Şubeli Operatör Mağazası — Stok Takip Programı / Şartname
 
 ## 1. Genel Yapı
-- 3 mağaza (şube) + isteğe bağlı merkez depo. Her stok kaydı her an tek bir depoda bulunur.
+- Başlangıçta 3 mağaza (şube) + isteğe bağlı merkez depo. Mağaza sayısı sabit değildir;
+  yönetici Ayarlar > Mağazalar ekranından yeni şube ekleyebilir. Her stok kaydı her an
+  tek bir depoda bulunur.
 - **Her fiziksel ürün = tek satır.** Adet mantığı yok; 5 adet aynı kılıf alındıysa 5 kayıt oluşur.
   Böylece seri no / IMEI, alış fiyatı, vade ve sevkiyat geçmişi ürün başına tutulabilir.
 - Seri numarası (IMEI) telefon/tablet için **zorunlu ve tekil**, aksesuar için opsiyonel.
@@ -59,7 +61,7 @@ Kategori ve alt kategoriler yönetim ekranından düzenlenebilir (sabit kodlanma
 ## 7. Kullanıcılar ve Yetkiler
 | Rol | Ürün Ekle | Sil | Transfer Gönder | Transfer Kabul | Satış | Rapor/Excel | Ayarlar |
 |---|---|---|---|---|---|---|---|
-| Admin | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Admin | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ (mağaza/kategori/tedarikçi dahil) |
 | Mağaza Sorumlusu | ✘ | ✘ | ✔ | ✔ | ✔ | ✔ | ✘ |
 | Mağaza Personeli | ✘ | ✘ | ✔ | ✔ | ✔ | ✔ (kendi mağazası) | ✘ |
 

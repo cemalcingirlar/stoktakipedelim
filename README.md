@@ -32,7 +32,8 @@ npm run dev                   # http://localhost:3000
 
 ### Başlangıç kullanıcıları
 
-Seed betiği aşağıdaki hesapları oluşturur. Varsayılan şifre `Stok2026!`
+Seed betiği başlangıç için 3 mağaza kurar; yönetici **Ayarlar > Mağazalar**
+ekranından istediği kadar şube ekleyebilir. Seed aşağıdaki hesapları oluşturur. Varsayılan şifre `Stok2026!`
 (`SEED_SIFRE` ortam değişkeni ile değiştirilebilir). **Canlıya almadan önce hepsini değiştirin.**
 
 | Kullanıcı adı | Rol | Mağaza |
@@ -70,6 +71,7 @@ Tarayıcı testleri — çalışan bir `npm run dev` gerektirir:
 node betikler/dogrula.mjs           # giriş, yetki, panel
 node betikler/faz2-dogrula.mjs      # fatura girişi, cihaz listesi, filtre, IMEI arama
 node betikler/ayarlar-dogrula.mjs   # kategori ve tedarikçi yönetimi
+node betikler/magaza-dogrula.mjs    # mağaza ekleme, düzenleme, silme korumaları
 ```
 
 `@playwright/test` kurulu olmalıdır. Tarayıcı ikilisi farklı bir yerdeyse

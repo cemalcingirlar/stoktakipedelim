@@ -39,7 +39,6 @@ await Promise.all([sayfa.waitForURL("**/panel"), sayfa.click('button[type="submi
 
 // --- Kategori ekleme
 await sayfa.goto(`${hedef}/ayarlar/kategoriler`, { waitUntil: "networkidle" });
-const oncekiKategori = await sayfa.locator("h1 ~ div, div.rounded-xl.border.bg-white.shadow-sm").count();
 const yeniAd = `Test Kategori ${Date.now() % 100000}`;
 await sayfa.fill("#yeniKategoriAd", yeniAd);
 await sayfa.check('input[name="seriNoZorunlu"]');
