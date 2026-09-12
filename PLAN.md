@@ -1,7 +1,35 @@
 # Stok Takip Programı — Yapılacaklar Listesi
 
-## 0. Kapsam Kararları (önce bunlar netleşmeli)
-- [ ] Platform: masaüstü mü, web mi, ikisi birden mi?
+## ✅ Verilen Kararlar
+- **Platform:** Web
+- **Stack:** Next.js (App Router) + TypeScript + Prisma + SQLite + Tailwind CSS
+- **MVP kapsamı:** Ürün + stok giriş/çıkış, barkod desteği, cari + fatura, raporlar + Excel çıktı
+
+### Sıralı Görev Listesi (MVP)
+1. [ ] Proje iskeleti: `create-next-app` (TS, Tailwind, App Router), ESLint/Prettier
+2. [ ] Prisma kurulumu + SQLite bağlantısı
+3. [ ] Şema: Urun, Kategori, Birim, Cari, Depo, StokHareketi, Fatura, FaturaSatiri, Kullanici, Ayar
+4. [ ] İlk migration + seed script (demo kategori/ürün/cari)
+5. [ ] Ortak UI: layout, sidebar menü, tablo bileşeni, form bileşenleri, toast
+6. [ ] Kimlik doğrulama: giriş ekranı, şifre hash (argon2/bcrypt), session, route koruması
+7. [ ] Kategori CRUD
+8. [ ] Ürün CRUD + liste (arama, filtre, sayfalama) + kritik stok alanı
+9. [ ] Barkod: ürün üzerinde unique barkod alanı, barkod ile hızlı arama input'u (okuyucu klavye emülasyonu + Enter)
+10. [ ] Stok giriş ekranı (barkod okut → miktar → kaydet)
+11. [ ] Stok çıkış ekranı (aynı akış, stok yeterlilik kontrolü)
+12. [ ] Stok hareketleri listesi (tarih aralığı, ürün, tür filtresi)
+13. [ ] Anlık stok hesaplama servisi (hareket toplamı) + ürün listesinde gösterim
+14. [ ] Cari CRUD + cari ekstresi
+15. [ ] Alış faturası: satır ekleme, KDV/iskonto/toplam hesabı, kayıtta otomatik stok girişi (transaction)
+16. [ ] Satış faturası: aynı yapı, otomatik stok çıkışı
+17. [ ] Fatura silme/iptal → stok hareketlerinin geri alınması
+18. [ ] Raporlar: anlık stok, kritik stok, tarih aralıklı giriş-çıkış, cari bakiye
+19. [ ] Excel dışa aktarma (exceljs) + yazdırma/PDF görünümü
+20. [ ] Dashboard: toplam ürün, toplam stok değeri, kritik ürün sayısı, son hareketler, aylık grafik
+21. [ ] Testler: stok bakiyesi, negatif stok kontrolü, fatura toplamları, fatura iptali
+22. [ ] README (kurulum, `npm run dev`, seed, yedekleme) + deploy notları
+
+## 0. Açık Kalan Kapsam Soruları
 - [ ] Tek kullanıcı mı, çok kullanıcı mı (yetkilendirme gerekir mi)?
 - [ ] Çoklu depo/şube desteği olacak mı?
 - [ ] Barkod okuyucu ve yazıcı (etiket/fiş) kullanılacak mı?
