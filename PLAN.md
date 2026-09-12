@@ -8,16 +8,16 @@ Ayrıntılı gereksinimler: [SPEC.md](SPEC.md)
 - Auth: session tabanlı, şifre hash argon2
 - Excel: `exceljs` · Yedek: `googleapis` (Drive, servis hesabı)
 
-## Faz 1 — Temel (çekirdek stok)
-1. [ ] Proje iskeleti: Next.js + TS + Tailwind, ESLint/Prettier
-2. [ ] Prisma + SQLite kurulumu
-3. [ ] Şema: Magaza, Kullanici, Rol, Kategori, AltKategori, Tedarikci, Musteri,
+## Faz 1 — Temel (çekirdek stok) ✅ tamamlandı
+1. [x] Proje iskeleti: Next.js + TS + Tailwind, ESLint/Prettier
+2. [x] Prisma + SQLite kurulumu
+3. [x] Şema: Magaza, Kullanici, Rol, Kategori, AltKategori, Tedarikci, Musteri,
        AlisFaturasi, StokKalemi, StokHareketi, Transfer, TransferKalemi,
        Sayim, SayimKalemi, Log, Ayar
-4. [ ] Migration + seed: 3 mağaza, admin + mağaza kullanıcıları, kategori/alt kategori ağacı
-5. [ ] Kimlik doğrulama: giriş ekranı, session, çıkış, route koruması
-6. [ ] Rol/yetki katmanı (server-side kontrol + menü gizleme)
-7. [ ] Ortak UI: üst menü (Panel/Cihazlar/Stok/Rapor/Ayarlar), tablo, form, toast, onay diyaloğu
+4. [x] Migration + seed: 3 mağaza, admin + mağaza kullanıcıları, kategori/alt kategori ağacı
+5. [x] Kimlik doğrulama: giriş ekranı, session, çıkış, route koruması
+6. [x] Rol/yetki katmanı (server-side kontrol + menü gizleme)
+7. [x] Ortak UI: üst menü (Panel/Cihazlar/Stok/Rapor/Ayarlar), tablo, form, toast, onay diyaloğu
 
 ## Faz 2 — Cihaz / Stok Yönetimi
 8. [ ] Kategori + alt kategori yönetimi
@@ -51,7 +51,7 @@ Ayrıntılı gereksinimler: [SPEC.md](SPEC.md)
 30. [ ] Excel'e aktar: aktif filtre + seçili sütunlar
 31. [ ] Raporlar: mağaza stok, vade, giriş-çıkış, satış/kâr, transfer, sayım
 32. [ ] Log kaydı (tüm kritik işlemler) + log görüntüleme ekranı (admin)
-33. [ ] Panel (dashboard): mağaza kartları, vadesi geçen sayısı, bekleyen sevkiyat, son hareketler, grafik
+33. [~] Panel (dashboard): ilk sürüm hazır — mağaza kartları, vadesi geçen sayısı, bekleyen sevkiyat, son hareketler, grafik
 
 ## Faz 6 — Yedekleme ve Dağıtım
 34. [ ] Google Drive servis hesabı entegrasyonu

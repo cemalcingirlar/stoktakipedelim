@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-inter);
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Barkod okuyucu odaklı girdilerde imleç daha belirgin olsun */
+.okutma-girdisi:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
