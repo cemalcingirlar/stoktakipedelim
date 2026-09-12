@@ -56,14 +56,24 @@ Seed betiği aşağıdaki hesapları oluşturur. Varsayılan şifre `Stok2026!`
 | `npm run db:seed` | Başlangıç verisi |
 | `npm run db:studio` | Prisma Studio ile veriyi görüntüle |
 
-## Duman testi
+## Testler
 
-Giriş, yetki ve panel ekranını gerçek tarayıcıda uçtan uca doğrular:
+Birim testleri (para ayrıştırma, vade kuralları, arama normalleştirme):
 
 ```bash
-npm run dev
-node betikler/dogrula.mjs        # @playwright/test kurulu olmalı
+npm test
 ```
+
+Tarayıcı testleri — çalışan bir `npm run dev` gerektirir:
+
+```bash
+node betikler/dogrula.mjs           # giriş, yetki, panel
+node betikler/faz2-dogrula.mjs      # fatura girişi, cihaz listesi, filtre, IMEI arama
+node betikler/ayarlar-dogrula.mjs   # kategori ve tedarikçi yönetimi
+```
+
+`@playwright/test` kurulu olmalıdır. Tarayıcı ikilisi farklı bir yerdeyse
+`CHROME_YOLU` ortam değişkeni ile yolunu verin.
 
 ## VPS kurulumu
 

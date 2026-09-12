@@ -19,9 +19,9 @@ Ayrıntılı gereksinimler: [SPEC.md](SPEC.md)
 6. [x] Rol/yetki katmanı (server-side kontrol + menü gizleme)
 7. [x] Ortak UI: üst menü (Panel/Cihazlar/Stok/Rapor/Ayarlar), tablo, form, toast, onay diyaloğu
 
-## Faz 2 — Cihaz / Stok Yönetimi
-8. [ ] Kategori + alt kategori yönetimi
-9. [ ] Tedarikçi yönetimi
+## Faz 2 — Cihaz / Stok Yönetimi ✅ tamamlandı
+8. [x] Kategori + alt kategori yönetimi
+9. [x] Tedarikçi yönetimi
 10. [x] Alış faturası ekranı (sadece admin): fatura başlığı + vade seçimi (yok/21/45)
 11. [x] Fatura satırı ekleme: barkod/IMEI okutma, IMEI tekillik kontrolü
 12. [x] Kaydetmede stok kalemlerinin transaction içinde oluşturulması
