@@ -8,7 +8,9 @@ import { oturumGerekli } from "@/lib/yetki";
 const TEMEL_MENU: MenuOgesi[] = [
   { etiket: "Panel", yol: "/panel" },
   { etiket: "Cihazlar", yol: "/cihazlar" },
+  { etiket: "Satış", yol: "/satis" },
   { etiket: "Sevkiyat", yol: "/sevkiyat" },
+  { etiket: "Müşteriler", yol: "/musteriler" },
   { etiket: "Sayım", yol: "/sayim" },
   { etiket: "Rapor", yol: "/rapor" },
 ];

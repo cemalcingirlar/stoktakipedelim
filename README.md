@@ -72,6 +72,7 @@ node betikler/dogrula.mjs           # giriş, yetki, panel
 node betikler/faz2-dogrula.mjs      # fatura girişi, cihaz listesi, filtre, IMEI arama
 node betikler/ayarlar-dogrula.mjs   # kategori ve tedarikçi yönetimi
 node betikler/magaza-dogrula.mjs    # mağaza ekleme, düzenleme, silme korumaları
+node betikler/faz3-dogrula.mjs      # çift onaylı sevkiyat, kısmi kabul, red, satış
 ```
 
 `@playwright/test` kurulu olmalıdır. Tarayıcı ikilisi farklı bir yerdeyse
@@ -99,7 +100,8 @@ prisma/seed.ts            Başlangıç verisi
 src/lib/                  Sabitler, oturum, yetki, para, tarih, vade, log yardımcıları
 src/bilesenler/           Paylaşılan arayüz bileşenleri
 src/app/giris/            Giriş ekranı ve oturum eylemleri
-src/app/(uygulama)/       Oturum gerektiren sayfalar (panel, cihazlar, sevkiyat, sayım, rapor, ayarlar)
+src/app/(uygulama)/       Oturum gerektiren sayfalar (panel, cihazlar, satış, sevkiyat,
+                          müşteriler, sayım, rapor, faturalar, ayarlar)
 proxy.ts                  Oturum çerezi olmayan istekleri giriş ekranına yönlendirir
 betikler/dogrula.mjs      Tarayıcı duman testi
 ```

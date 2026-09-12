@@ -31,13 +31,13 @@ Ayrıntılı gereksinimler: [SPEC.md](SPEC.md)
 16. [x] Arama kutusu: model/IMEI/barkod/satıcı/müşteri/not; tam IMEI eşleşmesinde detaya yönlendirme
 17. [x] Cihaz detay sayfası + hareket/sevkiyat tarihçesi zaman çizelgesi
 
-## Faz 3 — Transfer ve Satış
-18. [ ] Transfer oluşturma (gönderen): ürün okutma, hedef mağaza, gönder
-19. [ ] Transfer kabul ekranı (kabul eden): ürün okutarak doğrulama, kabul / kısmi kabul / red
-20. [ ] Transfer durum takibi ve bekleyen sevkiyat bildirimi
-21. [ ] Satış ekranı: barkod/IMEI okut, fiyat, müşteri bilgileri, ödeme tipi
-22. [ ] Müşteri kayıt/arama ekranı
-23. [ ] Kâr hesabı ve satış kaydı
+## Faz 3 — Transfer ve Satış ✅ tamamlandı
+18. [x] Transfer oluşturma (gönderen): ürün okutma, hedef mağaza, gönder
+19. [x] Transfer kabul ekranı (kabul eden): ürün okutarak doğrulama, kabul / kısmi kabul / red
+20. [x] Transfer durum takibi ve bekleyen sevkiyat bildirimi
+21. [x] Satış ekranı: barkod/IMEI okut, fiyat, müşteri bilgileri, ödeme tipi
+22. [x] Müşteri kayıt/arama ekranı
+23. [x] Kâr hesabı ve satış kaydı
 
 ## Faz 4 — Sayım
 24. [ ] Mağaza bazlı sayım başlatma (sadece o mağazanın stoğu)
