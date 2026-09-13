@@ -84,6 +84,16 @@ node betikler/faz6-dogrula.mjs      # yedekleme ekranı, yetki ve cron ucu
 `@playwright/test` kurulu olmalıdır. Tarayıcı ikilisi farklı bir yerdeyse
 `CHROME_YOLU` ortam değişkeni ile yolunu verin.
 
+## Nerede çalıştırmalı?
+
+| Seçenek | Uygun olduğu durum |
+|---|---|
+| **İş yerindeki bir PC** | Aylık ücret ödemek istemiyorsanız, veriler fiziksel olarak yanınızda kalsın istiyorsanız. Adım adım rehber: [docs/ofis-pc-kurulumu.md](docs/ofis-pc-kurulumu.md) |
+| **VPS** | Elektrik/internet kesintisinden etkilenmemek, bakımı sağlayıcıya bırakmak istiyorsanız. Aşağıdaki adımlar. |
+
+Her iki durumda da veritabanı tek bir SQLite dosyasıdır ve Google Drive yedeği
+sayesinde iki seçenek arasında geçiş yarım saatlik iştir.
+
 ## VPS kurulumu
 
 Uygulama tek bir Node.js süreci olarak çalışır ve veritabanı tek bir SQLite
