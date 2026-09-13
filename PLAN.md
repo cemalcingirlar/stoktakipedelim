@@ -57,9 +57,9 @@ Ayrıntılı gereksinimler: [SPEC.md](SPEC.md)
 32. [x] Log kaydı (tüm kritik işlemler) + log görüntüleme ekranı (admin)
 33. [x] Panel (dashboard): mağaza kartları, vadesi geçen sayısı, bekleyen sevkiyat, son hareketler, grafik
 
-## Faz 6 — Yedekleme ve Dağıtım
-34. [ ] Google Drive servis hesabı entegrasyonu
-35. [ ] Günlük otomatik yedek (zip + yükleme + rotasyon)
-36. [ ] "Şimdi yedekle" butonu, son yedek durumu, hata uyarısı
-37. [ ] Testler: IMEI tekillik, transfer kabul akışı, vade hesabı, sayım farkları, yetki kontrolleri
-38. [ ] README, kurulum ve sunucu dağıtım dokümanı
+## Faz 6 — Yedekleme ve Dağıtım ✅ tamamlandı
+34. [x] Google Drive entegrasyonu (OAuth ve servis hesabı)
+35. [x] Günlük otomatik yedek (gzip + yükleme + rotasyon)
+36. [x] "Şimdi yedekle" butonu, bağlantı sınama, son yedek durumu, gecikme uyarısı
+37. [x] Testler: IMEI tekillik, transfer kabul akışı, vade hesabı, sayım farkları, yetki kontrolleri
+38. [x] README, kurulum ve sunucu dağıtım dokümanı

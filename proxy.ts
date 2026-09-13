@@ -29,5 +29,9 @@ export function proxy(istek: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|webp)$).*)"],
+  // /api yolları çerez değil kendi gizli anahtarlarıyla korunur (ör. cron'un
+  // çağırdığı yedekleme ucu), bu yüzden giriş yönlendirmesinin dışında tutulur.
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|webp)$).*)",
+  ],
 };

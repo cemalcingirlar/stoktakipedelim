@@ -13,13 +13,16 @@
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "test": "node --import tsx --test \"src/lib/*.test.ts\""
+    "test": "node --import tsx --test \"src/lib/*.test.ts\"",
+    "yedek": "node --import tsx betikler/yedek-al.mts",
+    "drive:jeton": "node betikler/drive-jeton-al.mjs"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "better-sqlite3": "^13.0.3",
     "exceljs": "^4.4.0",
+    "googleapis": "^180.0.0",
     "jose": "^6.2.12",
     "next": "16.3.5",
     "prisma": "^7.10.0",
