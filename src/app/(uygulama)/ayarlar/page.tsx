@@ -43,13 +43,14 @@ function Bolum({ baslik, aciklama, yol, sayi, faz }: BolumProps) {
 export default async function AyarlarSayfasi() {
   await adminSayfasi();
 
-  const [kategoriSayisi, tedarikciSayisi, magazaSayisi, kullaniciSayisi, logSayisi] =
+  const [kategoriSayisi, tedarikciSayisi, magazaSayisi, kullaniciSayisi, logSayisi, yedekSayisi] =
     await Promise.all([
       prisma.kategori.count({ where: { aktif: true } }),
       prisma.tedarikci.count({ where: { aktif: true } }),
       prisma.magaza.count({ where: { aktif: true } }),
       prisma.kullanici.count({ where: { aktif: true } }),
       prisma.log.count(),
+      prisma.yedek.count({ where: { durum: "BASARILI" } }),
     ]);
 
   return (
@@ -92,8 +93,9 @@ export default async function AyarlarSayfasi() {
         />
         <Bolum
           baslik="Google Drive Yedekleme"
-          aciklama="Günlük otomatik yedek ve 'Şimdi yedekle'."
-          faz="Faz 6"
+          aciklama="Günlük otomatik yedek, bağlantı sınama ve yedek geçmişi."
+          yol="/ayarlar/yedekleme"
+          sayi={yedekSayisi > 0 ? `${yedekSayisi} yedek` : "kurulum gerekli"}
         />
       </div>
     </div>
