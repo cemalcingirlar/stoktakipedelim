@@ -94,6 +94,39 @@ node betikler/faz6-dogrula.mjs      # yedekleme ekranı, yetki ve cron ucu
 Her iki durumda da veritabanı tek bir SQLite dosyasıdır ve Google Drive yedeği
 sayesinde iki seçenek arasında geçiş yarım saatlik iştir.
 
+## Sunucu gereksinimleri
+
+Ölçülen gerçek değerler (bu projenin kendisi üzerinde):
+
+| Kalem | İhtiyaç |
+|---|---|
+| Programı **çalıştırma** | ~250 MB RAM |
+| Programı **derleme** (`npm run build`) | **~3 GB RAM**, ~90 saniye |
+| Disk — Ubuntu + proje + swap | **en az 20 GB**, rahat olması için 25 GB |
+| `node_modules` | 1,3 GB |
+| Derlenmiş çıktı (`.next`) | 314 MB |
+| Veritabanı | Birkaç yüz KB; 10.000 cihazda dahi onlarca MB |
+
+Yani günlük çalışma için 1 GB RAM bile fazlasıyla yeter; **darboğaz derlemedir.**
+
+### 4 GB'tan az RAM'iniz varsa: swap ekleyin
+
+`npm run build` 2 GB'lık bir sunucuda bellek yetersizliğinden (`out of memory`)
+durur. Kurulumdan **önce** swap tanımlayın:
+
+```bash
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+free -h    # Swap satırında 4,0Gi görmelisiniz
+```
+
+Derleme diskten devam ettiği için biraz yavaşlar (NVMe diskte birkaç dakika),
+ama derleme yalnızca kurulumda ve güncellemelerde çalışan bir iştir.
+
 ## VPS kurulumu
 
 Uygulama tek bir Node.js süreci olarak çalışır ve veritabanı tek bir SQLite
@@ -134,6 +167,9 @@ YEDEK_ANAHTARI="$(openssl rand -hex 24)"
 > `.env` dosyasının izinlerini kısıtlayın: `sudo chmod 600 .env && sudo chown stok:stok .env`
 
 ### 4. Veritabanı ve derleme
+
+> **4 GB'tan az RAM'iniz varsa** önce yukarıdaki swap adımını uygulayın; yoksa
+> `npm run build` bellek yetersizliğinden durur.
 
 ```bash
 sudo -u stok npm run db:deploy    # şemayı uygula

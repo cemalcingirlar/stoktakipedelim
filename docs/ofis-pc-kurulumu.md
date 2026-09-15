@@ -40,7 +40,9 @@ Bu yöntem çalışır, ama VPS'ten farklı riskleri vardır. Kararınızı bile
 ## Gerekenler
 
 - Kullanılmayan PC — **en az 4 GB RAM, 60 GB disk**. 10 yaşındaki bir ofis
-  bilgisayarı bile fazlasıyla yeter; bu program çok hafiftir.
+  bilgisayarı bile fazlasıyla yeter; program çalışırken ~250 MB RAM kullanır.
+  4 GB şartının sebebi derlemedir: `npm run build` zirvede ~3 GB ister. RAM'iniz
+  daha azsa README'deki swap adımını uygulayın.
 - **8 GB veya daha büyük USB bellek** (Ubuntu kurulumu için, içindekiler silinir)
 - PC'ye bağlı **kablolu internet** (Wi-Fi de olur ama kablo daha güvenilirdir)
 - Kurulum sırasında **klavye + monitör** (sonrasında gerekmez)
