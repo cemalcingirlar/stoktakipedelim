@@ -249,6 +249,11 @@ Yedekleme Google Drive'a yapılır. Kurulum adımları uygulama içinde
 GOOGLE_ISTEMCI_ID=... GOOGLE_ISTEMCI_SIRRI=... npm run drive:jeton
 ```
 
+Betik bir izin bağlantısı basar. Tarayıcıda açıp izin verdikten sonra Google
+`http://localhost:53682/?code=...` adresine yönlendirir; tarayıcının verdiği
+"siteye ulaşılamıyor" hatası beklenen durumdur. Adres çubuğundaki adresi
+terminale yapıştırmanız yeterli.
+
 Çıkan değerleri `.env` dosyasına ekleyip servisi yeniden başlatın, sonra cron
 görevini kurun:
 

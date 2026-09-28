@@ -357,7 +357,10 @@ cd /opt/stok/app
 sudo -u stok GOOGLE_ISTEMCI_ID="..." GOOGLE_ISTEMCI_SIRRI="..." npm run drive:jeton
 ```
 
-Ekrandaki bağlantıyı tarayıcıda açıp izin verin, çıkan kodu yapıştırın. Betik
+Ekrandaki bağlantıyı tarayıcıda açıp izin verin. Google sizi
+`http://localhost:53682/?code=...` adresine yönlendirir ve tarayıcı "siteye
+ulaşılamıyor" der — beklenen durumdur, izin verilmiştir. Adres çubuğundaki
+adresi (veya yalnız `code=` değerini) kopyalayıp terminale yapıştırın. Betik
 `.env`'e eklenecek satırları basar. Onları ekleyin:
 
 ```bash
