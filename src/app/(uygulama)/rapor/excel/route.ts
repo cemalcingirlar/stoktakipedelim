@@ -12,8 +12,9 @@ import {
   vadeRaporu,
   type RaporAraligi,
 } from "@/lib/raporlar";
-import { LOG_ISLEM, TRANSFER_DURUM_ETIKET, VADE_ETIKET, type TransferDurum } from "@/lib/sabitler";
+import { LOG_ISLEM, TRANSFER_DURUM_ETIKET, type TransferDurum } from "@/lib/sabitler";
 import { tarihYaz } from "@/lib/tarih";
+import { vadeEtiketi } from "@/lib/vade";
 
 function tarihCoz(deger: string | null): Date | null {
   if (!deger) return null;
@@ -114,7 +115,7 @@ export async function GET(istek: Request) {
         v.faturaNo,
         v.magaza,
         tarihYaz(v.faturaTarihi),
-        VADE_ETIKET[v.vadeGun] ?? `${v.vadeGun} gün`,
+        vadeEtiketi(v.vadeGun),
         tarihYaz(v.vadeTarihi),
         v.cihazAdedi,
         kurusuExcelSayisi(v.tutarKurus),

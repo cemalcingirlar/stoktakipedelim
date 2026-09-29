@@ -3,8 +3,9 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
+import { TedarikciSecici } from "@/bilesenler/TedarikciSecici";
+import { VadeAlani } from "@/bilesenler/VadeAlani";
 import { kurusuTLYaz, tlyiKurusaCevir } from "@/lib/para";
-import { VADE_ETIKET, VADE_SECENEKLERI } from "@/lib/sabitler";
 import { inputTarih } from "@/lib/tarih";
 import { faturaKaydet, type FaturaDurumu } from "../eylemler";
 
@@ -65,6 +66,8 @@ export function FaturaFormu({
   const [satirlar, setSatirlar] = useState<Satir[]>([bosSatir()]);
   const [okutma, setOkutma] = useState("");
   const [okutmaUyarisi, setOkutmaUyarisi] = useState("");
+  // Vade alanındaki tarih kutusuna alt sınır vermek için burada tutuluyor.
+  const [faturaTarihi, setFaturaTarihi] = useState(inputTarih(new Date()));
   const okutmaRef = useRef<HTMLInputElement>(null);
 
   // Sunucudan hata döndüyse kullanıcı listenin başını görsün.
@@ -137,7 +140,9 @@ export function FaturaFormu({
       magazaId: Number(form.get("magazaId")) || 0,
       faturaNo: String(form.get("faturaNo") ?? ""),
       faturaTarihi: String(form.get("faturaTarihi") ?? ""),
+      // "ozel" seçildiğinde gün sayısı sunucuda vade tarihinden hesaplanır.
       vadeGun: Number(form.get("vadeGun")) || 0,
+      vadeTarihi: String(form.get("vadeTarihi") ?? "").trim() || null,
       not: String(form.get("not") ?? "").trim() || null,
       satirlar: satirlar.map((s) => ({
         kategoriId: Number(s.kategoriId) || 0,
@@ -177,19 +182,7 @@ export function FaturaFormu({
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold text-slate-800">Fatura Bilgileri</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <label htmlFor="tedarikciId" className={KUCUK_ETIKET}>
-              Tedarikçi *
-            </label>
-            <select id="tedarikciId" name="tedarikciId" required className={GIRDI_SINIFI}>
-              <option value="">Seçin…</option>
-              {tedarikciler.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.ad}
-                </option>
-              ))}
-            </select>
-          </div>
+          <TedarikciSecici baslangic={tedarikciler} />
 
           <div>
             <label htmlFor="faturaNo" className={KUCUK_ETIKET}>
@@ -207,7 +200,8 @@ export function FaturaFormu({
               name="faturaTarihi"
               type="date"
               required
-              defaultValue={inputTarih(new Date())}
+              value={faturaTarihi}
+              onChange={(e) => setFaturaTarihi(e.target.value)}
               className={GIRDI_SINIFI}
             />
           </div>
@@ -232,18 +226,7 @@ export function FaturaFormu({
             </select>
           </div>
 
-          <div>
-            <label htmlFor="vadeGun" className={KUCUK_ETIKET}>
-              Vade (tedarikçinin uyguladığı)
-            </label>
-            <select id="vadeGun" name="vadeGun" defaultValue="0" className={GIRDI_SINIFI}>
-              {VADE_SECENEKLERI.map((v) => (
-                <option key={v} value={v}>
-                  {VADE_ETIKET[v]}
-                </option>
-              ))}
-            </select>
-          </div>
+          <VadeAlani faturaTarihi={faturaTarihi} />
 
           <div>
             <label htmlFor="not" className={KUCUK_ETIKET}>

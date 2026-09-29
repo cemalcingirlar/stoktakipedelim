@@ -15,7 +15,7 @@ import {
   vadeRaporu,
   type RaporAraligi,
 } from "@/lib/raporlar";
-import { VADE_ETIKET } from "@/lib/sabitler";
+import { vadeEtiketi } from "@/lib/vade";
 import { inputTarih, tarihYaz } from "@/lib/tarih";
 import { oturumGerekli } from "@/lib/yetki";
 
@@ -217,7 +217,7 @@ export default async function RaporSayfasi({ searchParams }: PageProps<"/rapor">
               {v.faturaNo}
             </Link>,
             v.magaza,
-            VADE_ETIKET[v.vadeGun] ?? `${v.vadeGun} gün`,
+            vadeEtiketi(v.vadeGun),
             tarihYaz(v.vadeTarihi),
             v.cihazAdedi,
             kurusuTLYaz(v.tutarKurus),

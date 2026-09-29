@@ -3,9 +3,10 @@
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
+import { TedarikciSecici } from "@/bilesenler/TedarikciSecici";
+import { VadeAlani } from "@/bilesenler/VadeAlani";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { kurusuTLYaz } from "@/lib/para";
-import { VADE_ETIKET, VADE_SECENEKLERI } from "@/lib/sabitler";
 import { inputTarih } from "@/lib/tarih";
 import type { OkunanSatir } from "@/lib/iceAktar";
 import {
@@ -30,6 +31,7 @@ export function IceAktarFormu({
   const [onizleme, onizleEylem] = useActionState<OnizlemeDurumu, FormData>(exceliOnizle, {});
   const [kayit, kaydetEylem] = useActionState<KayitDurumu, FormData>(iceAktariKaydet, {});
   const [tumunuGoster, setTumunuGoster] = useState(false);
+  const [faturaTarihi, setFaturaTarihi] = useState(inputTarih(new Date()));
 
   const satirlar = onizleme.satirlar ?? [];
   const hatalar = onizleme.hatalar ?? [];
@@ -49,6 +51,7 @@ export function IceAktarFormu({
       faturaNo: String(form.get("faturaNo") ?? ""),
       faturaTarihi: String(form.get("faturaTarihi") ?? ""),
       vadeGun: Number(form.get("vadeGun")) || 0,
+      vadeTarihi: String(form.get("vadeTarihi") ?? "").trim() || null,
       not: String(form.get("not") ?? "").trim() || null,
       satirlar: satirlar.map((s) => ({
         kategoriId: s.kategoriId,
@@ -207,19 +210,7 @@ export function IceAktarFormu({
             ) : null}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <label htmlFor="tedarikciId" className={KUCUK_ETIKET}>
-                  Tedarikçi *
-                </label>
-                <select id="tedarikciId" name="tedarikciId" required className={GIRDI_SINIFI}>
-                  <option value="">Seçin…</option>
-                  {tedarikciler.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.ad}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <TedarikciSecici baslangic={tedarikciler} />
 
               <div>
                 <label htmlFor="faturaNo" className={KUCUK_ETIKET}>
@@ -243,7 +234,8 @@ export function IceAktarFormu({
                   name="faturaTarihi"
                   type="date"
                   required
-                  defaultValue={inputTarih(new Date())}
+                  value={faturaTarihi}
+                  onChange={(e) => setFaturaTarihi(e.target.value)}
                   className={GIRDI_SINIFI}
                 />
               </div>
@@ -268,18 +260,7 @@ export function IceAktarFormu({
                 </select>
               </div>
 
-              <div>
-                <label htmlFor="vadeGun" className={KUCUK_ETIKET}>
-                  Tedarikçi vadesi
-                </label>
-                <select id="vadeGun" name="vadeGun" defaultValue="0" className={GIRDI_SINIFI}>
-                  {VADE_SECENEKLERI.map((v) => (
-                    <option key={v} value={v}>
-                      {VADE_ETIKET[v]}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <VadeAlani faturaTarihi={faturaTarihi} />
 
               <div>
                 <label htmlFor="not" className={KUCUK_ETIKET}>

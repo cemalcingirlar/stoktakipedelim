@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "./prisma";
 import { aramaMetniUret, kodNormalize } from "./metin";
 import { HAREKET_TIP, STOK_DURUM } from "./sabitler";
-import { vadeTarihiHesapla } from "./vade";
+import { vadeyiCoz } from "./vade";
 import type { FaturaGirdisi } from "@/app/(uygulama)/faturalar/dogrulama";
 
 export type FaturaKayitSonucu =
@@ -77,7 +77,10 @@ export async function faturaOlustur(
   });
   if (!tedarikci) return { basarili: false, hata: "Tedarikçi bulunamadı." };
 
-  const vadeTarihi = vadeTarihiHesapla(veri.faturaTarihi, veri.vadeGun);
+  if (veri.vadeTarihi && veri.vadeTarihi < veri.faturaTarihi) {
+    return { basarili: false, hata: "Vade tarihi fatura tarihinden önce olamaz." };
+  }
+  const vade = vadeyiCoz(veri.faturaTarihi, veri.vadeGun, veri.vadeTarihi ?? null);
 
   const fatura = await prisma.$transaction(async (tx) => {
     const olusan = await tx.alisFaturasi.create({
@@ -86,8 +89,8 @@ export async function faturaOlustur(
         faturaTarihi: veri.faturaTarihi,
         tedarikciId: veri.tedarikciId,
         magazaId: veri.magazaId,
-        vadeGun: veri.vadeGun,
-        vadeTarihi,
+        vadeGun: vade.vadeGun,
+        vadeTarihi: vade.vadeTarihi,
         not: veri.not,
         olusturanId: kullaniciId,
       },

@@ -1,8 +1,8 @@
 import type { CihazSatiri } from "./cihazFiltre";
 import { kurusuTLYaz } from "./para";
-import { STOK_DURUM_ETIKET, VADE_ETIKET, type StokDurum } from "./sabitler";
+import { STOK_DURUM_ETIKET, type StokDurum } from "./sabitler";
 import { gunFarki, tarihYaz } from "./tarih";
-import { vadeDurumu } from "./vade";
+import { vadeDurumu, vadeEtiketi } from "./vade";
 
 export const SUTUN_ANAHTARLARI = [
   "kategori",
@@ -94,8 +94,8 @@ export const SUTUNLAR: Record<SutunAnahtari, SutunTanimi> = {
     varsayilan: true,
     metin: (s, bugun) => {
       const v = vadeDurumu(s.alisFaturasi, bugun);
-      if (v.durum === "YOK") return VADE_ETIKET[0];
-      return `${VADE_ETIKET[s.alisFaturasi?.vadeGun ?? 0] ?? ""} · ${v.etiket}`;
+      if (v.durum === "YOK") return vadeEtiketi(0);
+      return `${vadeEtiketi(s.alisFaturasi?.vadeGun)} · ${v.etiket}`;
     },
   },
   not: { anahtar: "not", baslik: "Genel Not", varsayilan: true, metin: (s) => s.not ?? "" },

@@ -66,6 +66,63 @@ export async function faturaKaydet(
   redirect(`/faturalar/${yeniFaturaId}`);
 }
 
+export type HizliTedarikciSonucu =
+  | { basarili: true; tedarikci: { id: number; ad: string } }
+  | { basarili: false; hata: string };
+
+/**
+ * Fatura ekranından ayrılmadan tedarikçi ekler.
+ *
+ * Ayarlar ekranındaki tam formun yerini almaz; yalnız ad ve telefon alır,
+ * vergi no/adres gibi alanlar sonradan Ayarlar > Tedarikçiler'den doldurulur.
+ * Aynı isim zaten varsa yenisi açılmaz, mevcut kayıt döner — fatura girerken
+ * kullanıcı yinelenen tedarikçi oluşturmasın.
+ */
+export async function hizliTedarikciEkle(
+  ad: string,
+  telefon: string,
+): Promise<HizliTedarikciSonucu> {
+  try {
+    const oturum = await adminZorunlu();
+
+    const temizAd = ad.trim();
+    if (temizAd.length < 2) return { basarili: false, hata: "Tedarikçi adı en az 2 karakter." };
+    if (temizAd.length > 80) return { basarili: false, hata: "Tedarikçi adı çok uzun." };
+
+    const temizTelefon = telefon.trim().slice(0, 30) || null;
+
+    const mevcut = await prisma.tedarikci.findUnique({
+      where: { ad: temizAd },
+      select: { id: true, ad: true, aktif: true },
+    });
+    if (mevcut) {
+      if (!mevcut.aktif) {
+        await prisma.tedarikci.update({ where: { id: mevcut.id }, data: { aktif: true } });
+      }
+      return { basarili: true, tedarikci: { id: mevcut.id, ad: mevcut.ad } };
+    }
+
+    const tedarikci = await prisma.tedarikci.create({
+      data: { ad: temizAd, telefon: temizTelefon },
+      select: { id: true, ad: true },
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Tedarikci",
+      hedefId: tedarikci.id,
+      detay: `Tedarikçi eklendi (fatura ekranından): ${tedarikci.ad}`,
+    });
+    revalidatePath("/ayarlar/tedarikciler");
+
+    return { basarili: true, tedarikci };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { basarili: false, hata: hata.message };
+    console.error("Tedarikçi eklenemedi:", hata);
+    return { basarili: false, hata: "Tedarikçi eklenemedi. Tekrar deneyin." };
+  }
+}
+
 export type OdemeDurumu = { hata?: string; basarili?: boolean };
 
 /** Faturanın tedarikçi vadesini ödendi / ödenmedi olarak işaretler (yalnız yönetici). */

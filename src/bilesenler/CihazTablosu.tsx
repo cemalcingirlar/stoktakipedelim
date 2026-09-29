@@ -2,7 +2,7 @@ import Link from "next/link";
 import { DurumRozeti, Rozet } from "./Rozet";
 import type { CihazSatiri } from "@/lib/cihazFiltre";
 import { kurusuTLYaz } from "@/lib/para";
-import { VADE_ETIKET } from "@/lib/sabitler";
+import { vadeEtiketi } from "@/lib/vade";
 import { beklemeGunu, karKurus, SUTUNLAR, type SutunAnahtari } from "@/lib/sutunlar";
 import { vadeDurumu } from "@/lib/vade";
 
@@ -53,7 +53,7 @@ function Hucre({
             {v.etiket}
           </Rozet>
           <span className="ml-1 text-xs text-slate-400">
-            {VADE_ETIKET[satir.alisFaturasi?.vadeGun ?? 0]}
+            {vadeEtiketi(satir.alisFaturasi?.vadeGun)}
           </span>
         </span>
       );
