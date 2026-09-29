@@ -49,11 +49,11 @@ export async function vadesiGecenFaturalar(bugun: Date = new Date()) {
 }
 
 /** Hedef mağazada onay bekleyen sevkiyatlar. magazaId verilmezse tümü. */
-export async function bekleyenSevkiyatlar(magazaId: number | null) {
+export async function bekleyenSevkiyatlar(magazaIdleri: number[] | null) {
   return prisma.transfer.findMany({
     where: {
       durum: TRANSFER_DURUM.BEKLIYOR,
-      ...(magazaId ? { hedefMagazaId: magazaId } : {}),
+      ...(magazaIdleri ? { hedefMagazaId: { in: magazaIdleri } } : {}),
     },
     include: {
       kaynakMagaza: true,

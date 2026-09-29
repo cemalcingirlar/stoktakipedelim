@@ -26,6 +26,7 @@ model Magaza {
   createdAt DateTime @default(now())
 
   kullanicilar      Kullanici[]
+  ekYetkililer      Kullanici[]    @relation("KullaniciEkMagaza")
   stokKalemleri     StokKalemi[]
   alisFaturalari    AlisFaturasi[]
   gonderilenTransfer Transfer[]    @relation("KaynakMagaza")
@@ -49,6 +50,10 @@ model Kullanici {
   createdAt DateTime  @default(now())
 
   magaza Magaza? @relation(fields: [magazaId], references: [id])
+
+  /// Ana mağazasına ek olarak yetkili olduğu mağazalar. Bir kişi birden çok
+  /// şubede çalışabilir; ana mağaza yalnızca formlardaki varsayılan seçimdir.
+  ekMagazalar Magaza[] @relation("KullaniciEkMagaza")
 
   olusturulanFaturalar AlisFaturasi[] @relation("FaturaOlusturan")
   gonderilenTransferler Transfer[]    @relation("TransferGonderen")

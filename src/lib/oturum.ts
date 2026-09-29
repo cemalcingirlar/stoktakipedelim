@@ -11,9 +11,26 @@ export type OturumBilgisi = {
   kullaniciAdi: string;
   adSoyad: string;
   rol: Rol;
+  /** Ana mağaza — formlarda varsayılan seçim. */
   magazaId: number | null;
   magazaAdi: string | null;
+  /** Ana mağaza dahil, işlem yapabildiği mağazaların kimlikleri. */
+  magazaIdleri: number[];
+  /** Aynı sırada mağaza adları — başlıkta ve satış ekranında gösterilir. */
+  magazaAdlari: string[];
 };
+
+/** JWT yükünden sayı dizisi okur; yoksa tek değere düşer. */
+function sayiDizisi(deger: unknown, tekil: unknown): number[] {
+  if (Array.isArray(deger)) return deger.filter((d): d is number => typeof d === "number");
+  return typeof tekil === "number" ? [tekil] : [];
+}
+
+/** JWT yükünden metin dizisi okur; yoksa tek değere düşer. */
+function metinDizisi(deger: unknown, tekil: unknown): string[] {
+  if (Array.isArray(deger)) return deger.filter((d): d is string => typeof d === "string");
+  return typeof tekil === "string" ? [tekil] : [];
+}
 
 function gizliAnahtar(): Uint8Array {
   const deger = process.env.OTURUM_SIFRESI;
@@ -44,6 +61,10 @@ export async function oturumJetonunuCoz(jeton: string): Promise<OturumBilgisi | 
       rol: payload.rol as Rol,
       magazaId: (payload.magazaId as number | null) ?? null,
       magazaAdi: (payload.magazaAdi as string | null) ?? null,
+      // Sürüm yükseltmesinden önce açılmış çerezlerde bu alanlar yok; ana
+      // mağazaya düşerek oturumu geçerli tutuyoruz.
+      magazaIdleri: sayiDizisi(payload.magazaIdleri, payload.magazaId),
+      magazaAdlari: metinDizisi(payload.magazaAdlari, payload.magazaAdi),
     };
   } catch {
     return null;

@@ -4,7 +4,7 @@ import { Rozet } from "@/bilesenler/Rozet";
 import { prisma } from "@/lib/prisma";
 import { SAYIM_DURUM, STOK_DURUM } from "@/lib/sabitler";
 import { tarihSaatYaz } from "@/lib/tarih";
-import { adminMi, oturumGerekli } from "@/lib/yetki";
+import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
 import { SayimBaslatFormu } from "./SayimBaslatFormu";
 
 export const metadata = { title: "Stok Sayımı — Stok Takip" };
@@ -12,12 +12,14 @@ export const metadata = { title: "Stok Sayımı — Stok Takip" };
 export default async function SayimSayfasi() {
   const oturum = await oturumGerekli();
   const yonetici = adminMi(oturum);
+  // Sayım mağaza bazında yapılır; kullanıcı yalnız yetkili olduğu mağazaları sayar.
+  const yetkili = yetkiliMagazalar(oturum);
 
   const [magazalar, sayimlar, stokGruplari] = await Promise.all([
     prisma.magaza.findMany({
       where: {
         aktif: true,
-        ...(yonetici ? {} : { id: oturum.magazaId ?? -1 }),
+        ...(yonetici ? {} : { id: { in: yetkili.length > 0 ? yetkili : [-1] } }),
       },
       orderBy: { kod: "asc" },
     }),

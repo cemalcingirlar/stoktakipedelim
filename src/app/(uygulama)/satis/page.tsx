@@ -11,8 +11,10 @@ export default async function SatisSayfasi() {
       <div>
         <h1 className="text-xl font-semibold text-slate-900">Satış</h1>
         <p className="mt-0.5 text-sm text-slate-500">
-          {oturum.magazaAdi
-            ? `${oturum.magazaAdi} deposundaki cihazları satabilirsiniz.`
+          {oturum.magazaAdlari.length > 0
+            ? `${oturum.magazaAdlari.join(", ")} ${
+                oturum.magazaAdlari.length > 1 ? "depolarındaki" : "deposundaki"
+              } cihazları satabilirsiniz.`
             : "Tüm mağazalardaki cihazları satabilirsiniz."}
         </p>
       </div>

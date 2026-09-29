@@ -7,6 +7,7 @@ import {
   magazadaIslemYapabilirMi,
   stokEkleyebilirMi,
   stokSilebilirMi,
+  yetkiliMagazalar,
 } from "./yetkiKurallari";
 
 const admin = { rol: ROLLER.ADMIN, magazaId: null };
@@ -14,6 +15,8 @@ const sorumlu1 = { rol: ROLLER.MAGAZA_SORUMLUSU, magazaId: 1 };
 const personel1 = { rol: ROLLER.MAGAZA_PERSONELI, magazaId: 1 };
 const personel2 = { rol: ROLLER.MAGAZA_PERSONELI, magazaId: 2 };
 const bagsizPersonel = { rol: ROLLER.MAGAZA_PERSONELI, magazaId: null };
+// Ana mağazası 1, ayrıca 3'te de yetkili.
+const cokMagazali = { rol: ROLLER.MAGAZA_SORUMLUSU, magazaId: 1, magazaIdleri: [1, 3] };
 
 test("yalnızca yönetici stok ekleyebilir ve silebilir", () => {
   assert.equal(stokEkleyebilirMi(admin), true);
@@ -59,4 +62,26 @@ test("mağazaya bağlı olmayan personel hiçbir mağazada işlem yapamaz", () =
   // magazaId null olduğunda null === null tuzağına düşülmemeli.
   assert.equal(magazadaIslemYapabilirMi(bagsizPersonel, 1), false);
   assert.equal(magazadaIslemYapabilirMi(bagsizPersonel, 2), false);
+});
+
+test("birden çok mağazada yetkili kullanıcı hepsinde işlem yapabilir", () => {
+  assert.equal(magazadaIslemYapabilirMi(cokMagazali, 1), true);
+  assert.equal(magazadaIslemYapabilirMi(cokMagazali, 3), true);
+  assert.equal(magazadaIslemYapabilirMi(cokMagazali, 2), false);
+});
+
+test("yetkiliMagazalar listesi ana mağazayı da içerir", () => {
+  assert.deepEqual(yetkiliMagazalar(cokMagazali), [1, 3]);
+});
+
+test("magazaIdleri yoksa ana mağazaya düşülür (eski oturum çerezi)", () => {
+  assert.deepEqual(yetkiliMagazalar(personel1), [1]);
+  assert.deepEqual(yetkiliMagazalar(bagsizPersonel), []);
+  assert.deepEqual(yetkiliMagazalar(admin), []);
+});
+
+test("boş magazaIdleri dizisi ana mağazayı düşürmez", () => {
+  const bos = { rol: ROLLER.MAGAZA_PERSONELI, magazaId: 2, magazaIdleri: [] };
+  assert.deepEqual(yetkiliMagazalar(bos), [2]);
+  assert.equal(magazadaIslemYapabilirMi(bos, 2), true);
 });

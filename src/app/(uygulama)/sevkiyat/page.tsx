@@ -4,13 +4,14 @@ import { TransferRozeti } from "@/bilesenler/TransferRozeti";
 import { prisma } from "@/lib/prisma";
 import { TRANSFER_DURUM, TRANSFER_KALEM_DURUM } from "@/lib/sabitler";
 import { tarihSaatYaz } from "@/lib/tarih";
-import { adminMi, oturumGerekli } from "@/lib/yetki";
+import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
 
 export const metadata = { title: "Sevkiyatlar — Stok Takip" };
 
 export default async function SevkiyatlarSayfasi() {
   const oturum = await oturumGerekli();
   const yonetici = adminMi(oturum);
+  const yetkili = yetkiliMagazalar(oturum);
 
   const transferler = await prisma.transfer.findMany({
     orderBy: [{ gonderimTarihi: "desc" }, { id: "desc" }],
@@ -27,7 +28,7 @@ export default async function SevkiyatlarSayfasi() {
   const bekleyenlerim = transferler.filter(
     (t) =>
       (t.durum === TRANSFER_DURUM.BEKLIYOR || t.durum === TRANSFER_DURUM.KISMI_KABUL) &&
-      (yonetici || t.hedefMagazaId === oturum.magazaId),
+      (yonetici || yetkili.includes(t.hedefMagazaId)),
   );
 
   function kalemOzeti(kalemler: { durum: string }[]) {

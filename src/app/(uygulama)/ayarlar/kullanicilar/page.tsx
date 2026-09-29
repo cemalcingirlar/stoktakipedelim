@@ -20,7 +20,10 @@ export default async function KullanicilarSayfasi() {
   const [kullanicilar, magazalar] = await Promise.all([
     prisma.kullanici.findMany({
       orderBy: [{ aktif: "desc" }, { rol: "asc" }, { kullaniciAdi: "asc" }],
-      include: { magaza: { select: { ad: true } } },
+      include: {
+        magaza: { select: { ad: true } },
+        ekMagazalar: { select: { id: true, ad: true }, orderBy: { kod: "asc" } },
+      },
     }),
     prisma.magaza.findMany({ where: { aktif: true }, orderBy: { kod: "asc" } }),
   ]);
@@ -35,8 +38,10 @@ export default async function KullanicilarSayfasi() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Kullanıcılar ve Roller</h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Yönetici tüm mağazalarda işlem yapar. Sorumlu ve personel yalnız kendi mağazasında
-            sevkiyat, kabul ve satış yapabilir; stok girişi ve silme yetkisi yoktur.
+            Yönetici tüm mağazalarda işlem yapar. Sorumlu ve personel yalnız yetkili olduğu
+            mağazalarda sevkiyat, kabul ve satış yapabilir; stok girişi ve silme yetkisi yoktur.
+            Bir kişi birden çok şubede çalışıyorsa ana mağazasının yanında diğerlerini de
+            işaretleyin.
           </p>
         </div>
         <Link
@@ -110,6 +115,22 @@ export default async function KullanicilarSayfasi() {
             </div>
           </div>
           <div className="mt-3">
+            <span className={KUCUK_ETIKET}>Ek mağazalar (isteğe bağlı)</span>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {magazalar.map((m) => (
+                <label key={m.id} className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    name="ekMagazalar"
+                    value={m.id}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  {m.ad}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="mt-3">
             <GonderDugmesi bekleyenMetin="Ekleniyor…">Kullanıcı Ekle</GonderDugmesi>
           </div>
         </EylemFormu>
@@ -124,6 +145,11 @@ export default async function KullanicilarSayfasi() {
                 {ROL_ETIKET[k.rol as Rol] ?? k.rol}
               </Rozet>
               <Rozet>{k.magaza?.ad ?? "Tüm mağazalar"}</Rozet>
+              {k.ekMagazalar.map((m) => (
+                <Rozet key={m.id} ton="mavi">
+                  + {m.ad}
+                </Rozet>
+              ))}
               {k.id === oturum.kullaniciId ? <Rozet ton="sari">Bu sizsiniz</Rozet> : null}
               <span className="text-xs text-slate-400">
                 Son giriş: {k.sonGiris ? tarihSaatYaz(k.sonGiris) : "—"}
@@ -188,6 +214,35 @@ export default async function KullanicilarSayfasi() {
                   </select>
                 </div>
               </div>
+              <div className="mt-3">
+                <span className={KUCUK_ETIKET}>Ek mağazalar</span>
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
+                  {magazalar.map((m) => {
+                    const secili = k.ekMagazalar.some((e) => e.id === m.id);
+                    return (
+                      <label
+                        key={m.id}
+                        className="flex items-center gap-2 text-sm text-slate-700"
+                      >
+                        <input
+                          key={`ek-${k.id}-${m.id}-${secili}`}
+                          type="checkbox"
+                          name="ekMagazalar"
+                          value={m.id}
+                          defaultChecked={secili}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        {m.ad}
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Ana mağaza yukarıdaki listeden seçilir; burada yalnız ek şubeler işaretlenir.
+                  Yönetici rolünde bu seçimler yok sayılır.
+                </p>
+              </div>
+
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <label className="flex items-center gap-2 text-sm text-slate-700">
                   <input

@@ -106,7 +106,9 @@ export function SevkiyatFormu({
               ))}
             </select>
             {!kaynakSecilebilir ? (
-              <p className="mt-1 text-xs text-slate-500">Yalnız kendi mağazanızdan sevk edebilirsiniz.</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Yalnız yetkili olduğunuz mağazadan sevk edebilirsiniz.
+              </p>
             ) : null}
           </div>
 

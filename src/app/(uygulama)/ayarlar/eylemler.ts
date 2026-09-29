@@ -462,6 +462,19 @@ function kullaniciFormunuOku(form: FormData) {
   });
 }
 
+/**
+ * Formda işaretlenen ek mağazalar. Ana mağaza zaten ayrı tutulduğu için
+ * listeden çıkarılır; yönetici tüm mağazalarda yetkili olduğundan boş döner.
+ */
+function ekMagazalariOku(form: FormData, rol: string, anaMagazaId: number | null): number[] {
+  if (rol === ROLLER.ADMIN) return [];
+  const secilen = form
+    .getAll("ekMagazalar")
+    .map((d) => Number(String(d)))
+    .filter((n) => Number.isInteger(n) && n > 0 && n !== anaMagazaId);
+  return [...new Set(secilen)];
+}
+
 /** Yönetici dışındaki roller mutlaka bir mağazaya bağlı olmalı. */
 function magazaKurali(rol: string, magazaId: number | null): string | null {
   if (rol === ROLLER.ADMIN) return null;
@@ -485,13 +498,17 @@ export async function kullaniciEkle(_onceki: AyarDurumu, form: FormData): Promis
     });
     if (mevcut) return { hata: "Bu kullanıcı adı zaten kullanılıyor." };
 
+    const anaMagazaId = sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId;
+    const ekMagazaIdleri = ekMagazalariOku(form, sonuc.data.rol, anaMagazaId);
+
     const kullanici = await prisma.kullanici.create({
       data: {
         kullaniciAdi: sonuc.data.kullaniciAdi,
         adSoyad: sonuc.data.adSoyad,
         rol: sonuc.data.rol,
-        magazaId: sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId,
+        magazaId: anaMagazaId,
         sifreHash: await sifreHashle(sifre),
+        ekMagazalar: { connect: ekMagazaIdleri.map((id) => ({ id })) },
       },
     });
 
@@ -499,7 +516,9 @@ export async function kullaniciEkle(_onceki: AyarDurumu, form: FormData): Promis
       islem: LOG_ISLEM.AYAR_DEGISTIR,
       hedefTip: "Kullanici",
       hedefId: kullanici.id,
-      detay: `Kullanıcı eklendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})`,
+      detay:
+        `Kullanıcı eklendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})` +
+        (ekMagazaIdleri.length > 0 ? ` · ${ekMagazaIdleri.length} ek mağaza` : ""),
     });
     tazele();
     return { basari: `"${sonuc.data.adSoyad}" eklendi.` };
@@ -537,14 +556,19 @@ export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Pr
       }
     }
 
+    const anaMagazaId = sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId;
+    const ekMagazaIdleri = ekMagazalariOku(form, sonuc.data.rol, anaMagazaId);
+
     await prisma.kullanici.update({
       where: { id },
       data: {
         kullaniciAdi: sonuc.data.kullaniciAdi,
         adSoyad: sonuc.data.adSoyad,
         rol: sonuc.data.rol,
-        magazaId: sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId,
+        magazaId: anaMagazaId,
         aktif,
+        // set: işaretlenmeyenler listeden çıkar, işaretlenenler kalır.
+        ekMagazalar: { set: ekMagazaIdleri.map((magazaId) => ({ id: magazaId })) },
       },
     });
 
@@ -552,7 +576,10 @@ export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Pr
       islem: LOG_ISLEM.AYAR_DEGISTIR,
       hedefTip: "Kullanici",
       hedefId: id,
-      detay: `Kullanıcı güncellendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})${aktif ? "" : " · pasif"}`,
+      detay:
+        `Kullanıcı güncellendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})` +
+        (ekMagazaIdleri.length > 0 ? ` · ${ekMagazaIdleri.length} ek mağaza` : "") +
+        (aktif ? "" : " · pasif"),
     });
     tazele();
     return { basari: "Kullanıcı güncellendi." };
