@@ -2,11 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { faturaOlustur } from "@/lib/fatura";
 import { prisma } from "@/lib/prisma";
 import { logYaz } from "@/lib/log";
-import { aramaMetniUret, kodNormalize } from "@/lib/metin";
-import { HAREKET_TIP, LOG_ISLEM, STOK_DURUM } from "@/lib/sabitler";
-import { vadeTarihiHesapla } from "@/lib/vade";
+import { kodNormalize } from "@/lib/metin";
+import { LOG_ISLEM } from "@/lib/sabitler";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
 import { faturaSemasi } from "./dogrulama";
 
@@ -44,141 +44,19 @@ export async function faturaKaydet(
       };
     }
 
-    const veri = sonuc.data;
-
-    // Seri numaraları formun kendi içinde tekrarlamamalı.
-    const seriNolar = veri.satirlar
-      .map((s) => kodNormalize(s.seriNo))
-      .filter((s): s is string => s.length > 0);
-    const tekrarlayan = seriNolar.find((s, i) => seriNolar.indexOf(s) !== i);
-    if (tekrarlayan) {
-      return { hata: `Aynı seri numarası birden fazla satırda var: ${tekrarlayan}` };
+    const kayit = await faturaOlustur(oturum.kullaniciId, sonuc.data);
+    if (!kayit.basarili) {
+      return { hata: kayit.hata, alanHatalari: kayit.alanHatalari };
     }
-
-    // Kategori seri no zorunluluğu ve seri numarasının sistemde benzersizliği.
-    const kategoriler = await prisma.kategori.findMany({
-      where: { id: { in: [...new Set(veri.satirlar.map((s) => s.kategoriId))] } },
-      select: { id: true, ad: true, seriNoZorunlu: true },
-    });
-    const kategoriHarita = new Map(kategoriler.map((k) => [k.id, k]));
-
-    const eksikSeri: string[] = [];
-    veri.satirlar.forEach((satir, i) => {
-      const kategori = kategoriHarita.get(satir.kategoriId);
-      if (!kategori) {
-        eksikSeri.push(`${i + 1}. satır: kategori bulunamadı.`);
-      } else if (kategori.seriNoZorunlu && !kodNormalize(satir.seriNo)) {
-        eksikSeri.push(`${i + 1}. satır: ${kategori.ad} için seri no (IMEI) zorunludur.`);
-      }
-    });
-    if (eksikSeri.length) {
-      return { hata: "Formda eksik alanlar var.", alanHatalari: eksikSeri };
-    }
-
-    if (seriNolar.length) {
-      const cakisan = await prisma.stokKalemi.findMany({
-        where: { seriNo: { in: seriNolar } },
-        select: { seriNo: true },
-      });
-      if (cakisan.length) {
-        return {
-          hata: "Bu seri numaraları sistemde zaten kayıtlı.",
-          alanHatalari: cakisan.map((c) => `${c.seriNo} daha önce girilmiş.`),
-        };
-      }
-    }
-
-    const ayniFatura = await prisma.alisFaturasi.findUnique({
-      where: {
-        tedarikciId_faturaNo: {
-          tedarikciId: veri.tedarikciId,
-          faturaNo: veri.faturaNo,
-        },
-      },
-      select: { id: true },
-    });
-    if (ayniFatura) {
-      return { hata: "Bu tedarikçi için aynı numaralı fatura zaten kayıtlı." };
-    }
-
-    const tedarikci = await prisma.tedarikci.findUnique({
-      where: { id: veri.tedarikciId },
-      select: { ad: true },
-    });
-
-    const vadeTarihi = vadeTarihiHesapla(veri.faturaTarihi, veri.vadeGun);
-
-    const fatura = await prisma.$transaction(async (tx) => {
-      const olusan = await tx.alisFaturasi.create({
-        data: {
-          faturaNo: veri.faturaNo,
-          faturaTarihi: veri.faturaTarihi,
-          tedarikciId: veri.tedarikciId,
-          magazaId: veri.magazaId,
-          vadeGun: veri.vadeGun,
-          vadeTarihi,
-          not: veri.not,
-          olusturanId: oturum.kullaniciId,
-        },
-      });
-
-      for (const satir of veri.satirlar) {
-        const seriNo = kodNormalize(satir.seriNo) || null;
-        const barkod = kodNormalize(satir.barkod) || null;
-
-        const kalem = await tx.stokKalemi.create({
-          data: {
-            barkod,
-            seriNo,
-            kategoriId: satir.kategoriId,
-            altKategoriId: satir.altKategoriId,
-            marka: satir.marka,
-            model: satir.model,
-            renk: satir.renk,
-            kapasite: satir.kapasite,
-            alisFaturasiId: olusan.id,
-            tedarikciId: veri.tedarikciId,
-            alisFiyatiKurus: satir.alisFiyatiKurus,
-            girisTarihi: veri.faturaTarihi,
-            magazaId: veri.magazaId,
-            durum: STOK_DURUM.STOKTA,
-            not: satir.not,
-            aramaMetni: aramaMetniUret([
-              satir.marka,
-              satir.model,
-              satir.renk,
-              satir.kapasite,
-              seriNo,
-              barkod,
-              tedarikci?.ad,
-              satir.not,
-            ]),
-          },
-        });
-
-        await tx.stokHareketi.create({
-          data: {
-            stokKalemiId: kalem.id,
-            tip: HAREKET_TIP.GIRIS,
-            hedefMagazaId: veri.magazaId,
-            kullaniciId: oturum.kullaniciId,
-            aciklama: `${veri.faturaNo} numaralı alış faturası`,
-            tarih: veri.faturaTarihi,
-          },
-        });
-      }
-
-      return olusan;
-    });
 
     await logYaz(oturum, {
       islem: LOG_ISLEM.FATURA_EKLE,
       hedefTip: "AlisFaturasi",
-      hedefId: fatura.id,
-      detay: `${veri.faturaNo} · ${veri.satirlar.length} cihaz · ${tedarikci?.ad ?? ""}`,
+      hedefId: kayit.faturaId,
+      detay: `${sonuc.data.faturaNo} · ${kayit.cihazSayisi} cihaz · ${kayit.tedarikciAdi}`,
     });
 
-    yeniFaturaId = fatura.id;
+    yeniFaturaId = kayit.faturaId;
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Fatura kaydedilemedi:", hata);
@@ -187,6 +65,167 @@ export async function faturaKaydet(
 
   // redirect() hata fırlatarak çalışır; try bloğunun dışında olmalı.
   redirect(`/faturalar/${yeniFaturaId}`);
+}
+
+export type BarkodBilgisi = {
+  bulundu: boolean;
+  kategoriId: number | null;
+  altKategoriId: number | null;
+  marka: string;
+  model: string;
+  renk: string;
+  kapasite: string;
+  /** Son alış fiyatı — kullanıcı isterse değiştirir. */
+  alisFiyatiKurus: number | null;
+  /** Bilgilerin alındığı kaydın giriş tarihi; ekranda "en son ... tarihinde girilmiş" der. */
+  sonGirisTarihi: string | null;
+};
+
+/**
+ * Barkoddan o ürünün en son girilen kaydını bulur ve bilgilerini döner.
+ *
+ * Aynı model cihaz her fatura girişinde yeniden yazılmasın diye: barkod
+ * okutulduğunda marka, model, renk, kapasite, kategori ve son alış fiyatı
+ * hazır gelir. Fiyat değişmişse kullanıcı üzerine yazar.
+ */
+export async function barkodBilgisiGetir(barkod: string): Promise<BarkodBilgisi> {
+  const bos: BarkodBilgisi = {
+    bulundu: false,
+    kategoriId: null,
+    altKategoriId: null,
+    marka: "",
+    model: "",
+    renk: "",
+    kapasite: "",
+    alisFiyatiKurus: null,
+    sonGirisTarihi: null,
+  };
+
+  try {
+    await adminZorunlu();
+
+    const kod = kodNormalize(barkod);
+    if (!kod) return bos;
+
+    const son = await prisma.stokKalemi.findFirst({
+      where: { barkod: kod },
+      orderBy: [{ girisTarihi: "desc" }, { id: "desc" }],
+      select: {
+        kategoriId: true,
+        altKategoriId: true,
+        marka: true,
+        model: true,
+        renk: true,
+        kapasite: true,
+        alisFiyatiKurus: true,
+        girisTarihi: true,
+      },
+    });
+    if (!son) return bos;
+
+    return {
+      bulundu: true,
+      kategoriId: son.kategoriId,
+      altKategoriId: son.altKategoriId,
+      marka: son.marka,
+      model: son.model,
+      renk: son.renk ?? "",
+      kapasite: son.kapasite ?? "",
+      alisFiyatiKurus: son.alisFiyatiKurus,
+      sonGirisTarihi: son.girisTarihi.toISOString(),
+    };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return bos;
+    console.error("Barkod bilgisi getirilemedi:", hata);
+    return bos;
+  }
+}
+
+export type SeriNoKontrolu = { kullanimda: boolean; aciklama?: string };
+
+/**
+ * Okutulan seri numarası sistemde var mı? Okutma anında bakılır ki kullanıcı
+ * onlarca IMEI girdikten sonra kayıtta sürprizle karşılaşmasın.
+ */
+export async function seriNoKontrolEt(seriNo: string): Promise<SeriNoKontrolu> {
+  try {
+    await adminZorunlu();
+
+    const kod = kodNormalize(seriNo);
+    if (!kod) return { kullanimda: false };
+
+    const mevcut = await prisma.stokKalemi.findUnique({
+      where: { seriNo: kod },
+      select: { marka: true, model: true, durum: true, magaza: { select: { ad: true } } },
+    });
+    if (!mevcut) return { kullanimda: false };
+
+    return {
+      kullanimda: true,
+      aciklama: `${kod} sistemde kayıtlı: ${mevcut.marka} ${mevcut.model} · ${mevcut.magaza.ad} · ${mevcut.durum}`,
+    };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { kullanimda: false };
+    console.error("Seri no kontrol edilemedi:", hata);
+    return { kullanimda: false };
+  }
+}
+
+export type HizliTedarikciSonucu =
+  | { basarili: true; tedarikci: { id: number; ad: string } }
+  | { basarili: false; hata: string };
+
+/**
+ * Fatura ekranından ayrılmadan tedarikçi ekler.
+ *
+ * Ayarlar ekranındaki tam formun yerini almaz; yalnız ad ve telefon alır,
+ * vergi no/adres gibi alanlar sonradan Ayarlar > Tedarikçiler'den doldurulur.
+ * Aynı isim zaten varsa yenisi açılmaz, mevcut kayıt döner — fatura girerken
+ * kullanıcı yinelenen tedarikçi oluşturmasın.
+ */
+export async function hizliTedarikciEkle(
+  ad: string,
+  telefon: string,
+): Promise<HizliTedarikciSonucu> {
+  try {
+    const oturum = await adminZorunlu();
+
+    const temizAd = ad.trim();
+    if (temizAd.length < 2) return { basarili: false, hata: "Tedarikçi adı en az 2 karakter." };
+    if (temizAd.length > 80) return { basarili: false, hata: "Tedarikçi adı çok uzun." };
+
+    const temizTelefon = telefon.trim().slice(0, 30) || null;
+
+    const mevcut = await prisma.tedarikci.findUnique({
+      where: { ad: temizAd },
+      select: { id: true, ad: true, aktif: true },
+    });
+    if (mevcut) {
+      if (!mevcut.aktif) {
+        await prisma.tedarikci.update({ where: { id: mevcut.id }, data: { aktif: true } });
+      }
+      return { basarili: true, tedarikci: { id: mevcut.id, ad: mevcut.ad } };
+    }
+
+    const tedarikci = await prisma.tedarikci.create({
+      data: { ad: temizAd, telefon: temizTelefon },
+      select: { id: true, ad: true },
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Tedarikci",
+      hedefId: tedarikci.id,
+      detay: `Tedarikçi eklendi (fatura ekranından): ${tedarikci.ad}`,
+    });
+    revalidatePath("/ayarlar/tedarikciler");
+
+    return { basarili: true, tedarikci };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { basarili: false, hata: hata.message };
+    console.error("Tedarikçi eklenemedi:", hata);
+    return { basarili: false, hata: "Tedarikçi eklenemedi. Tekrar deneyin." };
+  }
 }
 
 export type OdemeDurumu = { hata?: string; basarili?: boolean };

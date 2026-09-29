@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { vadeDurumu, vadeTarihiHesapla } from "./vade";
+import { vadeDurumu, vadeEtiketi, vadeTarihiHesapla, vadeyiCoz } from "./vade";
 
 const BUGUN = new Date("2026-06-15T10:00:00");
 
@@ -67,4 +67,39 @@ test("gün sınırı saat bileşeninden etkilenmez", () => {
   const v = vadeDurumu(fatura(21, "2026-06-15T00:05:00"), new Date("2026-06-15T23:50:00"));
   assert.equal(v.durum, "YAKLASIYOR");
   assert.equal(v.kalanGun, 0);
+});
+
+test("vadeEtiketi hazır seçenekleri ve serbest gün sayısını yazar", () => {
+  assert.equal(vadeEtiketi(0), "Vadesiz");
+  assert.equal(vadeEtiketi(21), "21 gün");
+  assert.equal(vadeEtiketi(45), "45 gün");
+  assert.equal(vadeEtiketi(37), "37 gün");
+  assert.equal(vadeEtiketi(null), "Vadesiz");
+  assert.equal(vadeEtiketi(undefined), "Vadesiz");
+  assert.equal(vadeEtiketi(-5), "Vadesiz");
+});
+
+test("vadeyiCoz gün sayısından tarih üretir", () => {
+  const sonuc = vadeyiCoz(new Date("2026-03-01T00:00:00"), 45, null);
+  assert.equal(sonuc.vadeGun, 45);
+  assert.equal(sonuc.vadeTarihi?.toISOString().slice(0, 10), "2026-04-15");
+});
+
+test("elle girilen vade tarihi gün sayısını belirler", () => {
+  const sonuc = vadeyiCoz(new Date("2026-03-01T00:00:00"), 21, new Date("2026-04-07T00:00:00"));
+  assert.equal(sonuc.vadeGun, 37, "seçili 21 değil, tarihten hesaplanan 37 olmalı");
+  assert.equal(sonuc.vadeTarihi?.toISOString().slice(0, 10), "2026-04-07");
+});
+
+test("vade tarihi fatura tarihiyle aynı veya öncesiyse vadesiz sayılır", () => {
+  const ayniGun = vadeyiCoz(new Date("2026-03-01T00:00:00"), 45, new Date("2026-03-01T00:00:00"));
+  assert.deepEqual(ayniGun, { vadeGun: 0, vadeTarihi: null });
+
+  const onceki = vadeyiCoz(new Date("2026-03-10T00:00:00"), 45, new Date("2026-03-01T00:00:00"));
+  assert.deepEqual(onceki, { vadeGun: 0, vadeTarihi: null });
+});
+
+test("vadeyiCoz saat farkını yok sayar (gün bazlı)", () => {
+  const sonuc = vadeyiCoz(new Date("2026-03-01T23:30:00"), 0, new Date("2026-03-22T00:10:00"));
+  assert.equal(sonuc.vadeGun, 21);
 });

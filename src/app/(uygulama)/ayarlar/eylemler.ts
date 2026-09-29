@@ -462,6 +462,19 @@ function kullaniciFormunuOku(form: FormData) {
   });
 }
 
+/**
+ * Formda işaretlenen ek mağazalar. Ana mağaza zaten ayrı tutulduğu için
+ * listeden çıkarılır; yönetici tüm mağazalarda yetkili olduğundan boş döner.
+ */
+function ekMagazalariOku(form: FormData, rol: string, anaMagazaId: number | null): number[] {
+  if (rol === ROLLER.ADMIN) return [];
+  const secilen = form
+    .getAll("ekMagazalar")
+    .map((d) => Number(String(d)))
+    .filter((n) => Number.isInteger(n) && n > 0 && n !== anaMagazaId);
+  return [...new Set(secilen)];
+}
+
 /** Yönetici dışındaki roller mutlaka bir mağazaya bağlı olmalı. */
 function magazaKurali(rol: string, magazaId: number | null): string | null {
   if (rol === ROLLER.ADMIN) return null;
@@ -475,7 +488,10 @@ export async function kullaniciEkle(_onceki: AyarDurumu, form: FormData): Promis
     if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
 
     const sifre = String(form.get("sifre") ?? "");
+    const sifreTekrar = String(form.get("sifreTekrar") ?? "");
     if (sifre.length < 8) return { hata: "Şifre en az 8 karakter olmalı." };
+    // Yazım hatası kullanıcıyı kilitler; hatanın ne olduğu da anlaşılmaz.
+    if (sifre !== sifreTekrar) return { hata: "Şifreler eşleşmiyor. İki alana da aynı şifreyi yazın." };
 
     const kuralHatasi = magazaKurali(sonuc.data.rol, sonuc.data.magazaId);
     if (kuralHatasi) return { hata: kuralHatasi };
@@ -485,13 +501,17 @@ export async function kullaniciEkle(_onceki: AyarDurumu, form: FormData): Promis
     });
     if (mevcut) return { hata: "Bu kullanıcı adı zaten kullanılıyor." };
 
+    const anaMagazaId = sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId;
+    const ekMagazaIdleri = ekMagazalariOku(form, sonuc.data.rol, anaMagazaId);
+
     const kullanici = await prisma.kullanici.create({
       data: {
         kullaniciAdi: sonuc.data.kullaniciAdi,
         adSoyad: sonuc.data.adSoyad,
         rol: sonuc.data.rol,
-        magazaId: sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId,
+        magazaId: anaMagazaId,
         sifreHash: await sifreHashle(sifre),
+        ekMagazalar: { connect: ekMagazaIdleri.map((id) => ({ id })) },
       },
     });
 
@@ -499,7 +519,9 @@ export async function kullaniciEkle(_onceki: AyarDurumu, form: FormData): Promis
       islem: LOG_ISLEM.AYAR_DEGISTIR,
       hedefTip: "Kullanici",
       hedefId: kullanici.id,
-      detay: `Kullanıcı eklendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})`,
+      detay:
+        `Kullanıcı eklendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})` +
+        (ekMagazaIdleri.length > 0 ? ` · ${ekMagazaIdleri.length} ek mağaza` : ""),
     });
     tazele();
     return { basari: `"${sonuc.data.adSoyad}" eklendi.` };
@@ -537,14 +559,19 @@ export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Pr
       }
     }
 
+    const anaMagazaId = sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId;
+    const ekMagazaIdleri = ekMagazalariOku(form, sonuc.data.rol, anaMagazaId);
+
     await prisma.kullanici.update({
       where: { id },
       data: {
         kullaniciAdi: sonuc.data.kullaniciAdi,
         adSoyad: sonuc.data.adSoyad,
         rol: sonuc.data.rol,
-        magazaId: sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId,
+        magazaId: anaMagazaId,
         aktif,
+        // set: işaretlenmeyenler listeden çıkar, işaretlenenler kalır.
+        ekMagazalar: { set: ekMagazaIdleri.map((magazaId) => ({ id: magazaId })) },
       },
     });
 
@@ -552,10 +579,105 @@ export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Pr
       islem: LOG_ISLEM.AYAR_DEGISTIR,
       hedefTip: "Kullanici",
       hedefId: id,
-      detay: `Kullanıcı güncellendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})${aktif ? "" : " · pasif"}`,
+      detay:
+        `Kullanıcı güncellendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})` +
+        (ekMagazaIdleri.length > 0 ? ` · ${ekMagazaIdleri.length} ek mağaza` : "") +
+        (aktif ? "" : " · pasif"),
     });
     tazele();
     return { basari: "Kullanıcı güncellendi." };
+  });
+}
+
+/**
+ * Kullanıcıyı siler. Geçmişi olan hesap silinmez, pasife alınır — fatura,
+ * sevkiyat, satış ve sayım kayıtlarının "kim yaptı" bilgisi kaybolmasın diye.
+ * İşlem kaydı (Log) kullanıcı adını metin olarak da tuttuğu için silme
+ * sonrasında loglar okunur kalır; yalnız bağlantısı kopar.
+ */
+export async function kullaniciSil(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+  return calistir(async (oturum) => {
+    const id = Number(form.get("id"));
+    if (!Number.isInteger(id) || id <= 0) return { hata: "Kullanıcı bulunamadı." };
+
+    if (id === oturum.kullaniciId) return { hata: "Kendi hesabınızı silemezsiniz." };
+
+    const kullanici = await prisma.kullanici.findUnique({
+      where: { id },
+      select: {
+        kullaniciAdi: true,
+        adSoyad: true,
+        rol: true,
+        aktif: true,
+        _count: {
+          select: {
+            olusturulanFaturalar: true,
+            hareketler: true,
+            gonderilenTransferler: true,
+            kabulEdilenTransferler: true,
+            satislar: true,
+            baslatilanSayimlar: true,
+            kapatilanSayimlar: true,
+            okutmalar: true,
+          },
+        },
+      },
+    });
+    if (!kullanici) return { hata: "Kullanıcı bulunamadı." };
+
+    // Son aktif yönetici silinemez; sistem yönetilemez hâle gelmesin.
+    if (kullanici.rol === ROLLER.ADMIN) {
+      const digerAdminler = await prisma.kullanici.count({
+        where: { rol: ROLLER.ADMIN, aktif: true, id: { not: id } },
+      });
+      if (digerAdminler === 0) return { hata: "Sistemde en az bir aktif yönetici kalmalı." };
+    }
+
+    const sayac = kullanici._count;
+    const kayitSayisi =
+      sayac.olusturulanFaturalar +
+      sayac.hareketler +
+      sayac.gonderilenTransferler +
+      sayac.kabulEdilenTransferler +
+      sayac.satislar +
+      sayac.baslatilanSayimlar +
+      sayac.kapatilanSayimlar +
+      sayac.okutmalar;
+
+    if (kayitSayisi > 0) {
+      if (!kullanici.aktif) {
+        return {
+          hata: `"${kullanici.adSoyad}" hesabının ${kayitSayisi} işlem kaydı var; silinemez. Hesap zaten pasif.`,
+        };
+      }
+      await prisma.kullanici.update({ where: { id }, data: { aktif: false } });
+      await logYaz(oturum, {
+        islem: LOG_ISLEM.AYAR_DEGISTIR,
+        hedefTip: "Kullanici",
+        hedefId: id,
+        detay: `Kullanıcı pasife alındı (${kayitSayisi} işlem kaydı bağlı): ${kullanici.kullaniciAdi}`,
+      });
+      tazele();
+      return {
+        basari: `"${kullanici.adSoyad}" hesabının ${kayitSayisi} işlem kaydı olduğu için silinmedi, pasife alındı. Artık giriş yapamaz.`,
+      };
+    }
+
+    // Log satırları kullanıcı adını metin olarak da taşır; bağlantıyı koparıp
+    // kaydı bırakıyoruz.
+    await prisma.$transaction([
+      prisma.log.updateMany({ where: { kullaniciId: id }, data: { kullaniciId: null } }),
+      prisma.kullanici.delete({ where: { id } }),
+    ]);
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Kullanici",
+      hedefId: id,
+      detay: `Kullanıcı silindi: ${kullanici.kullaniciAdi} (${kullanici.adSoyad})`,
+    });
+    tazele();
+    return { basari: `"${kullanici.adSoyad}" silindi.` };
   });
 }
 
@@ -563,8 +685,10 @@ export async function sifreSifirla(_onceki: AyarDurumu, form: FormData): Promise
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
     const sifre = String(form.get("yeniSifre") ?? "");
+    const sifreTekrar = String(form.get("yeniSifreTekrar") ?? "");
     if (!Number.isInteger(id) || id <= 0) return { hata: "Kullanıcı bulunamadı." };
     if (sifre.length < 8) return { hata: "Şifre en az 8 karakter olmalı." };
+    if (sifre !== sifreTekrar) return { hata: "Şifreler eşleşmiyor. İki alana da aynı şifreyi yazın." };
 
     const kullanici = await prisma.kullanici.findUnique({
       where: { id },

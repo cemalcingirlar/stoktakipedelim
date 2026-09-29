@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { adminMi, oturumGerekli } from "@/lib/yetki";
+import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
 import { SevkiyatFormu } from "./SevkiyatFormu";
 
 export const metadata = { title: "Yeni Sevkiyat — Stok Takip" };
@@ -15,10 +15,11 @@ export default async function YeniSevkiyatSayfasi() {
     include: { _count: { select: { kullanicilar: { where: { aktif: true } } } } },
   });
 
-  // Yönetici her mağazadan sevk edebilir; diğer roller yalnız kendi mağazasından.
+  // Yönetici her mağazadan sevk edebilir; diğer roller yetkili oldukları mağazalardan.
+  const yetkili = yetkiliMagazalar(oturum);
   const kaynakMagazalar = yonetici
     ? magazalar.map((m) => ({ id: m.id, ad: m.ad }))
-    : magazalar.filter((m) => m.id === oturum.magazaId).map((m) => ({ id: m.id, ad: m.ad }));
+    : magazalar.filter((m) => yetkili.includes(m.id)).map((m) => ({ id: m.id, ad: m.ad }));
 
   if (kaynakMagazalar.length === 0) {
     return (
@@ -56,7 +57,8 @@ export default async function YeniSevkiyatSayfasi() {
           kullaniciSayisi: m._count.kullanicilar,
         }))}
         varsayilanKaynakId={oturum.magazaId}
-        kaynakSecilebilir={yonetici}
+        // Birden çok mağazada yetkili olan personel de kaynağını seçebilmeli.
+        kaynakSecilebilir={kaynakMagazalar.length > 1}
       />
     </div>
   );

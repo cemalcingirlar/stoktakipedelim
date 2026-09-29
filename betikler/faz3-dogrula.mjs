@@ -38,24 +38,24 @@ await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
 await sayfa.selectOption("#tedarikciId", { index: 1 });
 await sayfa.fill("#faturaNo", `FAZ3-${Date.now()}`);
 await sayfa.selectOption("#magazaId", { label: "1 Nolu Mağaza" });
+// Tek barkod okutulur, üç IMEI arka arkaya o ürünün altına eklenir.
+await sayfa.fill("#okutma", `FAZ3BR${Date.now()}`.slice(0, 14));
+await sayfa.press("#okutma", "Enter");
+await sayfa.waitForTimeout(1200);
+const kart = sayfa.locator("section.space-y-3 > div.rounded-xl").first();
+await kart.locator("select").first().selectOption({ label: "Cep Telefonu" });
+const alanlar = kart.locator('input[type="text"], input:not([type])');
+await alanlar.nth(1).fill("Xiaomi");
+await alanlar.nth(2).fill("Redmi 11");
+await kart.locator('input[inputmode="decimal"]').fill("5.000");
 for (const kod of imei) {
-  await sayfa.fill("#okutma", kod);
-  await sayfa.press("#okutma", "Enter");
-  await sayfa.waitForTimeout(200);
+  const imeiKutusu = kart.locator('input[id^="imei-"]');
+  await imeiKutusu.fill(kod);
+  await imeiKutusu.press("Enter");
+  await sayfa.waitForTimeout(500);
 }
-const kartlar = sayfa.locator("form > section").nth(2).locator("> div");
-for (let i = 1; i <= 3; i++) {
-  const kart = kartlar.nth(i);
-  await kart.locator("select").first().selectOption({ label: "Cep Telefonu" });
-  const m = kart.locator('input[type="text"], input:not([type])');
-  await m.nth(0).fill("Xiaomi");
-  await m.nth(1).fill(`Redmi ${10 + i}`);
-  await kart.locator('input[inputmode="decimal"]').fill("5.000");
-}
-await Promise.all([
-  sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 20000 }),
-  sayfa.click('button:has-text("Faturayı Kaydet")'),
-]);
+await sayfa.click('button:has-text("Faturayı Kaydet")');
+await sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 20000 });
 console.log("0) hazırlık: 3 cihaz 1 Nolu Mağaza'ya girildi ✓");
 
 // ------------------------------------------------- 1) Sevkiyat gönderimi

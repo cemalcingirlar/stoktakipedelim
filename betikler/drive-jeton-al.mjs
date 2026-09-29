@@ -4,8 +4,11 @@
 //   GOOGLE_ISTEMCI_ID=... GOOGLE_ISTEMCI_SIRRI=... node betikler/drive-jeton-al.mjs
 //
 // Betik bir izin bağlantısı yazar. Bağlantıyı tarayıcıda açıp Google hesabınızla
-// izin verdikten sonra ekrana düşen kodu buraya yapıştırın; betik yenileme
-// jetonunu basar. Jetonu .env dosyasındaki GOOGLE_YENILEME_JETONU değerine yazın.
+// izin verin. Google sizi http://localhost:53682/?code=... adresine yönlendirir;
+// tarayıcı "siteye ulaşılamıyor" der (sunucu sizin bilgisayarınızda dinlemiyor),
+// bu beklenen durumdur. Adres çubuğundaki code= değerini kopyalayıp buraya
+// yapıştırın; betik yenileme jetonunu basar. Jetonu .env dosyasındaki
+// GOOGLE_YENILEME_JETONU değerine yazın.
 
 import { createInterface } from "node:readline/promises";
 import { google } from "googleapis";
@@ -21,8 +24,11 @@ if (!istemciId || !istemciSirri) {
   process.exit(1);
 }
 
-// Masaüstü istemcileri için Google'ın kod-kopyala akışı.
-const YONLENDIRME = "urn:ietf:wg:oauth:2.0:oob";
+// Masaüstü istemcileri için loopback akışı. Google, OOB akışını (urn:ietf:wg:
+// oauth:2.0:oob) 2023'te kapattı; "Desktop app" türündeki istemciler için
+// http://localhost adresine herhangi bir portla dönüş serbesttir ve ayrıca
+// kaydedilmesi gerekmez.
+const YONLENDIRME = "http://localhost:53682";
 const KAPSAM = ["https://www.googleapis.com/auth/drive.file"];
 
 const istemci = new google.auth.OAuth2(istemciId, istemciSirri, YONLENDIRME);
@@ -35,16 +41,26 @@ const url = istemci.generateAuthUrl({
 
 console.log("\n1) Aşağıdaki bağlantıyı tarayıcıda açın ve izin verin:\n");
 console.log(url);
-console.log("\n2) Google'ın verdiği kodu buraya yapıştırın.\n");
+console.log(
+  "\n2) İzin verdikten sonra tarayıcı http://localhost:53682/?code=... adresine\n" +
+    "   gider ve \"siteye ulaşılamıyor\" hatası verir. Bu beklenen durumdur.\n" +
+    "   Adres çubuğundaki code= ile &scope= arasındaki değeri kopyalayın.\n" +
+    "   (Tam adresi yapıştırsanız da olur, betik kodu kendisi ayıklar.)\n",
+);
 
 const okuyucu = createInterface({ input: process.stdin, output: process.stdout });
-const kod = (await okuyucu.question("Kod: ")).trim();
+const girdi = (await okuyucu.question("Kod: ")).trim();
 okuyucu.close();
 
-if (!kod) {
+if (!girdi) {
   console.error("Kod girilmedi.");
   process.exit(1);
 }
+
+// Kullanıcı tam yönlendirme adresini yapıştırdıysa code parametresini ayıkla.
+const kod = girdi.includes("code=")
+  ? decodeURIComponent(girdi.split("code=")[1].split("&")[0])
+  : girdi;
 
 try {
   const { tokens } = await istemci.getToken(kod);

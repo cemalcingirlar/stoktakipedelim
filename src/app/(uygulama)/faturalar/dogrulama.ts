@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { VADE_SECENEKLERI } from "@/lib/sabitler";
 
 const kirusTutar = z
   .number()
@@ -25,10 +24,15 @@ export const faturaSemasi = z.object({
   magazaId: z.number().int().positive("Depo seçin."),
   faturaNo: z.string().trim().min(1, "Fatura numarası zorunlu.").max(40),
   faturaTarihi: z.coerce.date({ message: "Fatura tarihi geçersiz." }),
+  // Hazır seçenekler dışında, elle girilen vade tarihinden hesaplanan gün
+  // sayıları da kabul edilir. 10 yıl üstü bir vade veri girişi hatasıdır.
   vadeGun: z
     .number()
-    .int()
-    .refine((v) => (VADE_SECENEKLERI as readonly number[]).includes(v), "Vade seçeneği geçersiz."),
+    .int("Vade gün sayısı geçersiz.")
+    .min(0, "Vade negatif olamaz.")
+    .max(3650, "Vade 10 yıldan uzun olamaz."),
+  /** Kullanıcı vade tarihini elle yazdıysa bu alan dolar ve gün sayısını belirler. */
+  vadeTarihi: z.coerce.date({ message: "Vade tarihi geçersiz." }).nullable().optional(),
   not: z.string().trim().max(500).nullable(),
   satirlar: z.array(faturaSatiriSemasi).min(1, "En az bir cihaz satırı ekleyin."),
 });

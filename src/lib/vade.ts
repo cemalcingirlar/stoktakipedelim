@@ -1,4 +1,4 @@
-import { VADE_UYARI_GUN } from "./sabitler";
+import { VADE_ETIKET, VADE_UYARI_GUN } from "./sabitler";
 import { gunEkle, gunFarki } from "./tarih";
 
 export type VadeDurumu = "YOK" | "ODENDI" | "NORMAL" | "YAKLASIYOR" | "GECTI";
@@ -18,6 +18,37 @@ export type VadeBilgisi = {
 export function vadeTarihiHesapla(faturaTarihi: Date, vadeGun: number): Date | null {
   if (!vadeGun || vadeGun <= 0) return null;
   return gunEkle(faturaTarihi, vadeGun);
+}
+
+/**
+ * Vade gün sayısının ekranda görünen adı.
+ *
+ * Hazır seçeneklerin (0/21/45) kendi etiketi vardır; elle girilen tarihten
+ * hesaplanan gün sayıları için "37 gün" biçiminde metin üretilir.
+ */
+export function vadeEtiketi(vadeGun: number | null | undefined): string {
+  if (!vadeGun || vadeGun <= 0) return VADE_ETIKET[0];
+  return VADE_ETIKET[vadeGun] ?? `${vadeGun} gün`;
+}
+
+/**
+ * Faturanın vadesini çözer.
+ *
+ * Kullanıcı vade tarihini elle yazdıysa o tarih esastır ve gün sayısı ondan
+ * hesaplanır; yazmadıysa seçtiği gün sayısından tarih hesaplanır. İki alanın
+ * tek kaynaktan türemesi, raporlarda gün ile tarihin çelişmesini önler.
+ */
+export function vadeyiCoz(
+  faturaTarihi: Date,
+  vadeGun: number,
+  elleVadeTarihi?: Date | null,
+): { vadeGun: number; vadeTarihi: Date | null } {
+  if (elleVadeTarihi) {
+    const gun = gunFarki(faturaTarihi, elleVadeTarihi);
+    if (gun <= 0) return { vadeGun: 0, vadeTarihi: null };
+    return { vadeGun: gun, vadeTarihi: elleVadeTarihi };
+  }
+  return { vadeGun, vadeTarihi: vadeTarihiHesapla(faturaTarihi, vadeGun) };
 }
 
 /**

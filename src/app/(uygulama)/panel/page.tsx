@@ -11,7 +11,7 @@ import {
   vadesiGecenFaturalar,
 } from "@/lib/sorgular";
 import { tarihSaatYaz, tarihYaz } from "@/lib/tarih";
-import { adminMi, oturumGerekli } from "@/lib/yetki";
+import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
 
 export const metadata = { title: "Panel — Stok Takip" };
 
@@ -22,7 +22,7 @@ export default async function PanelSayfasi() {
   const [ozetler, vadesiGecen, bekleyen, hareketler, aylar] = await Promise.all([
     magazaStokOzeti(),
     vadesiGecenFaturalar(),
-    bekleyenSevkiyatlar(yonetici ? null : oturum.magazaId),
+    bekleyenSevkiyatlar(yonetici ? null : yetkiliMagazalar(oturum)),
     sonHareketler(10),
     aylikHareketRaporu(12),
   ]);
@@ -37,7 +37,9 @@ export default async function PanelSayfasi() {
         <h1 className="text-xl font-semibold text-slate-900">Panel</h1>
         <p className="mt-0.5 text-sm text-slate-500">
           Hoş geldiniz, {oturum.adSoyad}
-          {oturum.magazaAdi ? ` · ${oturum.magazaAdi}` : " · Tüm mağazalar"}
+          {oturum.magazaAdlari.length > 0
+            ? ` · ${oturum.magazaAdlari.join(", ")}`
+            : " · Tüm mağazalar"}
         </p>
       </div>
 

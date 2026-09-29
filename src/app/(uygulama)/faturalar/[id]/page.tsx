@@ -4,7 +4,7 @@ import { Kart } from "@/bilesenler/Kart";
 import { DurumRozeti, Rozet } from "@/bilesenler/Rozet";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
-import { VADE_ETIKET } from "@/lib/sabitler";
+import { vadeEtiketi } from "@/lib/vade";
 import { tarihSaatYaz, tarihYaz } from "@/lib/tarih";
 import { vadeDurumu } from "@/lib/vade";
 import { adminMi, oturumGerekli } from "@/lib/yetki";
@@ -80,7 +80,7 @@ export default async function FaturaDetaySayfasi({ params }: PageProps<"/fatural
                 <span className="text-slate-400">Vadesiz</span>
               ) : (
                 <>
-                  {VADE_ETIKET[fatura.vadeGun]} · {tarihYaz(fatura.vadeTarihi)}
+                  {vadeEtiketi(fatura.vadeGun)} · {tarihYaz(fatura.vadeTarihi)}
                 </>
               )}
             </Satir>

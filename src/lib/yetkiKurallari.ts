@@ -9,7 +9,13 @@ import { ROLLER, type Rol } from "./sabitler";
  */
 
 /** Yetki kararlarının ihtiyaç duyduğu asgari oturum bilgisi. */
-export type YetkiSahibi = { rol: Rol; magazaId: number | null };
+export type YetkiSahibi = {
+  rol: Rol;
+  /** Ana mağaza — formlarda varsayılan seçim. */
+  magazaId: number | null;
+  /** Ana mağaza dahil, işlem yapabildiği tüm mağazalar. */
+  magazaIdleri?: number[];
+};
 
 export function adminMi(oturum: YetkiSahibi): boolean {
   return oturum.rol === ROLLER.ADMIN;
@@ -30,13 +36,23 @@ export function ayarlariYonetebilirMi(oturum: YetkiSahibi): boolean {
 }
 
 /**
- * Yönetici tüm mağazalarda işlem yapabilir; diğer roller yalnız kendi
- * mağazasında. Mağazaya bağlı olmayan bir personel hiçbir mağazada işlem yapamaz.
+ * Kullanıcının işlem yapabildiği mağazaların kimlikleri.
+ *
+ * `magazaIdleri` yoksa (eski bir oturum çerezi) ana mağazaya düşer; böylece
+ * sürüm yükseltmesinden sonra açık kalan oturumlar yetkisiz kalmaz.
+ */
+export function yetkiliMagazalar(oturum: YetkiSahibi): number[] {
+  if (oturum.magazaIdleri && oturum.magazaIdleri.length > 0) return oturum.magazaIdleri;
+  return oturum.magazaId === null ? [] : [oturum.magazaId];
+}
+
+/**
+ * Yönetici tüm mağazalarda işlem yapabilir; diğer roller yalnız yetkili
+ * oldukları mağazalarda. Hiçbir mağazaya bağlı olmayan personel işlem yapamaz.
  */
 export function magazadaIslemYapabilirMi(oturum: YetkiSahibi, magazaId: number): boolean {
   if (adminMi(oturum)) return true;
-  if (oturum.magazaId === null) return false;
-  return oturum.magazaId === magazaId;
+  return yetkiliMagazalar(oturum).includes(magazaId);
 }
 
 export type { Rol };

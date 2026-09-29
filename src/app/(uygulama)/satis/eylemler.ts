@@ -7,7 +7,12 @@ import { logYaz } from "@/lib/log";
 import { aramaMetniUret, aramaNormalize, kodNormalize } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
 import { HAREKET_TIP, LOG_ISLEM, ODEME_TIPI, STOK_DURUM } from "@/lib/sabitler";
-import { YetkiHatasi, magazaIslemiZorunlu, oturumZorunlu } from "@/lib/yetki";
+import {
+  YetkiHatasi,
+  magazaIslemiZorunlu,
+  magazadaIslemYapabilirMi,
+  oturumZorunlu,
+} from "@/lib/yetki";
 
 // ------------------------------------------------------------- Cihaz okutma
 
@@ -53,10 +58,10 @@ export async function satisCihaziOkut(kod: string): Promise<SatisOkutmaSonucu> {
     if (cihaz.durum !== STOK_DURUM.STOKTA) {
       return { durum: "HATA", mesaj: `${aranan} satışa uygun değil (${cihaz.durum}).` };
     }
-    if (!magazadaSatabilir(oturum.rol, oturum.magazaId, cihaz.magazaId)) {
+    if (!magazadaIslemYapabilirMi(oturum, cihaz.magazaId)) {
       return {
         durum: "HATA",
-        mesaj: `${aranan} ${cihaz.magaza.ad} deposunda. Yalnız kendi mağazanızdaki cihazı satabilirsiniz.`,
+        mesaj: `${aranan} ${cihaz.magaza.ad} deposunda. Yalnız yetkili olduğunuz mağazadaki cihazı satabilirsiniz.`,
       };
     }
 
@@ -81,11 +86,6 @@ export async function satisCihaziOkut(kod: string): Promise<SatisOkutmaSonucu> {
     console.error("Satış cihazı okutulamadı:", hata);
     return { durum: "HATA", mesaj: "Cihaz aranamadı. Tekrar deneyin." };
   }
-}
-
-function magazadaSatabilir(rol: string, kullaniciMagazaId: number | null, cihazMagazaId: number) {
-  if (rol === "ADMIN") return true;
-  return kullaniciMagazaId === cihazMagazaId;
 }
 
 // ----------------------------------------------------------- Müşteri arama

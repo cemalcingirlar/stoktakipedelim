@@ -30,7 +30,10 @@ export async function girisYap(
 
   const kullanici = await prisma.kullanici.findUnique({
     where: { kullaniciAdi },
-    include: { magaza: true },
+    include: {
+      magaza: true,
+      ekMagazalar: { where: { aktif: true }, orderBy: { kod: "asc" } },
+    },
   });
 
   // Kullanıcı yok / şifre yanlış ayrımı yapılmaz: hesap taramasını zorlaştırır.
@@ -48,6 +51,11 @@ export async function girisYap(
     data: { sonGiris: new Date() },
   });
 
+  // Ana mağaza her zaman listenin başında; ek mağazalar kod sırasıyla peşinden.
+  // Ana mağaza ek mağazalar arasında da işaretliyse iki kez girmesin.
+  const ekler = kullanici.ekMagazalar.filter((m) => m.id !== kullanici.magazaId);
+  const yetkiliMagazalar = kullanici.magaza ? [kullanici.magaza, ...ekler] : ekler;
+
   const oturum = {
     kullaniciId: kullanici.id,
     kullaniciAdi: kullanici.kullaniciAdi,
@@ -55,6 +63,8 @@ export async function girisYap(
     rol: kullanici.rol as Rol,
     magazaId: kullanici.magazaId,
     magazaAdi: kullanici.magaza?.ad ?? null,
+    magazaIdleri: yetkiliMagazalar.map((m) => m.id),
+    magazaAdlari: yetkiliMagazalar.map((m) => m.ad),
   };
 
   await oturumAc(oturum);

@@ -3,7 +3,7 @@ import { Kart } from "@/bilesenler/Kart";
 import { Rozet } from "@/bilesenler/Rozet";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
-import { VADE_ETIKET } from "@/lib/sabitler";
+import { vadeEtiketi } from "@/lib/vade";
 import { tarihYaz } from "@/lib/tarih";
 import { vadeDurumu } from "@/lib/vade";
 import { adminMi, oturumGerekli } from "@/lib/yetki";
@@ -101,7 +101,7 @@ export default async function FaturalarSayfasi() {
                               {vade.etiket}
                             </Rozet>
                             <span className="ml-1 text-xs text-slate-400">
-                              {VADE_ETIKET[f.vadeGun]}
+                              {vadeEtiketi(f.vadeGun)}
                             </span>
                           </>
                         )}

@@ -7,6 +7,7 @@ import {
   magazadaIslemYapabilirMi,
   stokEkleyebilirMi,
   stokSilebilirMi,
+  yetkiliMagazalar,
   type Rol,
 } from "./yetkiKurallari";
 
@@ -59,5 +60,6 @@ export {
   magazadaIslemYapabilirMi,
   stokEkleyebilirMi,
   stokSilebilirMi,
+  yetkiliMagazalar,
 };
 export type { Rol };

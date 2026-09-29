@@ -84,6 +84,49 @@ node betikler/faz6-dogrula.mjs      # yedekleme ekranı, yetki ve cron ucu
 `@playwright/test` kurulu olmalıdır. Tarayıcı ikilisi farklı bir yerdeyse
 `CHROME_YOLU` ortam değişkeni ile yolunu verin.
 
+## Nerede çalıştırmalı?
+
+| Seçenek | Uygun olduğu durum |
+|---|---|
+| **İş yerindeki bir PC** | Aylık ücret ödemek istemiyorsanız, veriler fiziksel olarak yanınızda kalsın istiyorsanız. Adım adım rehber: [docs/ofis-pc-kurulumu.md](docs/ofis-pc-kurulumu.md) |
+| **VPS** | Elektrik/internet kesintisinden etkilenmemek, bakımı sağlayıcıya bırakmak istiyorsanız. Aşağıdaki adımlar. |
+
+Her iki durumda da veritabanı tek bir SQLite dosyasıdır ve Google Drive yedeği
+sayesinde iki seçenek arasında geçiş yarım saatlik iştir.
+
+## Sunucu gereksinimleri
+
+Ölçülen gerçek değerler (bu projenin kendisi üzerinde):
+
+| Kalem | İhtiyaç |
+|---|---|
+| Programı **çalıştırma** | ~250 MB RAM |
+| Programı **derleme** (`npm run build`) | **~3 GB RAM**, ~90 saniye |
+| Disk — Ubuntu + proje + swap | **en az 20 GB**, rahat olması için 25 GB |
+| `node_modules` | 1,3 GB |
+| Derlenmiş çıktı (`.next`) | 314 MB |
+| Veritabanı | Birkaç yüz KB; 10.000 cihazda dahi onlarca MB |
+
+Yani günlük çalışma için 1 GB RAM bile fazlasıyla yeter; **darboğaz derlemedir.**
+
+### 4 GB'tan az RAM'iniz varsa: swap ekleyin
+
+`npm run build` 2 GB'lık bir sunucuda bellek yetersizliğinden (`out of memory`)
+durur. Kurulumdan **önce** swap tanımlayın:
+
+```bash
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+free -h    # Swap satırında 4,0Gi görmelisiniz
+```
+
+Derleme diskten devam ettiği için biraz yavaşlar (NVMe diskte birkaç dakika),
+ama derleme yalnızca kurulumda ve güncellemelerde çalışan bir iştir.
+
 ## VPS kurulumu
 
 Uygulama tek bir Node.js süreci olarak çalışır ve veritabanı tek bir SQLite
@@ -124,6 +167,9 @@ YEDEK_ANAHTARI="$(openssl rand -hex 24)"
 > `.env` dosyasının izinlerini kısıtlayın: `sudo chmod 600 .env && sudo chown stok:stok .env`
 
 ### 4. Veritabanı ve derleme
+
+> **4 GB'tan az RAM'iniz varsa** önce yukarıdaki swap adımını uygulayın; yoksa
+> `npm run build` bellek yetersizliğinden durur.
 
 ```bash
 sudo -u stok npm run db:deploy    # şemayı uygula
@@ -203,6 +249,11 @@ Yedekleme Google Drive'a yapılır. Kurulum adımları uygulama içinde
 GOOGLE_ISTEMCI_ID=... GOOGLE_ISTEMCI_SIRRI=... npm run drive:jeton
 ```
 
+Betik bir izin bağlantısı basar. Tarayıcıda açıp izin verdikten sonra Google
+`http://localhost:53682/?code=...` adresine yönlendirir; tarayıcının verdiği
+"siteye ulaşılamıyor" hatası beklenen durumdur. Adres çubuğundaki adresi
+terminale yapıştırmanız yeterli.
+
 Çıkan değerleri `.env` dosyasına ekleyip servisi yeniden başlatın, sonra cron
 görevini kurun:
 
@@ -237,12 +288,23 @@ sudo systemctl start stok
 ### 9. Güncelleme
 
 ```bash
-cd /opt/stok/app
-sudo -u stok git pull
-sudo -u stok npm ci
-sudo -u stok npm run db:deploy
-sudo -u stok npm run build
-sudo systemctl restart stok
+sudo /opt/stok/app/betikler/sunucu-guncelle.sh
+```
+
+Betik sırayla: yedek alır, kodu çeker, **servisi durdurur**, bağımlılıkları
+kurar, migration'ları uygular, `.next` klasörünü sıfırdan derler ve servisi
+başlatıp giriş sayfasının cevap verdiğini doğrular. Cevap gelmezse son
+günlükleri basar ve önceki sürüme dönmek için gereken komutu yazar.
+
+Servisi durdurma adımı zorunludur: çalışan `next start` süreci `.next`
+içindeki parça dosyalarını istek anında okur. Derleme bu dosyaları
+altından değiştirirse uygulama `Module ... factory is not available`
+hatasıyla sayfa üretemez hâle gelir.
+
+Başka bir dalı kurmak için dal adını parametre olarak verin:
+
+```bash
+sudo /opt/stok/app/betikler/sunucu-guncelle.sh claude/stock-tracking-program-ljea8t
 ```
 
 > **Ölçek notu:** SQLite yazma işlemlerinde dosyayı kilitler. Üç mağaza ve

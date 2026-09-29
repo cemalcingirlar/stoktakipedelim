@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
 import { GIRDI_SINIFI } from "./Alan";
+import { KameraDugmesi } from "./KameraOkuyucu";
 
 export type OkutmaGeriBildirimi = {
   tur: "basari" | "uyari" | "hata";
@@ -24,27 +25,38 @@ export function OkutmaKutusu({
   yerTutucu = "Okuyucuyu kullanın veya kodu yazıp Enter'a basın",
   okut,
   devreDisi = false,
+  kameraSurekli = true,
 }: {
   etiket: string;
   ipucu?: string;
   yerTutucu?: string;
   okut: (kod: string) => Promise<OkutmaGeriBildirimi>;
   devreDisi?: boolean;
+  /** Kamera okumada: true ise açık kalır, false ise ilk okumada kapanır. */
+  kameraSurekli?: boolean;
 }) {
   const [deger, setDeger] = useState("");
   const [geriBildirim, setGeriBildirim] = useState<OkutmaGeriBildirimi>(null);
   const [bekliyor, basla] = useTransition();
   const girdiRef = useRef<HTMLInputElement>(null);
 
+  const kodGonder = useCallback(
+    (kod: string) => {
+      const temiz = kod.trim();
+      if (!temiz) return;
+      setDeger("");
+      basla(async () => {
+        const sonuc = await okut(temiz);
+        setGeriBildirim(sonuc);
+      });
+    },
+    [okut],
+  );
+
   function gonder() {
-    const kod = deger.trim();
-    if (!kod || bekliyor) return;
-    setDeger("");
-    basla(async () => {
-      const sonuc = await okut(kod);
-      setGeriBildirim(sonuc);
-      girdiRef.current?.focus();
-    });
+    if (bekliyor) return;
+    kodGonder(deger);
+    girdiRef.current?.focus();
   }
 
   return (
@@ -77,6 +89,9 @@ export function OkutmaKutusu({
         >
           {bekliyor ? "Aranıyor…" : "Okut"}
         </button>
+        {devreDisi ? null : (
+          <KameraDugmesi onKod={kodGonder} surekli={kameraSurekli} baslik={etiket} />
+        )}
       </div>
       {ipucu ? <p className="mt-1.5 text-xs text-blue-800">{ipucu}</p> : null}
       {geriBildirim ? (

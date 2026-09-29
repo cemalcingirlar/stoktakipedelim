@@ -9,13 +9,12 @@ import {
   HAREKET_TIP,
   HAREKET_TIP_ETIKET,
   ODEME_TIPI_ETIKET,
-  VADE_ETIKET,
   type HareketTip,
   type OdemeTipi,
 } from "@/lib/sabitler";
 import { beklemeGunu, karKurus } from "@/lib/sutunlar";
 import { tarihSaatYaz, tarihYaz } from "@/lib/tarih";
-import { vadeDurumu } from "@/lib/vade";
+import { vadeDurumu, vadeEtiketi } from "@/lib/vade";
 import { oturumGerekli } from "@/lib/yetki";
 import { CIHAZ_ICERIK } from "@/lib/cihazFiltre";
 
@@ -151,7 +150,7 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
               <Satir etiket="Vade">
                 {cihaz.alisFaturasi?.vadeGun ? (
                   <>
-                    {VADE_ETIKET[cihaz.alisFaturasi.vadeGun]} ·{" "}
+                    {vadeEtiketi(cihaz.alisFaturasi.vadeGun)} ·{" "}
                     {tarihYaz(cihaz.alisFaturasi.vadeTarihi)}
                   </>
                 ) : (
