@@ -408,12 +408,23 @@ başarılı yedeğin üzerinden 48 saat geçerse ekran kırmızı uyarı verir.
 ### Programı güncelleme
 
 ```bash
-cd /opt/stok/app
-sudo -u stok git pull
-sudo -u stok npm ci
-sudo -u stok npm run db:deploy
-sudo -u stok npm run build
-sudo systemctl restart stok
+sudo /opt/stok/app/betikler/sunucu-guncelle.sh
+```
+
+Betik sırayla: yedek alır, kodu çeker, **servisi durdurur**, bağımlılıkları
+kurar, migration'ları uygular, `.next` klasörünü sıfırdan derler ve servisi
+başlatıp giriş sayfasının cevap verdiğini doğrular. Cevap gelmezse son
+günlükleri basar ve önceki sürüme dönmek için gereken komutu yazar.
+
+Servisi durdurma adımı zorunludur: çalışan `next start` süreci `.next`
+içindeki parça dosyalarını istek anında okur. Derleme bu dosyaları
+altından değiştirirse uygulama `Module ... factory is not available`
+hatasıyla sayfa üretemez hâle gelir.
+
+Başka bir dalı kurmak için dal adını parametre olarak verin:
+
+```bash
+sudo /opt/stok/app/betikler/sunucu-guncelle.sh claude/stock-tracking-program-ljea8t
 ```
 
 ### Yedekten geri dönme
