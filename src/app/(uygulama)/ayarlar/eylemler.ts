@@ -586,6 +586,98 @@ export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Pr
   });
 }
 
+/**
+ * Kullanıcıyı siler. Geçmişi olan hesap silinmez, pasife alınır — fatura,
+ * sevkiyat, satış ve sayım kayıtlarının "kim yaptı" bilgisi kaybolmasın diye.
+ * İşlem kaydı (Log) kullanıcı adını metin olarak da tuttuğu için silme
+ * sonrasında loglar okunur kalır; yalnız bağlantısı kopar.
+ */
+export async function kullaniciSil(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+  return calistir(async (oturum) => {
+    const id = Number(form.get("id"));
+    if (!Number.isInteger(id) || id <= 0) return { hata: "Kullanıcı bulunamadı." };
+
+    if (id === oturum.kullaniciId) return { hata: "Kendi hesabınızı silemezsiniz." };
+
+    const kullanici = await prisma.kullanici.findUnique({
+      where: { id },
+      select: {
+        kullaniciAdi: true,
+        adSoyad: true,
+        rol: true,
+        aktif: true,
+        _count: {
+          select: {
+            olusturulanFaturalar: true,
+            hareketler: true,
+            gonderilenTransferler: true,
+            kabulEdilenTransferler: true,
+            satislar: true,
+            baslatilanSayimlar: true,
+            kapatilanSayimlar: true,
+            okutmalar: true,
+          },
+        },
+      },
+    });
+    if (!kullanici) return { hata: "Kullanıcı bulunamadı." };
+
+    // Son aktif yönetici silinemez; sistem yönetilemez hâle gelmesin.
+    if (kullanici.rol === ROLLER.ADMIN) {
+      const digerAdminler = await prisma.kullanici.count({
+        where: { rol: ROLLER.ADMIN, aktif: true, id: { not: id } },
+      });
+      if (digerAdminler === 0) return { hata: "Sistemde en az bir aktif yönetici kalmalı." };
+    }
+
+    const sayac = kullanici._count;
+    const kayitSayisi =
+      sayac.olusturulanFaturalar +
+      sayac.hareketler +
+      sayac.gonderilenTransferler +
+      sayac.kabulEdilenTransferler +
+      sayac.satislar +
+      sayac.baslatilanSayimlar +
+      sayac.kapatilanSayimlar +
+      sayac.okutmalar;
+
+    if (kayitSayisi > 0) {
+      if (!kullanici.aktif) {
+        return {
+          hata: `"${kullanici.adSoyad}" hesabının ${kayitSayisi} işlem kaydı var; silinemez. Hesap zaten pasif.`,
+        };
+      }
+      await prisma.kullanici.update({ where: { id }, data: { aktif: false } });
+      await logYaz(oturum, {
+        islem: LOG_ISLEM.AYAR_DEGISTIR,
+        hedefTip: "Kullanici",
+        hedefId: id,
+        detay: `Kullanıcı pasife alındı (${kayitSayisi} işlem kaydı bağlı): ${kullanici.kullaniciAdi}`,
+      });
+      tazele();
+      return {
+        basari: `"${kullanici.adSoyad}" hesabının ${kayitSayisi} işlem kaydı olduğu için silinmedi, pasife alındı. Artık giriş yapamaz.`,
+      };
+    }
+
+    // Log satırları kullanıcı adını metin olarak da taşır; bağlantıyı koparıp
+    // kaydı bırakıyoruz.
+    await prisma.$transaction([
+      prisma.log.updateMany({ where: { kullaniciId: id }, data: { kullaniciId: null } }),
+      prisma.kullanici.delete({ where: { id } }),
+    ]);
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Kullanici",
+      hedefId: id,
+      detay: `Kullanıcı silindi: ${kullanici.kullaniciAdi} (${kullanici.adSoyad})`,
+    });
+    tazele();
+    return { basari: `"${kullanici.adSoyad}" silindi.` };
+  });
+}
+
 export async function sifreSifirla(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));

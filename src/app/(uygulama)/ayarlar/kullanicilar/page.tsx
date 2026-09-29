@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { ROLLER, ROL_ETIKET, type Rol } from "@/lib/sabitler";
 import { tarihSaatYaz } from "@/lib/tarih";
 import { adminSayfasi } from "@/lib/yetki";
-import { kullaniciEkle, kullaniciGuncelle, sifreSifirla } from "../eylemler";
+import { kullaniciEkle, kullaniciGuncelle, kullaniciSil, sifreSifirla } from "../eylemler";
 
 export const metadata = { title: "Kullanıcılar — Stok Takip" };
 
@@ -285,6 +285,21 @@ export default async function KullanicilarSayfasi() {
                 </div>
               </EylemFormu>
             </div>
+
+            {k.id === oturum.kullaniciId ? null : (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <EylemFormu eylem={kullaniciSil}>
+                  <input type="hidden" name="id" value={k.id} />
+                  <GonderDugmesi tur="tehlike" bekleyenMetin="Siliniyor…">
+                    Kullanıcıyı Sil
+                  </GonderDugmesi>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    İşlem kaydı olan hesap silinmez, pasife alınır — fatura, sevkiyat ve satış
+                    kayıtlarında kimin yaptığı bilgisi korunur.
+                  </p>
+                </EylemFormu>
+              </div>
+            )}
           </div>
         ))}
       </div>
