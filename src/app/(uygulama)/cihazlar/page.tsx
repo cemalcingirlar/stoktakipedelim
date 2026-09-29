@@ -79,12 +79,20 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
             Excel&apos;e Aktar
           </a>
           {stokEkleyebilirMi(oturum) ? (
-            <Link
-              href="/faturalar/yeni"
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-            >
-              + Yeni Alış Faturası
-            </Link>
+            <>
+              <Link
+                href="/cihazlar/ice-aktar"
+                className="rounded-lg border border-blue-300 bg-blue-50 px-3.5 py-2 text-sm font-medium text-blue-800 transition hover:bg-blue-100"
+              >
+                Excel&apos;den Toplu Yükle
+              </Link>
+              <Link
+                href="/faturalar/yeni"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+              >
+                + Yeni Alış Faturası
+              </Link>
+            </>
           ) : (
             <span className="text-xs text-slate-500">
               Stok girişi yalnızca yöneticide.
