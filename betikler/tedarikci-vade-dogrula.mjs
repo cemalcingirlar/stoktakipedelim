@@ -68,18 +68,21 @@ try {
   // 3) fatura satırı ve kayıt
   await sayfa.fill("#faturaNo", FATURA_NO);
   await sayfa.selectOption("#magazaId", { index: 1 });
-  // Satır alanlarının name'i yok; faz2 betiğindeki gibi okutma kutusuyla satır
-  // açıp konuma göre dolduruyoruz.
-  await sayfa.fill("#okutma", IMEI);
+  // Barkod okut, ürün bilgilerini doldur, IMEI'yi ekle.
+  await sayfa.fill("#okutma", `VDBR${damga}`);
   await sayfa.press("#okutma", "Enter");
-  await sayfa.waitForTimeout(500);
+  await sayfa.waitForTimeout(1200);
 
-  const kart = sayfa.locator("form > section").nth(2).locator("> div").nth(1);
-  await kart.locator("select").first().selectOption({ index: 1 });
+  const kart = sayfa.locator("section.space-y-3 > div.rounded-xl").first();
+  await kart.locator("select").first().selectOption({ label: "Cep Telefonu" });
   const metinler = kart.locator('input[type="text"], input:not([type])');
-  await metinler.nth(0).fill("Samsung");
-  await metinler.nth(1).fill("Galaxy S24");
+  await metinler.nth(1).fill("Samsung");
+  await metinler.nth(2).fill("Galaxy S24");
   await kart.locator('input[inputmode="decimal"]').fill("31.750,25");
+  const imeiKutusu = kart.locator('input[id^="imei-"]');
+  await imeiKutusu.fill(IMEI);
+  await imeiKutusu.press("Enter");
+  await sayfa.waitForTimeout(600);
 
   await sayfa.click('button:has-text("Faturayı Kaydet")');
   await sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 30000 }).catch(() => {});

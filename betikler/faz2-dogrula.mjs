@@ -31,84 +31,94 @@ await giris("admin");
 console.log("1) admin girişi ✓");
 
 // --- Vadeli fatura: vadesi çoktan geçmiş bir tarih seçilir ki satır kırmızı olsun
-await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
 const faturaNo = `TEST-${Date.now()}`;
+
+// Üst şerit toplamı veritabanındaki tüm cihazları kapsar; sabit bir değer
+// beklemek yerine bu faturanın toplamı kadar arttığını doğruluyoruz.
+async function toplamAlisDegeri() {
+  await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
+  const metin = (await sayfa.locator("text=Toplam alış değeri").textContent()) ?? "";
+  const sayi = metin.replace(/[^\d.,]/g, "").replace(/\./g, "").replace(",", ".");
+  return Number(sayi) || 0;
+}
+const oncekiToplam = await toplamAlisDegeri();
+await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
 await sayfa.selectOption("#tedarikciId", { index: 1 });
 await sayfa.fill("#faturaNo", faturaNo);
 await sayfa.fill("#faturaTarihi", "2026-01-15");   // 21 gün vade -> çoktan geçti
 await sayfa.selectOption("#magazaId", { index: 1 });
 await sayfa.selectOption("#vadeGun", "21");
 
-// Barkod okutma ile iki satır
-await sayfa.fill("#okutma", imei[0]);
-await sayfa.press("#okutma", "Enter");
-await sayfa.fill("#okutma", imei[1]);
-await sayfa.press("#okutma", "Enter");
-const satirSayisi = await sayfa.locator("text=/^\\d+\\. cihaz$/").count();
-console.log("2) okutma ile satır sayısı:", satirSayisi, satirSayisi === 2 ? "✓" : "✗");
+// Barkod okut, ürün bilgilerini doldur, IMEI'leri arka arkaya okut.
+// Fiyat ürün kartı başına olduğundan iki farklı fiyat için iki barkod kullanılır.
+const barkod = [`BR1${Date.now()}`.slice(0, 14), `BR2${Date.now()}`.slice(0, 14)];
 
-// Satırları doldur (kategori "Cep Telefonu" -> seri no zorunlu)
-for (let i = 0; i < 2; i++) {
-  const kart = sayfa.locator("form > section").nth(2).locator("> div").nth(i + 1);
+async function urunEkle(kod, marka, model, fiyat, seriNo) {
+  await sayfa.fill("#okutma", kod);
+  await sayfa.press("#okutma", "Enter");
+  await sayfa.waitForTimeout(1200);
+  const kart = sayfa.locator("section.space-y-3 > div.rounded-xl").last();
   await kart.locator("select").first().selectOption({ label: "Cep Telefonu" });
   await kart.locator("select").nth(1).selectOption({ label: "Sıfır" });
-  const metinler = kart.locator('input[type="text"], input:not([type])');
-  await metinler.nth(0).fill("Samsung");                 // marka
-  await metinler.nth(1).fill(`Galaxy A${50 + i}`);       // model
-  await metinler.nth(4).fill("Siyah");                   // renk
-  await metinler.nth(5).fill("128 GB");                  // kapasite
-  await kart.locator('input[inputmode="decimal"]').fill(i === 0 ? "12.500,50" : "9.750");
+  const alanlar = kart.locator('input[type="text"], input:not([type])');
+  await alanlar.nth(1).fill(marka);
+  await alanlar.nth(2).fill(model);
+  await kart.locator('input[inputmode="decimal"]').fill(fiyat);
+  if (seriNo) {
+    const imeiKutusu = kart.locator('input[id^="imei-"]');
+    await imeiKutusu.fill(seriNo);
+    await imeiKutusu.press("Enter");
+    await sayfa.waitForTimeout(600);
+  }
+  return kart;
 }
+
+await urunEkle(barkod[0], "Samsung", "Galaxy A50", "12.500,50", imei[0]);
+await urunEkle(barkod[1], "Samsung", "Galaxy A51", "9.750", imei[1]);
+
+const sayacMetni = (await sayfa.locator('h2:has-text("Cihazlar")').textContent()) ?? "";
+console.log("2) ürün/cihaz sayacı:", sayacMetni.replace(/\s+/g, " ").trim(),
+  sayacMetni.includes("2 ürün") && sayacMetni.includes("2 cihaz") ? "✓" : "✗");
+
 await sayfa.screenshot({ path: `${cikti}-fatura-formu.png`, fullPage: true });
 
-await Promise.all([
-  sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 20000 }),
-  sayfa.click('button:has-text("Faturayı Kaydet")'),
-]);
+await sayfa.click('button:has-text("Faturayı Kaydet")');
+await sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 20000 });
 console.log("3) fatura kaydedildi ->", new URL(sayfa.url()).pathname, "✓");
 await sayfa.screenshot({ path: `${cikti}-fatura-detay.png`, fullPage: true });
 
-// --- Aynı IMEI ikinci kez girilmemeli
+// --- Aynı IMEI ikinci kez okutulamaz (okutma anında engellenir)
 await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
 await sayfa.selectOption("#tedarikciId", { index: 1 });
 await sayfa.fill("#faturaNo", `${faturaNo}-B`);
 await sayfa.selectOption("#magazaId", { index: 1 });
-await sayfa.fill("#okutma", imei[0]);
-await sayfa.press("#okutma", "Enter");
-const kart0 = sayfa.locator("form > section").nth(2).locator("> div").nth(1);
-await kart0.locator("select").first().selectOption({ label: "Cep Telefonu" });
-const m0 = kart0.locator('input[type="text"], input:not([type])');
-await m0.nth(0).fill("Samsung");
-await m0.nth(1).fill("Galaxy A50");
-await kart0.locator('input[inputmode="decimal"]').fill("1000");
-await sayfa.click('button:has-text("Faturayı Kaydet")');
-await sayfa.waitForSelector('[role="alert"]', { timeout: 15000 });
-console.log("4) tekrarlı IMEI reddi:", (await sayfa.textContent('[role="alert"] p'))?.trim(), "|",
-  (await sayfa.textContent('[role="alert"] li'))?.trim());
+const kartB = await urunEkle(barkod[0], "Samsung", "Galaxy A50", "1000", imei[0]);
+const imeiSayisi = await kartB.locator("ul li").count();
+const uyariMetni = (await sayfa.locator('[role="alert"]').allTextContents()).join(" ");
+console.log("4) tekrarlı IMEI reddi:", imeiSayisi === 0 ? "✓ eklenmedi" : "✗ eklendi",
+  "|", uyariMetni.trim().slice(0, 80));
 
-// --- Seri no zorunluluğu
+// --- Seri no zorunluluğu: IMEI okutulmayan ürün faturaya girmez
 await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
 await sayfa.selectOption("#tedarikciId", { index: 1 });
 await sayfa.fill("#faturaNo", `${faturaNo}-C`);
 await sayfa.selectOption("#magazaId", { index: 1 });
-const kartC = sayfa.locator("form > section").nth(2).locator("> div").nth(1);
-await kartC.locator("select").first().selectOption({ label: "Cep Telefonu" });
-const mC = kartC.locator('input[type="text"], input:not([type])');
-await mC.nth(0).fill("Apple");
-await mC.nth(1).fill("iPhone 15");
-await kartC.locator('input[inputmode="decimal"]').fill("50000");
+const kartC = await urunEkle(`BR3${Date.now()}`.slice(0, 14), "Apple", "iPhone 15", "50000", null);
+const kartUyarisi = (await kartC.locator("p.text-amber-800").textContent().catch(() => "")) ?? "";
+console.log("5) IMEI'siz ürün uyarısı:", kartUyarisi.trim() || "(yok)",
+  kartUyarisi.includes("faturaya eklenmez") ? "✓" : "✗");
 await sayfa.click('button:has-text("Faturayı Kaydet")');
-await sayfa.waitForSelector('[role="alert"] li', { timeout: 15000 });
-console.log("5) IMEI zorunluluğu:", (await sayfa.textContent('[role="alert"] li'))?.trim(), "✓");
+await sayfa.waitForSelector('[role="alert"]', { timeout: 15000 });
+console.log("   sunucu reddi:", (await sayfa.textContent('[role="alert"] p'))?.trim(), "✓");
 
 // --- Cihaz listesi
 await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
 const satirlar = await sayfa.locator("tbody tr").count();
 const kirmiziSatir = await sayfa.locator("tbody tr.bg-red-50").count();
 console.log("6) liste satırı:", satirlar, "| vadesi geçen (kırmızı):", kirmiziSatir, kirmiziSatir >= 2 ? "✓" : "✗");
-const seritMetni = (await sayfa.locator("text=Toplam alış değeri").textContent())?.replace(/\s+/g, " ").trim();
-const beklenenToplam = "22.250,50 TL";
-console.log("   üst şerit:", seritMetni, seritMetni?.includes(beklenenToplam) ? "✓" : `✗ (beklenen ${beklenenToplam})`);
+const sonrakiToplam = await toplamAlisDegeri();
+const artis = Number((sonrakiToplam - oncekiToplam).toFixed(2));
+console.log("   toplam alış değeri artışı:", artis, "TL", artis === 22250.5 ? "✓" : "✗ (beklenen 22250.5)");
 await sayfa.screenshot({ path: `${cikti}-cihaz-listesi.png`, fullPage: true });
 
 // --- IMEI araması doğrudan detaya gitmeli
