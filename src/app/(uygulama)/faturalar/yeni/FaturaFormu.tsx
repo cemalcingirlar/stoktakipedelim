@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
+import { KameraDugmesi } from "@/bilesenler/KameraOkuyucu";
 import { TedarikciSecici } from "@/bilesenler/TedarikciSecici";
 import { VadeAlani } from "@/bilesenler/VadeAlani";
 import { kurusuTLYaz, tlyiKurusaCevir } from "@/lib/para";
@@ -108,9 +109,14 @@ export function FaturaFormu({
     setUrunler((mevcut) => mevcut.filter((u) => u.anahtar !== anahtar));
   }
 
-  /** Barkod okutuldu: kayıtlıysa son bilgileri getirir, yoksa boş ürün açar. */
-  function barkoduIsle() {
-    const kod = barkod.trim().toUpperCase();
+  /**
+   * Barkod okutuldu: kayıtlıysa son bilgileri getirir, yoksa boş ürün açar.
+   *
+   * Kod kameradan geldiğinde doğrudan parametreyle gelir; durum güncellemesini
+   * beklemeden işlenebilsin diye.
+   */
+  function barkoduIsle(disaridanKod?: string) {
+    const kod = (disaridanKod ?? barkod).trim().toUpperCase();
     if (!kod) return;
 
     const mevcutUrun = urunler.find((u) => u.barkod === kod);
@@ -145,6 +151,8 @@ export function FaturaFormu({
       odakAnahtari.current = yeni.anahtar;
     });
   }
+
+  const barkodOkundu = (kod: string) => barkoduIsle(kod);
 
   // Yeni ürün kartı eklendikten sonra odağı IMEI kutusuna taşı.
   useEffect(() => {
@@ -328,12 +336,14 @@ export function FaturaFormu({
           />
           <button
             type="button"
-            onClick={barkoduIsle}
+            onClick={() => barkoduIsle()}
             disabled={barkodBekliyor}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
           >
             {barkodBekliyor ? "Aranıyor…" : "Ürün Ekle"}
           </button>
+          {/* Barkod tek okunur; okunduktan sonra kamera kapanıp ürün kartı açılır. */}
+          <KameraDugmesi onKod={barkodOkundu} surekli={false} baslik="Barkod Okut" />
         </div>
         <p className="mt-1.5 text-xs text-blue-800">
           Barkod daha önce girilmişse marka, model, kategori ve son alış fiyatı otomatik gelir.
@@ -590,6 +600,11 @@ function UrunKarti({
               >
                 Ekle
               </button>
+              {/* Sürekli mod: kamera açık kalır, onlarca IMEI arka arkaya okunur. */}
+              <KameraDugmesi
+                onKod={(kod) => imeiEkle(urun.anahtar, kod)}
+                baslik={`${urun.marka} ${urun.model} — IMEI okut`.trim()}
+              />
             </div>
 
             {urun.imeiler.length > 0 ? (
