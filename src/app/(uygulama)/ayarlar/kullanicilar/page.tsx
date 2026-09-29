@@ -113,6 +113,20 @@ export default async function KullanicilarSayfasi() {
                 className={GIRDI_SINIFI}
               />
             </div>
+            <div>
+              <label htmlFor="yeniSifreTeyit" className={KUCUK_ETIKET}>
+                Şifre (tekrar) *
+              </label>
+              <input
+                id="yeniSifreTeyit"
+                name="sifreTekrar"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                className={GIRDI_SINIFI}
+              />
+            </div>
           </div>
           <div className="mt-3">
             <span className={KUCUK_ETIKET}>Ek mağazalar (isteğe bağlı)</span>
@@ -270,9 +284,25 @@ export default async function KullanicilarSayfasi() {
                 <input type="hidden" name="id" value={k.id} />
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="min-w-[200px]">
-                    <label className={KUCUK_ETIKET}>Yeni şifre (en az 8 karakter)</label>
+                    <label htmlFor={`sifre-${k.id}`} className={KUCUK_ETIKET}>
+                      Yeni şifre (en az 8 karakter)
+                    </label>
                     <input
+                      id={`sifre-${k.id}`}
                       name="yeniSifre"
+                      type="password"
+                      minLength={8}
+                      autoComplete="new-password"
+                      className={GIRDI_SINIFI}
+                    />
+                  </div>
+                  <div className="min-w-[200px]">
+                    <label htmlFor={`sifre-tekrar-${k.id}`} className={KUCUK_ETIKET}>
+                      Yeni şifre (tekrar)
+                    </label>
+                    <input
+                      id={`sifre-tekrar-${k.id}`}
+                      name="yeniSifreTekrar"
                       type="password"
                       minLength={8}
                       autoComplete="new-password"

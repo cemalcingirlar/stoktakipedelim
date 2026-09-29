@@ -488,7 +488,10 @@ export async function kullaniciEkle(_onceki: AyarDurumu, form: FormData): Promis
     if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
 
     const sifre = String(form.get("sifre") ?? "");
+    const sifreTekrar = String(form.get("sifreTekrar") ?? "");
     if (sifre.length < 8) return { hata: "Şifre en az 8 karakter olmalı." };
+    // Yazım hatası kullanıcıyı kilitler; hatanın ne olduğu da anlaşılmaz.
+    if (sifre !== sifreTekrar) return { hata: "Şifreler eşleşmiyor. İki alana da aynı şifreyi yazın." };
 
     const kuralHatasi = magazaKurali(sonuc.data.rol, sonuc.data.magazaId);
     if (kuralHatasi) return { hata: kuralHatasi };
@@ -682,8 +685,10 @@ export async function sifreSifirla(_onceki: AyarDurumu, form: FormData): Promise
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
     const sifre = String(form.get("yeniSifre") ?? "");
+    const sifreTekrar = String(form.get("yeniSifreTekrar") ?? "");
     if (!Number.isInteger(id) || id <= 0) return { hata: "Kullanıcı bulunamadı." };
     if (sifre.length < 8) return { hata: "Şifre en az 8 karakter olmalı." };
+    if (sifre !== sifreTekrar) return { hata: "Şifreler eşleşmiyor. İki alana da aynı şifreyi yazın." };
 
     const kullanici = await prisma.kullanici.findUnique({
       where: { id },
