@@ -276,7 +276,19 @@ Yedekleme durumu, son yedek zamanı ve başarısız denemeler **Ayarlar →
 Yedekleme** ekranında görünür. Son başarılı yedeğin üzerinden 48 saat geçerse
 ekran uyarı verir.
 
-### 8. Yedekten geri dönme
+### 8. Sunucuyu başka bir bilgisayara taşıma
+
+Makine değiştirirken veri, gizli anahtarlar ve Cloudflare tüneli tek arşivde
+taşınır; DNS'e dokunulmaz:
+
+```bash
+sudo /opt/stok/app/betikler/sunucu-yedek-al.sh          # eski makinede
+sudo /opt/stok/app/betikler/sunucu-geri-yukle.sh <arsiv> # yeni makinede
+```
+
+Adım adım: [docs/sunucu-tasima.md](docs/sunucu-tasima.md)
+
+### 9. Yedekten geri dönme
 
 ```bash
 sudo systemctl stop stok
@@ -285,7 +297,7 @@ sudo chown stok:stok /var/lib/stok/stok.db
 sudo systemctl start stok
 ```
 
-### 9. Güncelleme
+### 10. Güncelleme
 
 ```bash
 sudo /opt/stok/app/betikler/sunucu-guncelle.sh
