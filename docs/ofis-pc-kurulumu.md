@@ -427,6 +427,12 @@ Başka bir dalı kurmak için dal adını parametre olarak verin:
 sudo /opt/stok/app/betikler/sunucu-guncelle.sh claude/stock-tracking-program-ljea8t
 ```
 
+### Bilgisayarı değiştirme
+
+Bu PC'yi başka bir makineyle değiştirirken
+[sunucu-tasima.md](sunucu-tasima.md) rehberini izleyin. Veri, anahtarlar ve
+tünel tek arşivde taşınır; alan adı ve DNS ayarlarına dokunulmaz.
+
 ### Yedekten geri dönme
 
 ```bash
