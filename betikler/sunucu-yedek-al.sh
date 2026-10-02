@@ -21,7 +21,13 @@ set -euo pipefail
 UYGULAMA=/opt/stok/app
 VERI=/var/lib/stok
 SERVIS=stok
-HEDEF="${1:-/root}"
+# Arşiv varsayılan olarak betiği çağıran kullanıcının ev klasörüne yazılır.
+# /root altına yazılsaydı normal kullanıcı dosyayı ne görebilir ne scp ile
+# indirebilirdi; sudo ile açılan joker kalıplar da kullanıcı kabuğunda
+# genişlemediği için kopyalama komutu da çalışmazdı.
+CAGIRAN="${SUDO_USER:-root}"
+EV=$(getent passwd "$CAGIRAN" | cut -d: -f6)
+HEDEF="${1:-${EV:-/root}}"
 DURDUR=1
 
 kirmizi() { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -99,9 +105,12 @@ cat "$PAKET/KUNYE.txt"
 
 baslik "5/5  Arşiv"
 tar -czf "$ARSIV" -C "$GECICI" "stok-sunucu-$DAMGA"
-chmod 600 "$ARSIV"
 ( cd "$HEDEF" && sha256sum "$(basename "$ARSIV")" > "$(basename "$ARSIV").sha256" )
-chmod 600 "$ARSIV.sha256"
+# Çağıran kullanıcı dosyayı scp ile indirebilsin; izin yine yalnız sahibinde.
+if [ "$CAGIRAN" != "root" ]; then
+  chown "$CAGIRAN":"$CAGIRAN" "$ARSIV" "$ARSIV.sha256" 2>/dev/null || true
+fi
+chmod 600 "$ARSIV" "$ARSIV.sha256"
 
 if [ "$DURDUR" -eq 1 ]; then
   systemctl start "$SERVIS"
@@ -117,8 +126,12 @@ echo
 yesil "✓ Yedek hazır: $ARSIV"
 ls -lh "$ARSIV"
 echo
-echo "Bu dosyayı kendi bilgisayarına indir:"
-echo "  scp $(logname 2>/dev/null || echo cemal)@<sunucu-adresi>:$ARSIV ."
+echo "Bu dosyayı kendi bilgisayarına indir (Windows'ta Komut İstemi):"
+echo "  scp $CAGIRAN@<sunucu-adresi>:$ARSIV ."
+echo "  scp $CAGIRAN@<sunucu-adresi>:$ARSIV.sha256 ."
+echo
+echo "İndirdikten sonra bütünlüğünü doğrula (sunucuda alınan özetle karşılaştır):"
+echo "  sha256sum -c $(basename "$ARSIV").sha256"
 echo
 kirmizi "Arşiv gizli anahtarlar içeriyor. USB veya bulut üzerinden taşıyacaksan önce şifrele:"
 echo "  openssl enc -aes-256-cbc -pbkdf2 -salt -in $(basename "$ARSIV") -out $(basename "$ARSIV").enc"

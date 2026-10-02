@@ -30,25 +30,31 @@ Betik servisi durdurur (veritabanı yazılırken kopyalanmasın diye), dosyalar�
 toplar, arşivi `/root/` altına yazar ve servisi geri başlatır. Birkaç saniye
 sürer.
 
-Çıktıda arşivin yolu ve `sha256` sağlaması görünür:
+Arşiv, betiği çağıran kullanıcının ev klasörüne yazılır ve o kullanıcıya
+devredilir; böylece `scp` ile doğrudan indirilebilir. Çıktıda yolu görünür:
 
 ```
-✓ Yedek hazır: /root/stok-sunucu-yedek-20261002-1430.tar.gz
+✓ Yedek hazır: /home/cemal/stok-sunucu-yedek-20261002-1430.tar.gz
 ```
 
 ### Arşivi kendi bilgisayarına indir
 
-Windows'ta Komut İstemi'nden:
+Windows'ta Komut İstemi'nden (dosya adını çıktıdan birebir kopyala):
 
 ```
-scp cemal@100.119.100.57:/root/stok-sunucu-yedek-*.tar.gz .
+scp cemal@100.119.100.57:~/stok-sunucu-yedek-20261002-1430.tar.gz .
+scp cemal@100.119.100.57:~/stok-sunucu-yedek-20261002-1430.tar.gz.sha256 .
 ```
 
-`Permission denied` alırsan arşivi önce kendi kullanıcına taşı:
+İndikten sonra bozulmadığını doğrula — sunucuda hesaplanan özetle karşılaştırır:
 
-```bash
-sudo cp /root/stok-sunucu-yedek-*.tar.gz ~/ && sudo chown $USER ~/stok-sunucu-yedek-*.tar.gz
 ```
+sha256sum -c stok-sunucu-yedek-20261002-1430.tar.gz.sha256
+```
+
+> `*` gibi joker kalıpları `sudo` ile kullanma: kalıbı senin kabuğun açar,
+> `/root` gibi okuma izni olmayan klasörlerde genişlemez ve komut
+> "No such file or directory" der. Dosya adını tam yaz.
 
 > **Arşiv gizli anahtarlar içerir.** USB bellek veya bulut üzerinden
 > taşıyacaksan önce şifrele:
