@@ -21,11 +21,15 @@ const BASLIK_ESLERI = {
   urunAdi: ["urun adi", "urunadi", "aciklama", "malzeme adi"],
   marka: ["marka"],
   adet: ["adet", "miktar"],
-  faturaNo: ["fatura no", "faturano", "belge no"],
-  eFaturaNo: ["e-fatura no", "efatura no", "e fatura no"],
+  // Portal "Fatura No" sütununa sipariş numarasını, "E-Fatura No" sütununa
+  // asıl fatura numarasını yazıyor. Fatura numarası olarak e-fatura no
+  // kullanılır; sipariş no kayda not olarak düşülür.
+  siparisNo: ["fatura no", "faturano", "siparis no", "belge no"],
+  faturaNo: ["e-fatura no", "efatura no", "e fatura no", "e-fatura"],
   tarih: ["tarih", "fatura tarihi", "belge tarihi"],
   birimTutar: ["birim tutar", "birim fiyat", "tutar", "fiyat"],
   kur: ["kur", "doviz kuru"],
+  dovizTipi: ["doviz tipi", "doviz", "para birimi"],
 } as const;
 
 type BaslikAnahtari = keyof typeof BASLIK_ESLERI;
@@ -51,7 +55,12 @@ export type TedarikciUrunGrubu = {
 };
 
 export type TedarikciFaturasi = {
+  /** Asıl fatura numarası (dosyadaki E-Fatura No sütunu). */
   faturaNo: string;
+  /** Tedarikçinin sipariş numarası (dosyadaki Fatura No sütunu). */
+  siparisNo: string;
+  /** Dosyadaki para birimi kodu; TRY dışındaysa tutarlar kurla çevrilmiştir. */
+  dovizTipi: string;
   /** Dosyadaki tarih; okunamadıysa null. */
   tarih: Date | null;
   gruplar: TedarikciUrunGrubu[];
@@ -82,11 +91,19 @@ function hucreMetni(deger: ExcelJS.CellValue): string {
 }
 
 /**
- * "8.604,17 TRY" veya "1.234,50 USD" gibi hücreden tutarı ayırır.
- * Para birimi kodu atılır; döviz ise kur ile çarpmak çağıranın işi.
+ * Tutar hücresini kuruşa çevirir.
+ *
+ * Hücre gerçek bir sayıysa (portal böyle veriyor: 11250, 0.08) doğrudan
+ * çarpılır — metne çevirip binlik/ondalık tahmini yapmak "9.750" gibi
+ * değerlerde yanlış sonuç verebilir. Metinse ("8.604,17 TRY") para birimi
+ * kodu atılıp Türkçe biçim çözümleyicisine verilir.
  */
-export function tutariCoz(ham: string): number | null {
-  const temiz = ham.replace(/[^\d.,-]/g, "").trim();
+export function tutariCoz(ham: ExcelJS.CellValue | string): number | null {
+  if (typeof ham === "number") {
+    return Number.isFinite(ham) ? Math.round(ham * 100) : null;
+  }
+  const metin = typeof ham === "string" ? ham : hucreMetni(ham);
+  const temiz = metin.replace(/[^\d.,-]/g, "").trim();
   if (!temiz) return null;
   return tlyiKurusaCevir(temiz);
 }
@@ -106,6 +123,15 @@ export function tarihiCoz(ham: string): Date | null {
   if (Number.isNaN(d.getTime())) return null;
   // ISO dizesi gece yarısı UTC olarak gelir; yerel güne sabitle.
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/**
+ * Marka sütunu olmayan dosyalarda ürün adının ilk kelimesi marka kabul edilir
+ * ("Huawei MatePad 11.5..." -> "Huawei"). Boşsa çağıran bir yer tutucu koyar.
+ */
+export function markayiTuret(urunAdi: string): string {
+  const ilk = urunAdi.trim().split(/\s+/)[0] ?? "";
+  return ilk.replace(/[^\p{L}\p{N}&.-]/gu, "");
 }
 
 /** Bir dizideki en sık görülen değeri döner. */
@@ -171,13 +197,23 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
     const sutunNo = yer[anahtar];
     return sutunNo ? hucreMetni(satir.getCell(sutunNo).value) : "";
   };
+  /** Ham hücre değeri — sayısal hücreler metne çevrilmeden kullanılsın diye. */
+  const hamOku = (satir: ExcelJS.Row, anahtar: BaslikAnahtari): ExcelJS.CellValue => {
+    const sutunNo = yer[anahtar];
+    return sutunNo ? satir.getCell(sutunNo).value : null;
+  };
 
   const hatalar: string[] = [];
   const gorulenSeriNolar = new Map<string, number>();
   // faturaNo -> barkod -> grup
   const faturaHarita = new Map<
     string,
-    { tarih: Date | null; gruplar: Map<string, TedarikciUrunGrubu & { fiyatlar: number[] }> }
+    {
+      tarih: Date | null;
+      siparisNo: string;
+      dovizTipi: string;
+      gruplar: Map<string, TedarikciUrunGrubu & { fiyatlar: number[] }>;
+    }
   >();
 
   for (let i = baslikSatirNo + 1; i <= sayfa.rowCount; i++) {
@@ -186,12 +222,14 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
     const seriNoHam = oku(satir, "seriNo");
     const barkodHam = oku(satir, "urunKodu");
     const urunAdi = oku(satir, "urunAdi");
-    const marka = oku(satir, "marka");
+    const markaHam = oku(satir, "marka");
     const adetHam = oku(satir, "adet");
     const faturaNoHam = oku(satir, "faturaNo");
+    const siparisNoHam = oku(satir, "siparisNo");
     const tarihHam = oku(satir, "tarih");
     const tutarHam = oku(satir, "birimTutar");
     const kurHam = oku(satir, "kur");
+    const dovizTipi = oku(satir, "dovizTipi").trim().toUpperCase() || "TRY";
 
     if (![seriNoHam, barkodHam, urunAdi, tutarHam].some((d) => d !== "")) continue;
 
@@ -200,8 +238,13 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
     const barkod = kodNormalize(barkodHam);
     if (!barkod) satirHatalari.push("Ürün kodu boş.");
 
-    const faturaNo = faturaNoHam.trim();
-    if (!faturaNo) satirHatalari.push("Fatura no boş.");
+    // Marka sütunu olmayan dosyalarda ürün adının ilk kelimesi kullanılır.
+    const marka = markaHam.trim() || markayiTuret(urunAdi);
+
+    // Asıl fatura numarası e-fatura no; yoksa sipariş numarasına düşülür.
+    const siparisNo = siparisNoHam.trim();
+    const faturaNo = faturaNoHam.trim() || siparisNo;
+    if (!faturaNo) satirHatalari.push("Fatura no ve e-fatura no boş.");
 
     const seriNo = kodNormalize(seriNoHam) || null;
     if (seriNo) {
@@ -210,11 +253,12 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
       else gorulenSeriNolar.set(seriNo, i);
     }
 
-    const birim = tutariCoz(tutarHam);
+    const birim = tutariCoz(hamOku(satir, "birimTutar"));
     if (birim === null) satirHatalari.push(`Birim tutar okunamadı: "${tutarHam}".`);
 
     // Kur boş veya 1 ise TL; değilse tutar dövizdir, TL'ye çevrilir.
-    const kur = kurHam ? (tlyiKurusaCevir(kurHam.replace(/[^\d.,-]/g, "")) ?? 100) / 100 : 1;
+    const kurKurus = kurHam ? tutariCoz(hamOku(satir, "kur")) : 100;
+    const kur = (kurKurus ?? 100) / 100;
     if (kur <= 0) satirHatalari.push(`Kur okunamadı: "${kurHam}".`);
 
     const adet = adetHam ? Number(adetHam.replace(/[^\d]/g, "")) || 1 : 1;
@@ -231,10 +275,11 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
 
     let fatura = faturaHarita.get(faturaNo);
     if (!fatura) {
-      fatura = { tarih: tarihiCoz(tarihHam), gruplar: new Map() };
+      fatura = { tarih: tarihiCoz(tarihHam), siparisNo, dovizTipi, gruplar: new Map() };
       faturaHarita.set(faturaNo, fatura);
     }
     if (!fatura.tarih) fatura.tarih = tarihiCoz(tarihHam);
+    if (!fatura.siparisNo) fatura.siparisNo = siparisNo;
 
     let grup = fatura.gruplar.get(barkod);
     if (!grup) {
@@ -284,7 +329,15 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
       (t, g) => t + g.alisFiyatiKurus * g.cihazlar.length,
       0,
     );
-    faturalar.push({ faturaNo, tarih: veriler.tarih, gruplar, cihazSayisi, toplamKurus });
+    faturalar.push({
+      faturaNo,
+      siparisNo: veriler.siparisNo,
+      dovizTipi: veriler.dovizTipi,
+      tarih: veriler.tarih,
+      gruplar,
+      cihazSayisi,
+      toplamKurus,
+    });
   }
   faturalar.sort((a, b) => a.faturaNo.localeCompare(b.faturaNo, "tr"));
 
