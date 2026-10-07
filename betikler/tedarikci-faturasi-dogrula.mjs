@@ -11,7 +11,8 @@ const cikti = process.env.CIKTI ?? "/tmp/tedarikcifatura";
 const SIFRE = "Stok2026!";
 
 const damga = Date.now().toString().slice(-8);
-const FATURA_NO = `TF${damga}`;
+const EFATURA_NO = `DG1${damga}0000`;   // asıl fatura numarası
+const SIPARIS_NO = `009${damga}`;       // portalda "Fatura No" sütunu
 const BARKOD_A = `69390930${damga}`.slice(0, 13);
 const BARKOD_B = `11111111${damga}`.slice(0, 13);
 const seri = (on, i) => `${on}/${damga}SN${String(i).padStart(5, "0")}`;
@@ -40,24 +41,25 @@ async function giris(kullanici) {
   return sayfa.url().includes("/panel");
 }
 
-/** Portal çıktısını taklit eden dosya: 3 tablet + 2 kılıf, tek fatura. */
+/**
+ * Gerçek portal çıktısının düzeni: Marka sütunu yok, Döviz Tipi ayrı,
+ * tutarlar düz sayı, asıl fatura numarası E-Fatura No sütununda.
+ * 3 tablet (seri numaralı) + 2 kılıf (serisiz, adetli), tek fatura.
+ */
 async function dosyaUret(yol) {
   const kitap = new ExcelJS.Workbook();
-  const sf = kitap.addWorksheet("Seri No Kontrolü");
-  sf.addRow(["Seri No Kontrolü"]);               // portal başlık satırı
-  sf.addRow([]);
+  const sf = kitap.addWorksheet("data");
   sf.addRow([
-    "Seri No", "Ürün Kodu", "Ürün Adı", "Marka", "Adet",
-    "E-Fatura No", "Fatura No", "Tarih", "Birim Tutar", "Kur",
+    "Seri No", "Ürün Kodu", "Ürün Adı", "Adet",
+    "E-Fatura No", "Fatura No", "Tarih", "Birim Tutar", "Döviz Tipi", "Kur",
   ]);
   for (let i = 1; i <= 3; i++) {
     sf.addRow([
-      seri("78876", i), BARKOD_A, "XIAOMI REDMI PAD 2 9.7 COVER SLVR 4/128",
-      "XIAOMI", 1, "", FATURA_NO, "06.10.2026", "8.604,17 TRY", "1.00",
+      seri("5MKUN", i), BARKOD_A, "Huawei MatePad 11.5(W09C) 8/128 Gray",
+      1, EFATURA_NO, SIPARIS_NO, "02.10.2026", 11250, "TRY", 1,
     ]);
   }
-  // Seri numarasız, adetli kalem
-  sf.addRow(["", BARKOD_B, "XIAOMI KILIF SIYAH", "XIAOMI", 2, "", FATURA_NO, "06.10.2026", "120,00 TRY", "1.00"]);
+  sf.addRow(["", BARKOD_B, "Huawei M Pen Lite (AF63-R)", 2, EFATURA_NO, SIPARIS_NO, "02.10.2026", 0.08, "TRY", 1]);
   await writeFile(yol, Buffer.from(await kitap.xlsx.writeBuffer()));
 }
 
@@ -95,48 +97,53 @@ try {
 
   const govde = (await sayfa.locator("body").textContent()) ?? "";
   const faturaNoDeger = await sayfa.locator("#faturaNo").inputValue();
-  kontrol("fatura no dosyadan geldi", faturaNoDeger === FATURA_NO, faturaNoDeger);
+  kontrol("fatura no e-fatura sütunundan geldi", faturaNoDeger === EFATURA_NO, faturaNoDeger);
+  kontrol("sipariş no ayrıca gösteriliyor",
+    ((await sayfa.locator("body").textContent()) ?? "").includes(SIPARIS_NO), SIPARIS_NO);
   kontrol("barkod dosyadan geldi", govde.includes(BARKOD_A));
-  kontrol("birim tutar doğru okundu", govde.includes("8.604,17"), "8.604,17");
-  kontrol("tarih dosyadan geldi (06.10.2026)",
-    (await sayfa.locator("#faturaTarihi").inputValue()) === "2026-10-06",
+  kontrol("birim tutar doğru okundu (11250 -> 11.250,00)", govde.includes("11.250,00"));
+  kontrol("kuruşlu tutar doğru okundu (0.08 -> 0,08)", govde.includes("0,08"));
+  kontrol("tarih dosyadan geldi (02.10.2026)",
+    (await sayfa.locator("#faturaTarihi").inputValue()) === "2026-10-02",
     await sayfa.locator("#faturaTarihi").inputValue());
+  kontrol("marka ürün adından türetildi", govde.includes("Huawei"));
 
   // Seri numaraları gösterilsin — gruplar ürün adına göre sıralı, seri numarası
   // olan tablet grubunu adıyla hedefliyoruz.
-  const seriliGrup = gruplar.filter({ hasText: "REDMI PAD" });
+  const seriliGrup = gruplar.filter({ hasText: "MatePad" });
   await seriliGrup.locator('button:has-text("Seri numaralarını göster")').click();
   await sayfa.waitForTimeout(300);
   const seriMetni = (await seriliGrup.locator("ul").last().textContent()) ?? "";
-  kontrol("seri numaraları listelendi", seriMetni.includes(seri("78876", 1)),
+  kontrol("seri numaraları listelendi", seriMetni.includes(seri("5MKUN", 1)),
     seriMetni.replace(/\s+/g, " ").trim().slice(0, 90) || "(liste boş)");
 
-  // 4) kategorisi seçilmeden kaydedilemez uyarısı
-  kontrol("kategori seçilmeden uyarı veriyor",
-    govde.includes("kategorisi seçilmedi") || govde.includes("Kategorisi seçilmeyen"));
+  // 4) kategori seçimi zorunlu değil: hiç seçim yapmadan "Sınıflandırılmamış" gelir
+  kontrol("kategori seçmeden kaydedilebileceği yazıyor",
+    govde.includes("Sınıflandırılmamış"), "bilgi notu çıktı");
+  const varsayilanSecim = await gruplar.first().locator("select").first().inputValue();
+  kontrol("kategori kutusu varsayılanla dolu geliyor", varsayilanSecim !== "", varsayilanSecim);
+  kontrol("kategoriyi engelleyen uyarı yok",
+    !govde.includes("Kategorisi seçilmeyen ürünler kaydedilemez"));
 
-  // 5) kategorileri seç — seri numarası olan tablet ile serisiz kılıf farklı
-  // kategorilere gitmeli; kılıfa seri no zorunlu kategori seçilirse program
-  // uyarıyor (aşağıda ayrıca sınanıyor).
+  // 5) kasten yanlış seçim: serisiz kaleme seri no zorunlu kategori
   const kilifGrubu = sayfa.locator("div.rounded-lg.border.border-slate-200.p-3")
-    .filter({ hasText: "KILIF" });
+    .filter({ hasText: "M Pen Lite" });
   const tabletGrubu = sayfa.locator("div.rounded-lg.border.border-slate-200.p-3")
-    .filter({ hasText: "REDMI PAD" });
+    .filter({ hasText: "MatePad" });
 
-  // Önce kasten yanlış seçim: kılıfa seri no zorunlu kategori
   await kilifGrubu.locator("select").first().selectOption({ label: "Cep Telefonu" });
   await sayfa.waitForTimeout(400);
   const uyumsuzMetni = (await sayfa.locator("body").textContent()) ?? "";
   kontrol("serisiz ürüne seri no zorunlu kategori seçilince uyarıyor",
     uyumsuzMetni.includes("seri numarası yok"), "kırmızı uyarı çıktı");
 
-  // Şimdi doğru seçim
-  await kilifGrubu.locator("select").first().selectOption({ label: "Aksesuar" });
+  // Düzelt: biri sınıflandırılmamış kalsın, biri kategori alsın
+  // varsayilanSecim = "Sınıflandırılmamış" kategorisinin kimliği (yukarıda okundu).
+  await kilifGrubu.locator("select").first().selectOption(varsayilanSecim);
   await tabletGrubu.locator("select").first().selectOption({ label: "Tablet / Notebook" });
   await sayfa.waitForTimeout(400);
   const duzeltilmis = (await sayfa.locator("body").textContent()) ?? "";
-  kontrol("doğru kategori seçilince uyarı kalkıyor",
-    !duzeltilmis.includes("seri numarası yok"));
+  kontrol("uyarı kalkıyor", !duzeltilmis.includes("seri numarası yok"));
 
   // 6) fatura bilgilerini doldur ve kaydet
   await sayfa.selectOption("#tedarikciId", { index: 1 });
@@ -154,12 +161,13 @@ try {
 
   const faturaMetni = (await sayfa.locator("body").textContent()) ?? "";
   kontrol("faturada 45 gün vade var", faturaMetni.includes("45 gün"));
-  kontrol("faturada seri numaraları var", faturaMetni.includes(seri("78876", 2)));
+  kontrol("faturada seri numaraları var", faturaMetni.includes(seri("5MKUN", 2)));
+  kontrol("sipariş no fatura notuna yazıldı", faturaMetni.includes(SIPARIS_NO), SIPARIS_NO);
 
   // 7) cihaz listesinde seri no ile bulunabiliyor
-  await sayfa.goto(`${hedef}/cihazlar?ara=${encodeURIComponent(seri("78876", 3))}`, { waitUntil: "networkidle" });
+  await sayfa.goto(`${hedef}/cihazlar?ara=${encodeURIComponent(seri("5MKUN", 3))}`, { waitUntil: "networkidle" });
   const listeMetni = (await sayfa.locator("body").textContent()) ?? "";
-  kontrol("yüklenen cihaz seri no ile bulunuyor", listeMetni.includes("REDMI PAD"), seri("78876", 3));
+  kontrol("yüklenen cihaz seri no ile bulunuyor", listeMetni.includes("MatePad"), seri("5MKUN", 3));
 
   // 8) aynı dosya ikinci kez: seri numaralı cihazlar elenmeli
   await sayfa.goto(`${hedef}/cihazlar/tedarikci-faturasi`, { waitUntil: "networkidle" });
@@ -173,7 +181,7 @@ try {
 
   // 9) kategori barkod geçmişinden otomatik geldi mi
   const tabletTekrar = sayfa.locator("div.rounded-lg.border.border-slate-200.p-3")
-    .filter({ hasText: "REDMI PAD" });
+    .filter({ hasText: "MatePad" });
   const seciliKategori = await tabletTekrar.locator("select").first().inputValue();
   kontrol("kategori barkod geçmişinden otomatik geldi", seciliKategori !== "",
     seciliKategori || "(boş)");

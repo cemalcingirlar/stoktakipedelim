@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { sinifIandirilmamisKategoriId } from "@/lib/kategori";
 import { prisma } from "@/lib/prisma";
 import { adminSayfasi } from "@/lib/yetki";
 import { TedarikciFaturasiFormu } from "./TedarikciFaturasiFormu";
@@ -7,6 +8,9 @@ export const metadata = { title: "Tedarikçi Faturası Yükle — Stok Takip" };
 
 export default async function TedarikciFaturasiSayfasi() {
   const oturum = await adminSayfasi();
+
+  // Kategori seçimi zorunlu değil; seçilmeyenler bu kategoriye girer.
+  const varsayilanKategoriId = await sinifIandirilmamisKategoriId();
 
   const [kategoriler, tedarikciler, magazalar] = await Promise.all([
     prisma.kategori.findMany({
@@ -66,11 +70,16 @@ export default async function TedarikciFaturasiSayfasi() {
             yükleyin — sütunları düzenlemeniz gerekmez.
           </li>
           <li>
-            Program satırları ürün koduna göre gruplar. Daha önce girdiğiniz bir barkodsa
-            kategorisi otomatik gelir; ilk kez giriliyorsa bir kez seçersiniz.
+            Program satırları ürün koduna göre gruplar. Daha önce girdiğiniz bir ürünse
+            kategorisi otomatik gelir. Kategori seçmek zorunlu değil — seçmediklerinizi
+            <span className="font-medium text-slate-700"> Sınıflandırılmamış</span> olarak
+            kaydeder, sonra cihaz sayfasından düzeltebilirsiniz.
           </li>
           <li>
             Tedarikçi, depo ve vadeyi seçip kaydedin. Her seri numarası ayrı bir stok kaydı olur.
+            Fatura numarası olarak dosyadaki <span className="font-medium text-slate-700">E-Fatura
+            No</span> kullanılır; <span className="font-medium text-slate-700">Fatura No</span>
+            sütunundaki sipariş numarası fatura notuna yazılır.
           </li>
         </ol>
         <p className="mt-2 text-xs text-slate-500">
@@ -91,6 +100,7 @@ export default async function TedarikciFaturasiSayfasi() {
       ) : (
         <TedarikciFaturasiFormu
           kategoriler={kategoriler}
+          varsayilanKategoriId={varsayilanKategoriId}
           tedarikciler={tedarikciler}
           magazalar={magazalar}
           varsayilanMagazaId={oturum.magazaId}

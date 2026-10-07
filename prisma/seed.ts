@@ -24,6 +24,8 @@ const KATEGORILER: { ad: string; alt: string[]; seriNoZorunlu: boolean }[] = [
   },
   { ad: "Tablet / Notebook", alt: ["Tablet", "Notebook"], seriNoZorunlu: true },
   { ad: "İkinci El Telefon", alt: ["Garantili", "Garantisiz"], seriNoZorunlu: true },
+  // Tedarikçi dosyasından gelip kategorisi seçilmeyen cihazlar buraya düşer.
+  { ad: "Sınıflandırılmamış", alt: [], seriNoZorunlu: false },
 ];
 
 const TEDARIKCILER = ["Yılmaz Telekom", "Vatan Toptan", "Özkan Ticaret", "İstanbul Toptancı"];

@@ -37,11 +37,14 @@ function modelAdi(urunAdi: string, marka: string): string {
 
 export function TedarikciFaturasiFormu({
   kategoriler,
+  varsayilanKategoriId,
   tedarikciler,
   magazalar,
   varsayilanMagazaId,
 }: {
   kategoriler: KategoriSecimi[];
+  /** Kategori seçilmeyen ürünlerin gideceği "Sınıflandırılmamış" kategori. */
+  varsayilanKategoriId: number;
   tedarikciler: { id: number; ad: string }[];
   magazalar: { id: number; ad: string }[];
   varsayilanMagazaId: number | null;
@@ -83,7 +86,8 @@ export function TedarikciFaturasiFormu({
     if (elle) return elle;
     const bilinen = gecmisHarita.get(barkod);
     return {
-      kat: bilinen ? String(bilinen.kategoriId) : "",
+      // Geçmiş yoksa "Sınıflandırılmamış" — kategori seçmek zorunlu değil.
+      kat: String(bilinen ? bilinen.kategoriId : varsayilanKategoriId),
       alt: bilinen?.altKategoriId ? String(bilinen.altKategoriId) : "",
     };
   }
@@ -124,8 +128,8 @@ export function TedarikciFaturasiFormu({
 
   const satirlar = satirlariUret();
   const toplamKurus = satirlar.reduce((t, s) => t + s.alisFiyatiKurus, 0);
-  const kategorisizler = fatura
-    ? fatura.gruplar.filter((g) => !secimiOku(g.barkod).kat)
+  const sinifIandirilmamislar = fatura
+    ? fatura.gruplar.filter((g) => Number(secimiOku(g.barkod).kat) === varsayilanKategoriId)
     : [];
 
   /** Seri no zorunlu kategori seçilmiş ama dosyada seri numarası olmayan cihaz var. */
@@ -146,7 +150,14 @@ export function TedarikciFaturasiFormu({
       faturaTarihi: String(form.get("faturaTarihi") ?? ""),
       vadeGun: Number(form.get("vadeGun")) || 0,
       vadeTarihi: String(form.get("vadeTarihi") ?? "").trim() || null,
-      not: String(form.get("not") ?? "").trim() || null,
+      // Sipariş numarası dosyadan gelir; kullanıcının yazdığı notla birleştirilir.
+      not:
+        [
+          fatura?.siparisNo ? `Sipariş no: ${fatura.siparisNo}` : "",
+          String(form.get("not") ?? "").trim(),
+        ]
+          .filter(Boolean)
+          .join(" · ") || null,
       satirlar,
     };
     const yeni = new FormData();
@@ -204,6 +215,24 @@ export function TedarikciFaturasiFormu({
                 ? "1 fatura"
                 : `${faturalar.length} fatura bulundu, birer birer kaydedilir`}
             </p>
+            <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
+              <div>
+                <dt className="text-xs text-slate-500">Fatura no (e-fatura)</dt>
+                <dd className="font-mono text-slate-900">{fatura.faturaNo}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">Sipariş no</dt>
+                <dd className="font-mono text-slate-900">{fatura.siparisNo || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">Cihaz</dt>
+                <dd className="text-slate-900">{fatura.cihazSayisi} adet</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">Para birimi</dt>
+                <dd className="text-slate-900">{fatura.dovizTipi}</dd>
+              </div>
+            </dl>
 
             {faturalar.length > 1 ? (
               <div className="mb-3">
@@ -246,6 +275,16 @@ export function TedarikciFaturasiFormu({
               </div>
             ) : null}
 
+            {sinifIandirilmamislar.length > 0 ? (
+              <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-sm text-slate-600">
+                  {sinifIandirilmamislar.length} ürün <strong>Sınıflandırılmamış</strong> olarak
+                  kaydedilecek. İstersen şimdi kategori seç, istersen sonra cihaz sayfasından
+                  düzelt — seçtiğin kategori sonraki faturalarda otomatik gelir.
+                </p>
+              </div>
+            ) : null}
+
             {uyumsuzlar.length > 0 ? (
               <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
                 <p className="text-sm font-medium text-red-800">
@@ -264,21 +303,13 @@ export function TedarikciFaturasiFormu({
               </div>
             ) : null}
 
-            {kategorisizler.length > 0 ? (
-              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                <p className="text-sm text-amber-900">
-                  {kategorisizler.length} ürünün kategorisi seçilmedi. Bu ürünler ilk kez
-                  giriliyor; kategoriyi bir kez seçin, sonraki faturalarda otomatik gelecek.
-                </p>
-              </div>
-            ) : null}
-
             <div className="space-y-2">
               {fatura.gruplar.map((grup) => (
                 <UrunSatiri
                   key={grup.barkod}
                   grup={grup}
                   kategoriler={kategoriler}
+                  varsayilanKategoriId={varsayilanKategoriId}
                   secim={secimiOku(grup.barkod)}
                   degistir={(yeni) =>
                     setSecimUstYazim((m) => ({ ...m, [grup.barkod]: yeni }))
@@ -374,7 +405,10 @@ export function TedarikciFaturasiFormu({
                   <label htmlFor="not" className={KUCUK_ETIKET}>
                     Fatura Notu
                   </label>
-                  <input id="not" name="not" maxLength={500} className={GIRDI_SINIFI} />
+                  <input id="not" name="not" maxLength={400} className={GIRDI_SINIFI} />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Sipariş no ({fatura.siparisNo || "—"}) nota otomatik eklenir.
+                  </p>
                 </div>
               </div>
 
@@ -385,12 +419,17 @@ export function TedarikciFaturasiFormu({
                 <span className="text-sm text-slate-500">
                   Toplam alış tutarı {kurusuTLYaz(toplamKurus)} TL (KDV hariç)
                 </span>
-                {kategorisizler.length > 0 ? (
-                  <span className="text-sm font-medium text-amber-800">
-                    Kategorisi seçilmeyen ürünler kaydedilemez.
-                  </span>
-                ) : null}
-                {uyumsuzlar.length > 0 ? (
+                {sinifIandirilmamislar.length > 0 ? (
+              <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-sm text-slate-600">
+                  {sinifIandirilmamislar.length} ürün <strong>Sınıflandırılmamış</strong> olarak
+                  kaydedilecek. İstersen şimdi kategori seç, istersen sonra cihaz sayfasından
+                  düzelt — seçtiğin kategori sonraki faturalarda otomatik gelir.
+                </p>
+              </div>
+            ) : null}
+
+            {uyumsuzlar.length > 0 ? (
                   <span className="text-sm font-medium text-red-800">
                     Seri no uyuşmazlığı giderilmeden kaydedilemez.
                   </span>
@@ -408,12 +447,14 @@ export function TedarikciFaturasiFormu({
 function UrunSatiri({
   grup,
   kategoriler,
+  varsayilanKategoriId,
   secim,
   degistir,
   kayitliSeriNolar,
 }: {
   grup: TedarikciUrunGrubu;
   kategoriler: KategoriSecimi[];
+  varsayilanKategoriId: number;
   secim: { kat: string; alt: string };
   degistir: (yeni: { kat: string; alt: string }) => void;
   kayitliSeriNolar: Set<string>;
@@ -449,16 +490,15 @@ function UrunSatiri({
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <div>
-          <label className={KUCUK_ETIKET}>Kategori *</label>
+          <label className={KUCUK_ETIKET}>Kategori</label>
           <select
             value={secim.kat}
             onChange={(e) => degistir({ kat: e.target.value, alt: "" })}
             className={GIRDI_SINIFI}
           >
-            <option value="">Seçin…</option>
             {kategoriler.map((k) => (
               <option key={k.id} value={k.id}>
-                {k.ad}
+                {k.id === varsayilanKategoriId ? `${k.ad} (sonra düzeltilebilir)` : k.ad}
               </option>
             ))}
           </select>
