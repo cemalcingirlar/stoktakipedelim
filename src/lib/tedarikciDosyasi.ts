@@ -28,11 +28,16 @@ const BASLIK_ESLERI = {
   faturaNo: ["e-fatura no", "efatura no", "e fatura no", "e-fatura"],
   tarih: ["tarih", "fatura tarihi", "belge tarihi"],
   birimTutar: ["birim tutar", "birim fiyat", "tutar", "fiyat"],
-  kur: ["kur", "doviz kuru"],
+  // Tutarlar TL kabul edilir. Döviz sütunu yalnızca denetim için okunur:
+  // TL dışında bir para birimi görülürse satır sessizce yanlış fiyatla
+  // kaydedilmesin diye hata olarak bildirilir.
   dovizTipi: ["doviz tipi", "doviz", "para birimi"],
 } as const;
 
 type BaslikAnahtari = keyof typeof BASLIK_ESLERI;
+
+/** Dosyada TL'yi gösterebilecek kodlar. */
+const TL_KODLARI = new Set(["TRY", "TL", "TRL", "₺"]);
 
 export type TedarikciCihazi = {
   excelSatiri: number;
@@ -59,8 +64,6 @@ export type TedarikciFaturasi = {
   faturaNo: string;
   /** Tedarikçinin sipariş numarası (dosyadaki Fatura No sütunu). */
   siparisNo: string;
-  /** Dosyadaki para birimi kodu; TRY dışındaysa tutarlar kurla çevrilmiştir. */
-  dovizTipi: string;
   /** Dosyadaki tarih; okunamadıysa null. */
   tarih: Date | null;
   gruplar: TedarikciUrunGrubu[];
@@ -211,7 +214,6 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
     {
       tarih: Date | null;
       siparisNo: string;
-      dovizTipi: string;
       gruplar: Map<string, TedarikciUrunGrubu & { fiyatlar: number[] }>;
     }
   >();
@@ -228,8 +230,7 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
     const siparisNoHam = oku(satir, "siparisNo");
     const tarihHam = oku(satir, "tarih");
     const tutarHam = oku(satir, "birimTutar");
-    const kurHam = oku(satir, "kur");
-    const dovizTipi = oku(satir, "dovizTipi").trim().toUpperCase() || "TRY";
+    const dovizTipi = oku(satir, "dovizTipi").trim().toUpperCase();
 
     if (![seriNoHam, barkodHam, urunAdi, tutarHam].some((d) => d !== "")) continue;
 
@@ -256,10 +257,12 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
     const birim = tutariCoz(hamOku(satir, "birimTutar"));
     if (birim === null) satirHatalari.push(`Birim tutar okunamadı: "${tutarHam}".`);
 
-    // Kur boş veya 1 ise TL; değilse tutar dövizdir, TL'ye çevrilir.
-    const kurKurus = kurHam ? tutariCoz(hamOku(satir, "kur")) : 100;
-    const kur = (kurKurus ?? 100) / 100;
-    if (kur <= 0) satirHatalari.push(`Kur okunamadı: "${kurHam}".`);
+    // Program yalnız TL fatura işler; döviz satırı yanlış fiyatla kaydedilmesin.
+    if (dovizTipi && !TL_KODLARI.has(dovizTipi)) {
+      satirHatalari.push(
+        `Para birimi TL değil (${dovizTipi}). Program yalnız TL fatura işler, bu satır alınmadı.`,
+      );
+    }
 
     const adet = adetHam ? Number(adetHam.replace(/[^\d]/g, "")) || 1 : 1;
     if (seriNo && adet !== 1) {
@@ -271,11 +274,11 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
       continue;
     }
 
-    const fiyatKurus = Math.round(birim! * kur);
+    const fiyatKurus = birim!;
 
     let fatura = faturaHarita.get(faturaNo);
     if (!fatura) {
-      fatura = { tarih: tarihiCoz(tarihHam), siparisNo, dovizTipi, gruplar: new Map() };
+      fatura = { tarih: tarihiCoz(tarihHam), siparisNo, gruplar: new Map() };
       faturaHarita.set(faturaNo, fatura);
     }
     if (!fatura.tarih) fatura.tarih = tarihiCoz(tarihHam);
@@ -332,7 +335,6 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
     faturalar.push({
       faturaNo,
       siparisNo: veriler.siparisNo,
-      dovizTipi: veriler.dovizTipi,
       tarih: veriler.tarih,
       gruplar,
       cihazSayisi,

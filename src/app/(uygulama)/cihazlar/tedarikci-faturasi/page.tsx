@@ -77,8 +77,9 @@ export default async function TedarikciFaturasiSayfasi() {
           </li>
           <li>
             Tedarikçi, depo ve vadeyi seçip kaydedin. Her seri numarası ayrı bir stok kaydı olur.
-            Fatura numarası olarak dosyadaki <span className="font-medium text-slate-700">E-Fatura
-            No</span> kullanılır; <span className="font-medium text-slate-700">Fatura No</span>
+            Fatura numarası olarak dosyadaki{" "}
+            <span className="font-medium text-slate-700">E-Fatura No</span> kullanılır;{" "}
+            <span className="font-medium text-slate-700">Fatura No</span>{" "}
             sütunundaki sipariş numarası fatura notuna yazılır.
           </li>
         </ol>
