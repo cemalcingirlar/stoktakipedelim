@@ -215,7 +215,7 @@ export function TedarikciFaturasiFormu({
                 ? "1 fatura"
                 : `${faturalar.length} fatura bulundu, birer birer kaydedilir`}
             </p>
-            <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
+            <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
               <div>
                 <dt className="text-xs text-slate-500">Fatura no (e-fatura)</dt>
                 <dd className="font-mono text-slate-900">{fatura.faturaNo}</dd>
@@ -227,10 +227,6 @@ export function TedarikciFaturasiFormu({
               <div>
                 <dt className="text-xs text-slate-500">Cihaz</dt>
                 <dd className="text-slate-900">{fatura.cihazSayisi} adet</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-slate-500">Para birimi</dt>
-                <dd className="text-slate-900">{fatura.dovizTipi}</dd>
               </div>
             </dl>
 
@@ -419,17 +415,7 @@ export function TedarikciFaturasiFormu({
                 <span className="text-sm text-slate-500">
                   Toplam alış tutarı {kurusuTLYaz(toplamKurus)} TL (KDV hariç)
                 </span>
-                {sinifIandirilmamislar.length > 0 ? (
-              <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-sm text-slate-600">
-                  {sinifIandirilmamislar.length} ürün <strong>Sınıflandırılmamış</strong> olarak
-                  kaydedilecek. İstersen şimdi kategori seç, istersen sonra cihaz sayfasından
-                  düzelt — seçtiğin kategori sonraki faturalarda otomatik gelir.
-                </p>
-              </div>
-            ) : null}
-
-            {uyumsuzlar.length > 0 ? (
+                {uyumsuzlar.length > 0 ? (
                   <span className="text-sm font-medium text-red-800">
                     Seri no uyuşmazlığı giderilmeden kaydedilemez.
                   </span>

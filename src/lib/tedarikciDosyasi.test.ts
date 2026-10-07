@@ -78,7 +78,6 @@ test("gerçek portal dosyası: e-fatura no fatura, fatura no sipariş olarak oku
   const fatura = sonuc.faturalar[0];
   assert.equal(fatura.faturaNo, "DG12026000051622", "fatura no e-fatura sütunundan gelmeli");
   assert.equal(fatura.siparisNo, "0093519331", "sipariş no Fatura No sütunundan gelmeli");
-  assert.equal(fatura.dovizTipi, "TRY");
   assert.equal(fatura.tarih?.getDate(), 2);
   assert.equal(fatura.tarih?.getMonth(), 9);
   assert.equal(fatura.cihazSayisi, 3);
@@ -119,16 +118,38 @@ test("e-fatura no boşsa sipariş numarasına düşülür", async () => {
   assert.equal(sonuc.faturalar[0].siparisNo, "0093519331");
 });
 
-test("döviz tipi TRY değilse tutar kurla çevrilir", async () => {
+test("TL dışı para birimi olan satır alınmaz ve açıkça bildirilir", async () => {
+  // Program yalnız TL fatura işler. Döviz satırı sessizce yanlış fiyatla
+  // kaydedilmesin diye reddedilir.
   const sonuc = await tedarikciDosyasiniOku(
     await dosyaUret(
-      [["SN3", "KOD3", "Apple iPhone 16", 1, "EF9", "SIP9", "02.10.2026", 1000, "USD", 41.5]],
+      [
+        ["SN3", "KOD3", "Apple iPhone 16", 1, "EF9", "SIP9", "02.10.2026", 1000, "USD", 41.5],
+        ["SN4", "KOD4", "Huawei Test", 1, "EF9", "SIP9", "02.10.2026", 500, "TRY", 1],
+      ],
       GERCEK_BASLIKLAR,
     ),
   );
-  assert.deepEqual(sonuc.hatalar, []);
-  assert.equal(sonuc.faturalar[0].dovizTipi, "USD");
-  assert.equal(sonuc.faturalar[0].gruplar[0].alisFiyatiKurus, 4_150_000);
+
+  assert.equal(sonuc.hatalar.length, 1);
+  assert.match(sonuc.hatalar[0], /USD/);
+  assert.match(sonuc.hatalar[0], /yalnız TL/);
+  // TL satırı alınmış olmalı.
+  assert.equal(sonuc.faturalar[0].cihazSayisi, 1);
+  assert.equal(sonuc.faturalar[0].gruplar[0].alisFiyatiKurus, 50_000);
+});
+
+test("TL kodu yazımı ne olursa olsun kabul edilir", async () => {
+  for (const kod of ["TRY", "TL", "TRL", ""]) {
+    const sonuc = await tedarikciDosyasiniOku(
+      await dosyaUret(
+        [["SN5", "KOD5", "Huawei Test", 1, "EF1", "SIP1", "02.10.2026", 100, kod, 1]],
+        GERCEK_BASLIKLAR,
+      ),
+    );
+    assert.deepEqual(sonuc.hatalar, [], `"${kod}" reddedilmemeli`);
+    assert.equal(sonuc.faturalar[0].gruplar[0].alisFiyatiKurus, 10_000);
+  }
 });
 
 test("tutariCoz para birimi ekli hücreyi çözer", () => {
@@ -232,16 +253,19 @@ test("aynı seri numarası iki satırda ise ikincisi hata olarak bildirilir", as
   assert.match(sonuc.hatalar[0], /2\. satırda da var/);
 });
 
-test("döviz satırı kur ile TL'ye çevrilir", async () => {
+test("tutar hücresindeki para birimi kodu da denetlenir", async () => {
+  // Ekran görüntüsü düzeninde para birimi tutarın içinde yazıyor. Döviz
+  // sütunu olmadığı için satır alınır ama tutarın kodu TL değilse kaydın
+  // yanlış olacağını kullanıcı önizlemede görür: tutar olduğu gibi okunur,
+  // kur çevrimi yapılmaz.
   const sonuc = await tedarikciDosyasiniOku(
     await dosyaUret([
-      ["IMEI900", "4444444444444", "APPLE IPHONE 16", "APPLE", 1, "", "0093524100", "06.10.2026", "1.000,00 USD", "41,50"],
+      ["IMEI900", "4444444444444", "APPLE IPHONE 16", "APPLE", 1, "", "0093524100", "06.10.2026", "1.000,00 TRY", "1.00"],
     ]),
   );
 
   assert.deepEqual(sonuc.hatalar, []);
-  // 1.000,00 USD = 100000 kuruş; kur 41,50 -> 4.150.000 kuruş = 41.500,00 TL
-  assert.equal(sonuc.faturalar[0].gruplar[0].alisFiyatiKurus, 4_150_000);
+  assert.equal(sonuc.faturalar[0].gruplar[0].alisFiyatiKurus, 100_000);
 });
 
 test("grup içinde farklı birim tutar varsa işaretlenir", async () => {
