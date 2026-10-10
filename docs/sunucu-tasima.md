@@ -88,7 +88,69 @@ ayağa kalkmasına kadar sürer.
 ## 3. Yeni makineyi hazırla
 
 Ubuntu Server kurulumu için `docs/ofis-pc-kurulumu.md` rehberini izle
-(BIOS'ta otomatik açılma, ağ, SSH). Ubuntu kurulduktan sonra:
+(BIOS'ta otomatik açılma, ağ, SSH).
+
+### Dizüstü bilgisayar kullanıyorsan
+
+Kapak kapanınca makine uyur ve site erişilemez olur. Ubuntu kurulduktan sonra
+bunu kapat:
+
+```bash
+sudo sed -i 's/^#\?HandleLidSwitch=.*/HandleLidSwitch=ignore/' /etc/systemd/logind.conf
+sudo sed -i 's/^#\?HandleLidSwitchExternalPower=.*/HandleLidSwitchExternalPower=ignore/' /etc/systemd/logind.conf
+sudo sed -i 's/^#\?HandleLidSwitchDocked=.*/HandleLidSwitchDocked=ignore/' /etc/systemd/logind.conf
+sudo systemctl restart systemd-logind
+grep -E '^HandleLidSwitch' /etc/systemd/logind.conf
+```
+
+Askıya alma ve uyku kiplerini tamamen kapatmak da iyi olur:
+
+```bash
+sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+```
+
+Dizüstünün bataryası yerleşik bir kesintisiz güç kaynağı gibi çalışır;
+elektrik kesildiğinde makine düzgün kapanır, veritabanı bozulmaz.
+
+### RAM'i 4 GB veya altındaysa: takas alanı
+
+Çalışırken program ~250 MB RAM yeter, ama **derleme tepe noktada ~3 GB**
+ister. 4 GB'lık makinede işletim sisteminin payı düşüldüğünde bu yetmez ve
+derleme çöker. Kurulumdan önce takas alanı aç:
+
+```bash
+# Zaten swap varsa (free -h ile bakılır) bu adımı atla.
+sudo fallocate -l 6G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+# Takas yalnız gerektiğinde kullanılsın; normalde RAM tercih edilir.
+echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-stok-swap.conf
+sudo sysctl -p /etc/sysctl.d/99-stok-swap.conf
+free -h
+```
+
+Takasla derleme çalışır ama yavaştır: güçlü bir makinede 90 saniye süren
+derleme, Atom/Celeron sınıfı bir işlemci ve eMMC diskte **15-25 dakika**
+alabilir. Güncellemeyi mesai dışında yapın; `sunucu-guncelle.sh` zaten
+derleme boyunca servisi kapatıyor.
+
+### Donanım yeterli mi?
+
+| Bileşen | En az | Not |
+|---|---|---|
+| İşlemci | 64-bit (x86_64) | 32-bit Atom'lar (N270, N450, N550) **kullanılamaz** |
+| RAM | 4 GB + 6 GB takas | 8 GB varsa takas gerekmez |
+| Disk | 20 GB boş | Sistem + kod + derleme ~10 GB |
+
+Windows'ta `msinfo32` ile **Sistem Türü** `x64-based PC` olmalı. Bazı Atom
+tabletlerde işlemci 64-bit olsa da **32-bit UEFI** bulunur; bu makinelerde
+Ubuntu kurulumu ciddi zahmet çıkarır, mümkünse başka makine tercih edin.
+
+### Paketler ve kod
+
+Ubuntu kurulduktan sonra:
 
 ```bash
 sudo apt update && sudo apt upgrade -y

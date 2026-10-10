@@ -65,9 +65,26 @@ sudo -u "$KULLANICI" npm run db:generate
 sudo -u "$KULLANICI" npm run db:deploy
 
 baslik "6/7  Derleme"
+# Derleme tepe noktada ~3 GB bellek ister. Zayıf makinelerde takas alanı
+# yoksa süreç çöker; varsa çalışır ama uzun sürer.
+RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+SWAP_MB=$(awk '/SwapTotal/ {print int($2/1024)}' /proc/meminfo)
+echo "bellek: ${RAM_MB} MB RAM, ${SWAP_MB} MB takas"
+
+if [ "$RAM_MB" -lt 6000 ]; then
+  if [ "$SWAP_MB" -lt 2000 ]; then
+    kirmizi "UYARI: ${RAM_MB} MB RAM ve ${SWAP_MB} MB takas ile derleme çökebilir."
+    kirmizi "Takas alanı açmak için: docs/sunucu-tasima.md"
+  fi
+  echo "Zayıf makine: derleme uzun sürebilir (15-25 dk), sabır."
+  # Node'un öbek sınırı RAM'e göre otomatik belirlenir; az RAM'de fazla düşük
+  # kalıp "heap out of memory" verebiliyor.
+  export NODE_OPTIONS="--max-old-space-size=3072${NODE_OPTIONS:+ $NODE_OPTIONS}"
+fi
+
 # Eski parça dosyaları yenileriyle karışmasın diye sıfırdan.
 rm -rf "$UYGULAMA/.next"
-sudo -u "$KULLANICI" npm run build
+sudo -u "$KULLANICI" --preserve-env=NODE_OPTIONS npm run build
 
 baslik "7/7  Servis başlatılıyor"
 systemctl start "$SERVIS"
