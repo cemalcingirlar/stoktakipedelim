@@ -242,7 +242,8 @@ curl -s -o /dev/null -w "HTTP: %{http_code}\n" http://127.0.0.1:3000/giris
 sudo /usr/local/bin/stok-yedek.sh
 ```
 
-Üçü de olumlu dönünce tarayıcıdan `https://hospitalityageny.com` aç ve şunlara bak:
+Üçü de olumlu dönünce tarayıcıdan kendi alan adını (tünelin genel adresini) aç
+ve şunlara bak:
 
 - Giriş yapabiliyor musun (oturum anahtarı taşındıysa eski şifreler geçerli)
 - Cihaz listesinde kayıtların tamamı duruyor mu
@@ -250,6 +251,45 @@ sudo /usr/local/bin/stok-yedek.sh
 - **Ayarlar → Yedekleme** ekranında son yedek bugünün tarihli mi
 
 Son adım: Drive'daki `Stok Yedekleri` klasöründe yeni bir dosya oluştuğunu gör.
+
+---
+
+## Alan adını değiştirme
+
+Program hiçbir yerde alan adını saklamıyor: oturum çerezi host'a bağlı, mutlak
+adres kuran bir ortam değişkeni yok. Yani alan adı değişikliği **tamamen
+Cloudflare tarafında** biter — kod değişmez, yeniden derleme gerekmez, `.env`
+dosyasına dokunulmaz.
+
+1. **Cloudflare'a ekle.** [dash.cloudflare.com](https://dash.cloudflare.com) →
+   *Add a domain* → alan adını yaz → **Free** planı seç. Cloudflare iki tane
+   ad sunucusu (`...ns.cloudflare.com`) verir.
+2. **Kayıt firmasında ad sunucularını değiştir.** Alan adının yönetim
+   panelinde *Nameservers* → *Custom / I'll use my own* → Cloudflare'ın verdiği
+   ikisini yaz. Yayılması genelde 10 dakika–2 saat sürer.
+3. **Tünele genel adres ekle.** Cloudflare *Zero Trust* → *Networks* →
+   *Tunnels* → tünel → *Public Hostname* → *Add a public hostname*:
+   - Subdomain boş, Domain: yeni alan adı, Service: **HTTP**, URL:
+     `127.0.0.1:3000`
+   - Aynısını Subdomain `www` ile bir daha ekle.
+
+   Bu adım gereken DNS kayıtlarını (proxy'li CNAME) kendisi oluşturur; elle
+   A/CNAME kaydı girilmez.
+4. **SSL.** *SSL/TLS* → *Overview* → **Full**, ve *Edge Certificates* →
+   *Always Use HTTPS* açık. Sertifika aktivasyondan ~15 dakika sonra hazır olur.
+
+Dikkat edilecek iki şey:
+
+- **Joker (`*`) A kaydı açma.** Eski alan adında bu kayıt proxy'li olduğu için
+  e-posta MX hedefini de Cloudflare'a yönlendirip postayı bozma riski
+  doğurmuştu. Gerekiyorsa gri bulut (DNS only) yap.
+- **E-posta kullanacaksan** MX ve SPF/DKIM kayıtlarını Cloudflare'da elle
+  oluştur ve hepsini **DNS only** bırak. Sadece yönlendirme yetiyorsa
+  Cloudflare *Email Routing* ücretsizdir.
+
+Eski alan adını hemen kaldırmak zorunda değilsin: aynı tünelde iki genel adres
+birlikte çalışabilir. Personelin yer imleri bozulmasın diye eskisini birkaç
+hafta açık bırakıp sonra *Public Hostname* listesinden silmek en rahatı.
 
 ---
 
