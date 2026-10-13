@@ -1,6 +1,6 @@
 import { excelBasliklari, excelUret, kurusuExcelSayisi, type ExcelSayfasi } from "@/lib/excel";
 import { logYaz } from "@/lib/log";
-import { oturumuOku } from "@/lib/oturum";
+import { oturumuTazeOku } from "@/lib/oturumTaze";
 import {
   girisCikisRaporu,
   kategoriStokRaporu,
@@ -24,7 +24,7 @@ function tarihCoz(deger: string | null): Date | null {
 
 /** Rapor ekranındaki tüm tabloları tek Excel dosyasında, her biri ayrı sayfada verir. */
 export async function GET(istek: Request) {
-  const oturum = await oturumuOku();
+  const oturum = await oturumuTazeOku();
   if (!oturum) return new Response("Oturum gerekli.", { status: 401 });
 
   const url = new URL(istek.url);

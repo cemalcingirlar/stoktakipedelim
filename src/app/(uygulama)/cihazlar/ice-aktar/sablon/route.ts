@@ -1,6 +1,6 @@
 import { excelBasliklari, excelUret } from "@/lib/excel";
 import { ICE_AKTAR_SUTUNLARI } from "@/lib/iceAktar";
-import { oturumuOku } from "@/lib/oturum";
+import { oturumuTazeOku } from "@/lib/oturumTaze";
 import { prisma } from "@/lib/prisma";
 import { adminMi } from "@/lib/yetkiKurallari";
 
@@ -9,7 +9,7 @@ import { adminMi } from "@/lib/yetkiKurallari";
  * kategori/alt kategori listesi — kullanıcı adları elle yazarken şaşırmasın.
  */
 export async function GET() {
-  const oturum = await oturumuOku();
+  const oturum = await oturumuTazeOku();
   if (!oturum) return new Response("Oturum gerekli.", { status: 401 });
   if (!adminMi(oturum)) return new Response("Bu işlem için yetkiniz yok.", { status: 403 });
 

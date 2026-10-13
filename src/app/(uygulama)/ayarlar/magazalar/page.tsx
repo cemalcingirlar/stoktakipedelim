@@ -6,9 +6,14 @@ import { Kart } from "@/bilesenler/Kart";
 import { Rozet } from "@/bilesenler/Rozet";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
-import { ROL_ETIKET, STOK_DURUM, type Rol } from "@/lib/sabitler";
+import { ROLLER, ROL_ETIKET, STOK_DURUM, type Rol } from "@/lib/sabitler";
 import { adminSayfasi } from "@/lib/yetki";
-import { magazaEkle, magazaGuncelle, magazaSil } from "../eylemler";
+import {
+  magazaEkle,
+  magazaGuncelle,
+  magazaSil,
+  magazaYetkileriGuncelle,
+} from "../eylemler";
 
 export const metadata = { title: "Mağazalar — Stok Takip" };
 
@@ -17,17 +22,19 @@ const KUCUK_ETIKET = "mb-1 block text-xs font-medium text-slate-600";
 export default async function MagazalarSayfasi() {
   await adminSayfasi();
 
-  const [magazalar, stokOzeti] = await Promise.all([
+  const [magazalar, kullanicilar, stokOzeti] = await Promise.all([
     prisma.magaza.findMany({
       orderBy: [{ aktif: "desc" }, { kod: "asc" }],
       include: {
-        kullanicilar: {
-          where: { aktif: true },
-          select: { id: true, adSoyad: true, rol: true },
-          orderBy: { rol: "asc" },
-        },
+        kullanicilar: { where: { aktif: true }, select: { id: true } },
+        ekYetkililer: { where: { aktif: true }, select: { id: true } },
         _count: { select: { alisFaturalari: true, sayimlar: true } },
       },
+    }),
+    prisma.kullanici.findMany({
+      where: { aktif: true },
+      orderBy: [{ rol: "asc" }, { adSoyad: "asc" }],
+      select: { id: true, adSoyad: true, rol: true, magazaId: true },
     }),
     prisma.stokKalemi.groupBy({
       by: ["magazaId"],
@@ -38,6 +45,9 @@ export default async function MagazalarSayfasi() {
   ]);
 
   const stokHarita = new Map(stokOzeti.map((s) => [s.magazaId, s]));
+  // Yönetici her mağazada yetkili olduğu için kutu listesine girmez.
+  const yoneticiler = kullanicilar.filter((k) => k.rol === ROLLER.ADMIN);
+  const personel = kullanicilar.filter((k) => k.rol !== ROLLER.ADMIN);
 
   return (
     <div className="space-y-5">
@@ -107,6 +117,11 @@ export default async function MagazalarSayfasi() {
       <div className="space-y-3">
         {magazalar.map((m) => {
           const stok = stokHarita.get(m.id);
+          const ekYetkili = new Set(m.ekYetkililer.map((k) => k.id));
+          const yetkiliSayisi = new Set([
+            ...m.kullanicilar.map((k) => k.id),
+            ...m.ekYetkililer.map((k) => k.id),
+          ]).size;
           return (
             <div key={m.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -193,27 +208,75 @@ export default async function MagazalarSayfasi() {
               </EylemFormu>
 
               <div className="mt-3 border-t border-slate-100 pt-3">
-                <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Kullanıcılar
-                </h3>
-                {m.kullanicilar.length === 0 ? (
+                <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Yetkili Kullanıcılar
+                  </h3>
+                  <Link
+                    href="/ayarlar/kullanicilar"
+                    className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline"
+                  >
+                    + Yeni kullanıcı oluştur
+                  </Link>
+                </div>
+
+                {personel.length === 0 ? (
                   <p className="text-sm text-amber-700">
-                    Bu mağazaya bağlı kullanıcı yok — sevkiyat kabulü yapılamaz.
+                    Henüz mağaza personeli yok — önce kullanıcı ekranından hesap oluşturun.
                   </p>
                 ) : (
-                  <ul className="flex flex-wrap gap-2">
-                    {m.kullanicilar.map((k) => (
-                      <li
-                        key={k.id}
-                        className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-sm text-slate-700"
-                      >
-                        {k.adSoyad}
-                        <span className="ml-1.5 text-xs text-slate-500">
-                          {ROL_ETIKET[k.rol as Rol] ?? k.rol}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <EylemFormu eylem={magazaYetkileriGuncelle}>
+                    <input type="hidden" name="id" value={m.id} />
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
+                      {personel.map((k) => {
+                        const anaMagazasi = k.magazaId === m.id;
+                        const yetkili = anaMagazasi || ekYetkili.has(k.id);
+                        return (
+                          <label
+                            key={k.id}
+                            className={`flex items-center gap-2 text-sm ${
+                              anaMagazasi ? "text-slate-500" : "text-slate-700"
+                            }`}
+                          >
+                            <input
+                              key={`yetki-${m.id}-${k.id}-${yetkili}`}
+                              type="checkbox"
+                              name="yetkililer"
+                              value={k.id}
+                              defaultChecked={yetkili}
+                              disabled={anaMagazasi}
+                              className="h-4 w-4 rounded border-slate-300 disabled:opacity-60"
+                            />
+                            {k.adSoyad}
+                            <span className="text-xs text-slate-500">
+                              {anaMagazasi ? "ana mağazası" : (ROL_ETIKET[k.rol as Rol] ?? k.rol)}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {yetkiliSayisi === 0 ? (
+                      <p className="mt-2 text-sm text-amber-700">
+                        Bu mağazada yetkili kullanıcı yok — sevkiyat kabulü yapılamaz.
+                      </p>
+                    ) : null}
+
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <GonderDugmesi tur="ikincil" bekleyenMetin="Kaydediliyor…">
+                        Yetkileri Kaydet
+                      </GonderDugmesi>
+                      <p className="text-xs text-slate-500">
+                        Ana mağazası burası olan kişinin yetkisi buradan kaldırılamaz; ana
+                        mağaza değişikliği kullanıcı ekranından yapılır.
+                        {yoneticiler.length > 0
+                          ? ` Yönetici (${yoneticiler
+                              .map((y) => y.adSoyad)
+                              .join(", ")}) her mağazada yetkilidir.`
+                          : ""}
+                      </p>
+                    </div>
+                  </EylemFormu>
                 )}
               </div>
 

@@ -5,7 +5,7 @@ import {
   filtreyiCoz,
 } from "@/lib/cihazFiltre";
 import { excelBasliklari, excelUret, kurusuExcelSayisi } from "@/lib/excel";
-import { oturumuOku } from "@/lib/oturum";
+import { oturumuTazeOku } from "@/lib/oturumTaze";
 import { prisma } from "@/lib/prisma";
 import { LOG_ISLEM } from "@/lib/sabitler";
 import {
@@ -22,7 +22,7 @@ const PARASAL = new Set<SutunAnahtari>(["alisFiyati", "satisFiyati", "kar"]);
 
 /** Cihaz listesini o anki filtre ve seçili sütunlarla Excel olarak indirir. */
 export async function GET(istek: Request) {
-  const oturum = await oturumuOku();
+  const oturum = await oturumuTazeOku();
   if (!oturum) return new Response("Oturum gerekli.", { status: 401 });
 
   const url = new URL(istek.url);

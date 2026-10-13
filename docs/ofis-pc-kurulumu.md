@@ -376,11 +376,60 @@ deyip çalıştığını görün.
 
 ### Günlük otomatik yedek
 
+Yedeği tetikleyen betik. Anahtarı `.env` dosyasından okur, böylece anahtar
+başka hiçbir dosyaya yazılmaz:
+
 ```bash
-ANAHTAR=$(sudo grep YEDEK_ANAHTARI /opt/stok/app/.env | cut -d'"' -f2)
-echo "0 3 * * * curl -fsS -X POST -H 'X-Yedek-Anahtari: $ANAHTAR' http://127.0.0.1:3000/api/yedek >> /var/log/stok-yedek.log 2>&1" \
-  | sudo tee /etc/cron.d/stok-yedek
+sudo tee /usr/local/bin/stok-yedek.sh > /dev/null <<'EOF'
+#!/bin/bash
+# Gece yedeğini tetikler. Anahtarı .env dosyasından okur.
+ANAHTAR=$(grep -E '^YEDEK_ANAHTARI=' /opt/stok/app/.env | cut -d'"' -f2)
+if [ -z "$ANAHTAR" ]; then
+  echo "$(date '+%F %T') HATA: YEDEK_ANAHTARI bulunamadi"
+  exit 1
+fi
+echo -n "$(date '+%F %T') "
+curl -fsS -m 300 -X POST -H "X-Yedek-Anahtari: $ANAHTAR" http://127.0.0.1:3000/api/yedek
+echo
+EOF
+sudo chown root:root /usr/local/bin/stok-yedek.sh
+sudo chmod 700 /usr/local/bin/stok-yedek.sh
+```
+
+Zamanlama. `/etc/cron.d/` dosyalarında **kullanıcı alanı zorunludur** (burada
+`root`); eksik olursa cron satırı geçersiz sayılır ve yedek hiç alınmaz:
+
+```bash
+sudo tee /etc/cron.d/stok-yedek > /dev/null <<'EOF'
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+0 3 * * * root /usr/local/bin/stok-yedek.sh >> /var/log/stok-yedek.log 2>&1
+EOF
 sudo chmod 644 /etc/cron.d/stok-yedek
+```
+
+Günlük dosyası şişmesin diye devri:
+
+```bash
+sudo tee /etc/logrotate.d/stok-yedek > /dev/null <<'EOF'
+/var/log/stok-yedek.log {
+  weekly
+  rotate 8
+  compress
+  missingok
+  notifempty
+  create 0640 root adm
+}
+EOF
+sudo chmod 644 /etc/logrotate.d/stok-yedek
+```
+
+Sınayın — yönlendirme `sudo bash -c` içinde olmalı, yoksa `/var/log` altına
+yazma izni olmadığı için "Permission denied" alırsınız:
+
+```bash
+sudo bash -c '/usr/local/bin/stok-yedek.sh >> /var/log/stok-yedek.log 2>&1'
+sudo tail -3 /var/log/stok-yedek.log
 ```
 
 Her gece 03:00'te yedek alınır, son 14 yedek Drive'da tutulur.

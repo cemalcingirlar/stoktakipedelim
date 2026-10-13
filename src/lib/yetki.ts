@@ -1,6 +1,7 @@
 import "server-only";
 import { redirect } from "next/navigation";
-import { oturumuOku, type OturumBilgisi } from "./oturum";
+import type { OturumBilgisi } from "./oturum";
+import { oturumuTazeOku } from "./oturumTaze";
 import {
   adminMi,
   ayarlariYonetebilirMi,
@@ -21,14 +22,14 @@ export class YetkiHatasi extends Error {
 
 /** Sayfalar için: oturum yoksa giriş ekranına yönlendirir. */
 export async function oturumGerekli(): Promise<OturumBilgisi> {
-  const oturum = await oturumuOku();
+  const oturum = await oturumuTazeOku();
   if (!oturum) redirect("/giris");
   return oturum;
 }
 
 /** Server Action'lar için: oturum yoksa hata fırlatır (yönlendirme yapmaz). */
 export async function oturumZorunlu(): Promise<OturumBilgisi> {
-  const oturum = await oturumuOku();
+  const oturum = await oturumuTazeOku();
   if (!oturum) throw new YetkiHatasi("Oturumunuz sona ermiş. Lütfen tekrar giriş yapın.");
   return oturum;
 }

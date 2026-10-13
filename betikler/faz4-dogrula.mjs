@@ -42,26 +42,33 @@ async function sayaclar() {
 // ------------------------------------------------- Hazırlık: 3 Nolu Mağaza'ya 4 cihaz
 await giris("admin");
 const imei = Array.from({ length: 4 }, (_, i) => `35${i}${Date.now()}`.slice(0, 15));
+// Fatura girişi artık barkod temelli: tek barkod bir ürün kartı açar, IMEI'ler
+// o kartın altına arka arkaya okutulur. Eski sürüm her IMEI için ayrı kart
+// bekliyordu.
 await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
+await sayfa.fill("#okutma", "FAZ4BARKOD01");
+await sayfa.press("#okutma", "Enter");
+await sayfa.waitForTimeout(1200);
+const urunKarti = sayfa.locator("section.space-y-3 > div.rounded-xl").first();
+await urunKarti.locator("select").first().selectOption({ label: "Cep Telefonu" });
+await urunKarti.locator("select").nth(1).selectOption({ index: 1 });
+const alanlar = urunKarti.locator('input[type="text"], input:not([type])');
+await alanlar.nth(1).fill("Oppo");
+await alanlar.nth(2).fill("A74");
+await urunKarti.locator('input[inputmode="decimal"]').fill("3.000,00");
+
+const imeiKutusu = sayfa.locator('input[id^="imei-"]').first();
+for (const kod of imei) {
+  await imeiKutusu.fill(kod);
+  await imeiKutusu.press("Enter");
+  await sayfa.waitForTimeout(300);
+}
+
 await sayfa.selectOption("#tedarikciId", { index: 1 });
 await sayfa.fill("#faturaNo", `SAYIM-${Date.now()}`);
 await sayfa.selectOption("#magazaId", { label: "3 Nolu Mağaza" });
-for (const kod of imei) {
-  await sayfa.fill("#okutma", kod);
-  await sayfa.press("#okutma", "Enter");
-  await sayfa.waitForTimeout(200);
-}
-const kartlar = sayfa.locator("form > section").nth(2).locator("> div");
-for (let i = 1; i <= 4; i++) {
-  const kart = kartlar.nth(i);
-  await kart.locator("select").first().selectOption({ label: "Cep Telefonu" });
-  const m = kart.locator('input[type="text"], input:not([type])');
-  await m.nth(0).fill("Oppo");
-  await m.nth(1).fill(`A${70 + i}`);
-  await kart.locator('input[inputmode="decimal"]').fill("3.000");
-}
 await Promise.all([
-  sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 20000 }),
+  sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 30000 }),
   sayfa.click('button:has-text("Faturayı Kaydet")'),
 ]);
 console.log("0) hazırlık: 4 cihaz 3 Nolu Mağaza'ya girildi ✓");
