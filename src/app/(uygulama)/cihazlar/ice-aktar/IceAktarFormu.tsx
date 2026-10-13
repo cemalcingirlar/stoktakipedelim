@@ -84,13 +84,13 @@ export function IceAktarFormu({
         <form action={onizleEylem} className="flex flex-wrap items-end gap-3">
           <div>
             <label htmlFor="dosya" className={KUCUK_ETIKET}>
-              Dosya (.xlsx)
+              Dosya (.xlsx · .csv · .xls)
             </label>
             <input
               id="dosya"
               name="dosya"
               type="file"
-              accept=".xlsx"
+              accept=".xlsx,.csv,.txt,.xls,.xml"
               required
               className="block w-full max-w-sm text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-700"
             />

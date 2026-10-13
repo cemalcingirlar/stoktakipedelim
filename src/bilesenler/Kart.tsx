@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 export function Kart({
@@ -29,11 +30,14 @@ export function SayiKarti({
   deger,
   altBilgi,
   vurgu = "normal",
+  yol,
 }: {
   etiket: string;
   deger: string;
   altBilgi?: string;
   vurgu?: "normal" | "uyari" | "tehlike" | "basari";
+  /** Verilirse kart tıklanabilir olur; sayının geldiği listeye götürür. */
+  yol?: string;
 }) {
   const renk = {
     normal: "text-slate-900",
@@ -42,11 +46,20 @@ export function SayiKarti({
     basari: "text-emerald-600",
   }[vurgu];
 
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+  const icerik = (
+    <>
       <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{etiket}</div>
       <div className={`mt-1.5 text-2xl font-semibold tabular-nums ${renk}`}>{deger}</div>
       {altBilgi ? <div className="mt-1 text-xs text-slate-500">{altBilgi}</div> : null}
-    </div>
+    </>
+  );
+
+  const kutu = "rounded-xl border border-slate-200 bg-white p-4 shadow-sm";
+  if (!yol) return <div className={kutu}>{icerik}</div>;
+
+  return (
+    <Link href={yol} className={`${kutu} block transition hover:border-blue-300 hover:bg-blue-50`}>
+      {icerik}
+    </Link>
   );
 }

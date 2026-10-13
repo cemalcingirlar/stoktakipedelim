@@ -1,7 +1,14 @@
 import "server-only";
-import ExcelJS from "exceljs";
+import { desteklenmeyenTurMesaji, dosyaTuruBul } from "./dosyaTuru";
 import { aramaNormalize, kodNormalize } from "./metin";
 import { tlyiKurusaCevir } from "./para";
+import {
+  htmldenMatris,
+  metindenMatris,
+  xlsxtenMatris,
+  xmlTablodanMatris,
+  type Matris,
+} from "./tablo";
 import type { FaturaSatiriGirdisi } from "@/app/(uygulama)/faturalar/dogrulama";
 
 /** Şablondaki sütun başlıkları — sıra değil, başlık adı esas alınır. */
@@ -39,54 +46,67 @@ export type IceAktarSonucu = {
   basliklarTamam: boolean;
 };
 
-function hucreMetni(deger: ExcelJS.CellValue): string {
-  if (deger === null || deger === undefined) return "";
-  if (typeof deger === "string") return deger.trim();
-  if (typeof deger === "number" || typeof deger === "boolean") return String(deger);
-  if (deger instanceof Date) return deger.toISOString();
-  if (typeof deger === "object") {
-    // Formül, zengin metin ve köprü hücreleri.
-    if ("text" in deger && typeof deger.text === "string") return deger.text.trim();
-    if ("result" in deger) return hucreMetni(deger.result as ExcelJS.CellValue);
-    if ("richText" in deger && Array.isArray(deger.richText)) {
-      return deger.richText.map((p) => p.text).join("").trim();
-    }
-  }
-  return String(deger).trim();
-}
-
 function bosaNull(metin: string): string | null {
   return metin === "" ? null : metin;
 }
 
 /**
- * Yüklenen .xlsx dosyasını fatura satırlarına çevirir.
+ * Yüklenen dosyayı biçimine göre satır/hücre matrisine çevirir.
+ *
+ * Yalnız uzantıya bakmıyoruz: portal çıktıları sık sık HTML tablosunu ya da
+ * CSV'yi .xls adıyla veriyor, kullanıcı da dosyayı gerçek Excel sanıyor.
+ * Desteklenmeyen biçimlerde (eski .xls, PDF) ne yapılacağını söyleyen bir
+ * mesaj dönüyor.
+ */
+export async function dosyadanMatris(
+  veri: ArrayBuffer,
+): Promise<{ matris: Matris } | { hata: string }> {
+  const bayt = new Uint8Array(veri);
+  const tur = dosyaTuruBul(bayt);
+
+  if (tur === "xlsx") return { matris: await xlsxtenMatris(veri) };
+
+  if (tur === "html") {
+    const metin = new TextDecoder("utf-8", { fatal: false }).decode(bayt);
+    // Excel'in XML Spreadsheet çıktısı da bu dalda geliyor.
+    const matris = metin.includes("<Row") ? xmlTablodanMatris(metin) : htmldenMatris(metin);
+    if (matris.length > 0) return { matris };
+    return { hata: desteklenmeyenTurMesaji("html") ?? "Dosya okunamadı." };
+  }
+
+  if (tur === "metin") {
+    const metin = new TextDecoder("utf-8", { fatal: false }).decode(bayt);
+    const matris = metindenMatris(metin);
+    if (matris.length > 0) return { matris };
+    return { hata: "Dosyada satır bulunamadı." };
+  }
+
+  return { hata: desteklenmeyenTurMesaji(tur) ?? "Dosya okunamadı." };
+}
+
+/**
+ * Matrisi fatura satırlarına çevirir.
  *
  * Kategori ve alt kategori ada göre eşleştirilir (Türkçe büyük/küçük harf
  * duyarsız). Hiçbir şey veritabanına yazılmaz; çağıran taraf önce kullanıcıya
  * önizleme gösterir.
  */
-export async function exceliOku(
-  veri: ArrayBuffer,
+export function matristenOku(
+  matris: Matris,
   kategoriler: KategoriSecenegi[],
-): Promise<IceAktarSonucu> {
-  const kitap = new ExcelJS.Workbook();
-  await kitap.xlsx.load(veri);
-
-  const sayfa = kitap.worksheets[0];
-  if (!sayfa) {
+): IceAktarSonucu {
+  if (matris.length === 0) {
     return { satirlar: [], hatalar: ["Dosyada sayfa bulunamadı."], basliklarTamam: false };
   }
 
   // Başlık satırını bul: "Marka" ve "Model" içeren ilk satır.
   let baslikSatirNo = 0;
   let sutunYeri: Record<string, number> = {};
-  for (let i = 1; i <= Math.min(sayfa.rowCount, 20); i++) {
-    const satir = sayfa.getRow(i);
+  for (let i = 1; i <= Math.min(matris.length, 20); i++) {
     const yerler: Record<string, number> = {};
-    satir.eachCell({ includeEmpty: false }, (hucre, sutunNo) => {
-      const baslik = aramaNormalize(hucreMetni(hucre.value));
-      if (baslik) yerler[baslik] = sutunNo;
+    matris[i - 1].forEach((hucre, indeks) => {
+      const baslik = aramaNormalize(hucre);
+      if (baslik) yerler[baslik] = indeks + 1;
     });
     if (yerler["marka"] && yerler["model"]) {
       baslikSatirNo = i;
@@ -106,9 +126,9 @@ export async function exceliOku(
   }
 
   const yer = (baslik: string) => sutunYeri[aramaNormalize(baslik)] ?? 0;
-  const oku = (satir: ExcelJS.Row, baslik: string): string => {
+  const oku = (satir: string[], baslik: string): string => {
     const sutunNo = yer(baslik);
-    return sutunNo ? hucreMetni(satir.getCell(sutunNo).value) : "";
+    return sutunNo ? (satir[sutunNo - 1] ?? "").trim() : "";
   };
 
   const kategoriHarita = new Map(kategoriler.map((k) => [aramaNormalize(k.ad), k]));
@@ -117,8 +137,8 @@ export async function exceliOku(
   const hatalar: string[] = [];
   const gorulenSeriNolar = new Map<string, number>();
 
-  for (let i = baslikSatirNo + 1; i <= sayfa.rowCount; i++) {
-    const satir = sayfa.getRow(i);
+  for (let i = baslikSatirNo + 1; i <= matris.length; i++) {
+    const satir = matris[i - 1];
 
     const marka = oku(satir, "Marka");
     const model = oku(satir, "Model");
@@ -204,4 +224,19 @@ export async function exceliOku(
   }
 
   return { satirlar, hatalar, basliklarTamam: true };
+}
+
+/**
+ * Dosyayı okuyup satırlara çevirir — ekranların kullandığı giriş noktası.
+ * Biçim ayrımı dosyadanMatris içinde, eşleme matristenOku içinde.
+ */
+export async function exceliOku(
+  veri: ArrayBuffer,
+  kategoriler: KategoriSecenegi[],
+): Promise<IceAktarSonucu> {
+  const sonuc = await dosyadanMatris(veri);
+  if ("hata" in sonuc) {
+    return { satirlar: [], hatalar: [sonuc.hata], basliklarTamam: false };
+  }
+  return matristenOku(sonuc.matris, kategoriler);
 }

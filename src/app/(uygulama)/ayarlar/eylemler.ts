@@ -37,6 +37,44 @@ function tazele() {
   revalidatePath("/ayarlar/kullanicilar");
 }
 
+// --------------------------------------------------------------- Firma adı
+
+const firmaAdiSemasi = z
+  .string()
+  .trim()
+  .min(2, "Firma adı en az 2 karakter olmalı.")
+  .max(60, "Firma adı en fazla 60 karakter olabilir.");
+
+/**
+ * Üst menüde ve sayfa başlıklarında görünen firma adı. Tohum veri bir
+ * örnek adla geldiği için ekrandan değiştirilebilir olması gerekiyordu.
+ */
+export async function firmaAdiGuncelle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
+  return calistir(async (oturum) => {
+    const sonuc = firmaAdiSemasi.safeParse(form.get("firmaAdi"));
+    if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
+
+    await prisma.ayar.upsert({
+      where: { anahtar: "firma_adi" },
+      update: { deger: sonuc.data },
+      create: { anahtar: "firma_adi", deger: sonuc.data },
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Ayar",
+      detay: `Firma adı: ${sonuc.data}`,
+    });
+    tazele();
+    // Firma adı üst menüde, yani düzen bileşeninde görünüyor.
+    revalidatePath("/", "layout");
+    return { basari: `Firma adı "${sonuc.data}" olarak kaydedildi.` };
+  });
+}
+
 // ------------------------------------------------------------------ Kategori
 
 export async function kategoriEkle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
