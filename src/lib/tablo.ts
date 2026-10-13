@@ -7,7 +7,25 @@ import ExcelJS from "exceljs";
  * böylece yeni bir biçim eklemek yalnız yeni bir okuyucu yazmak demek oluyor,
  * eşleme kodu tekrarlanmıyor.
  */
-export type Matris = string[][];
+export type Hucre = string | number;
+
+/**
+ * Sayı hücreleri sayı olarak kalır: Excel'den gelen 1.234 değeri metne
+ * çevrilse "1.234" olur ve Türkçe biçim kuralıyla bin ayırıcı sanılıp 1234 TL
+ * okunurdu. Metin kaynaklarında (CSV, HTML) her şey metindir, orada Türkçe
+ * ondalık kuralı doğru olan.
+ */
+export type Matris = Hucre[][];
+
+/** Hücreyi matrise konacak hale getirir: sayılar sayı, gerisi düz metin. */
+function hucreDegeri(deger: ExcelJS.CellValue): Hucre {
+  if (typeof deger === "number") return deger;
+  if (deger !== null && typeof deger === "object" && "result" in deger) {
+    const sonuc = (deger as { result?: unknown }).result;
+    if (typeof sonuc === "number") return sonuc;
+  }
+  return hucreMetni(deger);
+}
 
 function hucreMetni(deger: ExcelJS.CellValue): string {
   if (deger === null || deger === undefined) return "";
@@ -35,10 +53,10 @@ export async function xlsxtenMatris(veri: ArrayBuffer): Promise<Matris> {
   const matris: Matris = [];
   for (let i = 1; i <= sayfa.rowCount; i++) {
     const satir = sayfa.getRow(i);
-    const hucreler: string[] = [];
+    const hucreler: Hucre[] = [];
     // Boş hücreler de yerini korumalı, yoksa sütunlar kayar.
     for (let s = 1; s <= sayfa.columnCount; s++) {
-      hucreler.push(hucreMetni(satir.getCell(s).value));
+      hucreler.push(hucreDegeri(satir.getCell(s).value));
     }
     matris.push(hucreler);
   }
@@ -179,4 +197,10 @@ export function xmlTablodanMatris(metin: string): Matris {
     matris.push(degerler);
   }
   return matris.filter((s) => s.some((h) => h !== ""));
+}
+
+/** Hücreyi metne çevirir: sayı hücreleri olduğu gibi yazılır. */
+export function hucreYaz(hucre: Hucre | null | undefined): string {
+  if (hucre === null || hucre === undefined) return "";
+  return typeof hucre === "number" ? String(hucre) : hucre.trim();
 }

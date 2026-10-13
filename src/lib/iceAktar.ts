@@ -1,12 +1,15 @@
 import "server-only";
 import { desteklenmeyenTurMesaji, dosyaTuruBul } from "./dosyaTuru";
+import { envanterDosyasiMi } from "./envanterDosyasi";
 import { aramaNormalize, kodNormalize } from "./metin";
-import { tlyiKurusaCevir } from "./para";
+import { hucreTutari } from "./para";
 import {
   htmldenMatris,
+  hucreYaz,
   metindenMatris,
   xlsxtenMatris,
   xmlTablodanMatris,
+  type Hucre,
   type Matris,
 } from "./tablo";
 import type { FaturaSatiriGirdisi } from "@/app/(uygulama)/faturalar/dogrulama";
@@ -105,7 +108,7 @@ export function matristenOku(
   for (let i = 1; i <= Math.min(matris.length, 20); i++) {
     const yerler: Record<string, number> = {};
     matris[i - 1].forEach((hucre, indeks) => {
-      const baslik = aramaNormalize(hucre);
+      const baslik = aramaNormalize(hucreYaz(hucre));
       if (baslik) yerler[baslik] = indeks + 1;
     });
     if (yerler["marka"] && yerler["model"]) {
@@ -116,6 +119,19 @@ export function matristenOku(
   }
 
   if (baslikSatirNo === 0) {
+    // Muhasebe programının envanter dökümünü buraya yükleyen kullanıcıya
+    // "şablonu kullanın" demek yetmiyor: o dosyanın kendi ekranı var.
+    if (envanterDosyasiMi(matris)) {
+      return {
+        satirlar: [],
+        hatalar: [
+          "Bu dosya bir Seri/Lot envanter dökümü gibi görünüyor. Onu değiştirmeden " +
+            "yüklemek için Cihazlar → Envanter Dökümü ile Yükleme ekranını kullanın " +
+            "(/cihazlar/envanter).",
+        ],
+        basliklarTamam: false,
+      };
+    }
     return {
       satirlar: [],
       hatalar: [
@@ -126,9 +142,15 @@ export function matristenOku(
   }
 
   const yer = (baslik: string) => sutunYeri[aramaNormalize(baslik)] ?? 0;
-  const oku = (satir: string[], baslik: string): string => {
+  const oku = (satir: Hucre[], baslik: string): string => {
     const sutunNo = yer(baslik);
-    return sutunNo ? (satir[sutunNo - 1] ?? "").trim() : "";
+    return sutunNo ? hucreYaz(satir[sutunNo - 1]) : "";
+  };
+  // Tutar için hücrenin ham hali gerekiyor: sayı hücresini metne çevirmek
+  // "1.234" gibi değerlerde bin ayırıcı belirsizliği doğuruyor.
+  const hamOku = (satir: Hucre[], baslik: string): Hucre | undefined => {
+    const sutunNo = yer(baslik);
+    return sutunNo ? satir[sutunNo - 1] : undefined;
   };
 
   const kategoriHarita = new Map(kategoriler.map((k) => [aramaNormalize(k.ad), k]));
@@ -145,7 +167,8 @@ export function matristenOku(
     const kategoriAdi = oku(satir, "Kategori");
     const seriNoHam = oku(satir, "Seri No (IMEI)");
     const barkodHam = oku(satir, "Barkod");
-    const fiyatHam = oku(satir, "Alış Fiyatı (TL)");
+    const fiyatHucresi = hamOku(satir, "Alış Fiyatı (TL)");
+    const fiyatHam = hucreYaz(fiyatHucresi);
     const altKategoriAdi = oku(satir, "Alt Kategori");
     const renk = oku(satir, "Renk");
     const kapasite = oku(satir, "Kapasite");
@@ -190,7 +213,7 @@ export function matristenOku(
       }
     }
 
-    const fiyatKurus = fiyatHam === "" ? 0 : tlyiKurusaCevir(fiyatHam);
+    const fiyatKurus = fiyatHam === "" ? 0 : hucreTutari(fiyatHucresi);
     if (fiyatKurus === null) {
       satirHatalari.push(`Alış fiyatı okunamadı: "${fiyatHam}".`);
     } else if (fiyatKurus < 0) {

@@ -68,3 +68,18 @@ export function tlyiKurusaCevir(metin: string | number | null | undefined): numb
   if (!Number.isFinite(sayi)) return null;
   return Math.round(sayi * 100) * (eksi ? -1 : 1);
 }
+
+/**
+ * Tablo hücresinden tutar okur.
+ *
+ * Sayı hücreleri doğrudan kuruşa çevrilir; Türkçe ondalık/bin ayırıcı
+ * heuristiği yalnız metin hücrelerine uygulanır. Aksi halde Excel'den gelen
+ * 1.234 değeri "bin iki yüz otuz dört" sanılırdı.
+ */
+export function hucreTutari(ham: string | number | null | undefined): number | null {
+  if (ham === null || ham === undefined) return null;
+  if (typeof ham === "number") return Number.isFinite(ham) ? Math.round(ham * 100) : null;
+  const temiz = ham.replace(/[^\d.,-]/g, "").trim();
+  if (!temiz) return null;
+  return tlyiKurusaCevir(temiz);
+}
