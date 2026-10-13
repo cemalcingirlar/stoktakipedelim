@@ -16,7 +16,7 @@
     "test": "node --import tsx --test \"src/lib/*.test.ts\"",
     "yedek": "node --import tsx betikler/yedek-al.mts",
     "drive:jeton": "node betikler/drive-jeton-al.mjs",
-    "yetki:dokum": "node --import tsx betikler/yetki-dokum.mts"
+    "yetki:dokum": "node --env-file-if-exists=.env --import tsx betikler/yetki-dokum.mts"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.10.0",

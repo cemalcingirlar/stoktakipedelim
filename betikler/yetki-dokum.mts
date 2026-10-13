@@ -6,6 +6,9 @@
  *
  *   cd /opt/stok/app
  *   sudo -u stok npm run yetki:dokum
+ *
+ * DATABASE_URL değerini .env dosyasından okur (--env-file-if-exists); ayrıca
+ * ortamda tanımlıysa o kullanılır.
  */
 import { prisma } from "../src/lib/prisma";
 import { ROLLER, ROL_ETIKET, type Rol } from "../src/lib/sabitler";
