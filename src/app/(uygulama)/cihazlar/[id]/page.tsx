@@ -34,6 +34,7 @@ const HAREKET_NOKTASI: Record<HareketTip, string> = {
   [HAREKET_TIP.TRANSFER_GONDERIM]: "bg-violet-500",
   [HAREKET_TIP.TRANSFER_KABUL]: "bg-emerald-500",
   [HAREKET_TIP.TRANSFER_RED]: "bg-red-500",
+  [HAREKET_TIP.DUKKAN_ICI]: "bg-sky-500",
   [HAREKET_TIP.SATIS]: "bg-emerald-600",
   [HAREKET_TIP.IADE]: "bg-amber-500",
   [HAREKET_TIP.DUZELTME]: "bg-slate-400",

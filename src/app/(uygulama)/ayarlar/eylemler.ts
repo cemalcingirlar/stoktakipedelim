@@ -281,6 +281,15 @@ const magazaSemasi = z.object({
   ad: adSemasi,
   adres: z.string().trim().max(200).nullable(),
   telefon: z.string().trim().max(30).nullable(),
+  // Aynı fiziksel dükkândaki mağazalar aynı kodu taşır; bu mağazalar arasında
+  // sevkiyat onayı beklenmeden aktarım yapılabilir.
+  dukkanKodu: z
+    .string()
+    .trim()
+    .max(20, "Dükkân kodu en fazla 20 karakter olabilir.")
+    .regex(/^[A-Za-z0-9-]+$/, "Dükkân kodu yalnız harf, rakam ve tire içerebilir.")
+    .transform((v) => v.toUpperCase())
+    .nullable(),
 });
 
 function magazaFormunuOku(form: FormData) {
@@ -293,6 +302,7 @@ function magazaFormunuOku(form: FormData) {
     ad: form.get("ad"),
     adres: bos("adres"),
     telefon: bos("telefon"),
+    dukkanKodu: bos("dukkanKodu"),
   });
 }
 
