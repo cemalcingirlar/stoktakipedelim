@@ -59,8 +59,13 @@ await sayfa.waitForSelector("text=Test Alt", { timeout: 15000 });
 console.log("3) alt kategori eklendi ✓");
 
 // --- Fatura ekranında yeni kategori görünmeli
+// Kategori seçicisi ürün kartının içinde; kart ancak barkod okutunca açılıyor.
 await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
-const secenekler = await sayfa.locator("form > section").nth(2).locator("select").first().locator("option").allTextContents();
+await sayfa.fill("#okutma", "KATTEST0001");
+await sayfa.press("#okutma", "Enter");
+await sayfa.waitForTimeout(1200);
+const urunKarti = sayfa.locator("section.space-y-3 > div.rounded-xl").first();
+const secenekler = await urunKarti.locator("select").first().locator("option").allTextContents();
 console.log("4) fatura ekranı kategorileri:", secenekler.filter(Boolean).join(", "));
 console.log("   yeni kategori listede:", secenekler.some((s) => s.includes(yeniAd)) ? "✓" : "✗");
 
@@ -72,6 +77,30 @@ await kartiBul(yeniAd).waitFor({ state: "detached", timeout: 15000 });
 console.log("5) cihazsız kategori silindi (kart kayboldu) ✓");
 
 // --- Cihazı olan kategori silinmemeli, pasife alınmalı
+// Önce "Cep Telefonu" kategorisine bir cihaz girelim; aksi halde kategori
+// cihazsız sayılır ve pasife alınmak yerine gerçekten silinir.
+await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
+await sayfa.fill("#okutma", "KATCIHAZ001");
+await sayfa.press("#okutma", "Enter");
+await sayfa.waitForTimeout(1200);
+const cihazKarti = sayfa.locator("section.space-y-3 > div.rounded-xl").first();
+await cihazKarti.locator("select").first().selectOption({ label: "Cep Telefonu" });
+await cihazKarti.locator("select").nth(1).selectOption({ index: 1 });
+const cihazMetinleri = cihazKarti.locator('input[type="text"], input:not([type])');
+await cihazMetinleri.nth(1).fill("Test Marka");
+await cihazMetinleri.nth(2).fill("Test Model");
+await cihazKarti.locator('input[inputmode="decimal"]').fill("1.000,00");
+const imeiKutusu = sayfa.locator('input[id^="imei-"]').first();
+await imeiKutusu.fill(`35${Date.now()}`.slice(0, 15));
+await imeiKutusu.press("Enter");
+await sayfa.waitForTimeout(600);
+await sayfa.selectOption("#tedarikciId", { index: 1 });
+await sayfa.fill("#faturaNo", `KAT-${Date.now()}`);
+await sayfa.selectOption("#magazaId", { index: 1 });
+await sayfa.click('button:has-text("Faturayı Kaydet")');
+await sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 30000 }).catch(() => {});
+
+await sayfa.goto(`${hedef}/ayarlar/kategoriler`, { waitUntil: "networkidle" });
 await kartiBul("Cep Telefonu").locator('button:has-text("Kategoriyi Sil")').click();
 console.log("6) cihazlı kategori:", await mesajiBekle('[role="status"]', kartiBul("Cep Telefonu")));
 await sayfa.waitForFunction(
@@ -86,7 +115,7 @@ await sayfa.waitForFunction(
  .catch(() => console.log("   onay kutusu pasife döndü ✗"));
 // geri aktif et
 await kartiBul("Cep Telefonu").locator('input[name="aktif"]').check();
-await kartiBul("Cep Telefonu").locator('button:has-text("Kaydet")').click();
+await kartiBul("Cep Telefonu").getByRole("button", { name: "Kaydet", exact: true }).click();
 await sayfa.waitForTimeout(2000);
 const geriAktif = await kartiBul("Cep Telefonu").locator('input[name="aktif"]').isChecked();
 console.log("   tekrar aktif edildi:", geriAktif ? "✓" : "✗");

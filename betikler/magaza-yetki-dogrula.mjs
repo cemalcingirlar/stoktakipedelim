@@ -170,7 +170,93 @@ try {
   const sonSecenek = await sayfa.locator('select[name="magazaId"] option').count();
   kontrol("personel yine tek mağaza görüyor", sonSecenek === 2, `${sonSecenek} seçenek`);
 
-  // ---------------------------------------------------- 7) Değişiklik yoksa
+  // --------- 7) Kullanıcı ekranından verilen yetki mağaza ekranında görünür
+  // Canlıda bildirilen hata buydu: ek mağaza yetkisi verilmiş kullanıcı,
+  // o mağazanın kartında hiç listelenmiyordu ve kart "bağlı kullanıcı yok"
+  // uyarısı veriyordu.
+  await giris("admin");
+  await sayfa.goto(`${hedef}/ayarlar/kullanicilar`, { waitUntil: "networkidle" });
+  const personel3Karti = kullaniciKarti("personel3");
+  await personel3Karti
+    .locator('label:has-text("2 Nolu Mağaza") input[name="ekMagazalar"]')
+    .first()
+    .check();
+  await personel3Karti.getByRole("button", { name: "Kaydet" }).first().click();
+  await sayfa.waitForTimeout(1500);
+
+  await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
+  const m2Sonra = magazaKarti("M2");
+  const p3Kutusu = yetkiFormu(m2Sonra).locator(
+    'label:has-text("3 Nolu Mağaza Personeli") input[name="yetkililer"]',
+  );
+  kontrol(
+    "kullanıcı ekranından verilen yetki mağaza kartında işaretli",
+    await p3Kutusu.isChecked(),
+  );
+  kontrol(
+    "mağaza kartı yanlışlıkla 'yetkili yok' demiyor",
+    (await m2Sonra.getByText("yetkili kullanıcı yok").count()) === 0,
+  );
+
+  // ------------- 8) Yetki, çıkış yapmadan anında geçerli oluyor mu?
+  // Oturum çerezi giriş anındaki mağaza listesini taşıyor; yetkiler her
+  // istekte veritabanından tazelenmezse personel çıkıp girene kadar yeni
+  // mağazayı görmez.
+  const personel2Sayfasi = await tarayici.newPage({
+    viewport: { width: 1400, height: 1000 },
+    locale: "tr-TR",
+  });
+  await personel2Sayfasi.goto(`${hedef}/giris`, { waitUntil: "networkidle" });
+  await personel2Sayfasi.fill("#kullaniciAdi", "personel2");
+  await personel2Sayfasi.fill("#sifre", SIFRE);
+  await Promise.all([
+    personel2Sayfasi.waitForURL("**/panel"),
+    personel2Sayfasi.click('button[type="submit"]'),
+  ]);
+  await personel2Sayfasi.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
+  const oncesi = await personel2Sayfasi.locator('select[name="magazaId"] option').count();
+  kontrol("personel2 giriş anında tek mağaza görüyor", oncesi === 2, `${oncesi} seçenek`);
+
+  // Admin başka sekmede yetki verir; personel2 oturumunu KAPATMAZ.
+  await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
+  const m3Kart = magazaKarti("M3");
+  await yetkiFormu(m3Kart)
+    .locator('label:has-text("2 Nolu Mağaza Personeli") input[name="yetkililer"]')
+    .check();
+  await yetkiFormu(m3Kart).getByRole("button", { name: "Yetkileri Kaydet" }).click();
+  await sayfa.waitForTimeout(1500);
+
+  await personel2Sayfasi.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
+  const sonrasi = await personel2Sayfasi.locator('select[name="magazaId"] option').count();
+  kontrol(
+    "yetki çıkış yapmadan anında geçerli oldu",
+    sonrasi === 3,
+    `${sonrasi} seçenek (yeniden giriş yapılmadı)`,
+  );
+
+  // ------------- 9) Pasife alınan kullanıcı anında dışarı düşüyor mu?
+  await sayfa.goto(`${hedef}/ayarlar/kullanicilar`, { waitUntil: "networkidle" });
+  const p2Karti = kullaniciKarti("personel2");
+  await p2Karti.locator('input[name="aktif"]').uncheck();
+  await p2Karti.getByRole("button", { name: "Kaydet" }).first().click();
+  await sayfa.waitForTimeout(1500);
+
+  await personel2Sayfasi.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
+  kontrol(
+    "pasife alınan kullanıcı giriş ekranına düştü",
+    personel2Sayfasi.url().includes("/giris"),
+    personel2Sayfasi.url(),
+  );
+  await personel2Sayfasi.close();
+
+  // Düzeni geri al: personel2 yeniden aktif, M3 yetkisi kaldırılsın.
+  await sayfa.goto(`${hedef}/ayarlar/kullanicilar`, { waitUntil: "networkidle" });
+  const p2Karti2 = kullaniciKarti("personel2");
+  await p2Karti2.locator('input[name="aktif"]').check();
+  await p2Karti2.getByRole("button", { name: "Kaydet" }).first().click();
+  await sayfa.waitForTimeout(1500);
+
+  // --------------------------------------------------- 10) Değişiklik yoksa
   await giris("admin");
   await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
   const kartM3 = magazaKarti("M3");

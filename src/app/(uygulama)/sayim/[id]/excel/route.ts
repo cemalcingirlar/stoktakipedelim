@@ -10,7 +10,7 @@ import {
   type SayimSonuc,
 } from "@/lib/sabitler";
 import { tarihSaatYaz, tarihYaz } from "@/lib/tarih";
-import { oturumuOku } from "@/lib/oturum";
+import { oturumuTazeOku } from "@/lib/oturumTaze";
 
 const SUTUNLAR = [
   { baslik: "Sonuç", genislik: 22 },
@@ -28,7 +28,7 @@ const SUTUNLAR = [
 
 /** Sayım sonucunu Excel dosyası olarak indirir: sayılanlar, eksikler ve fazlalar ayrı sayfalarda. */
 export async function GET(_istek: Request, { params }: RouteContext<"/sayim/[id]/excel">) {
-  const oturum = await oturumuOku();
+  const oturum = await oturumuTazeOku();
   if (!oturum) {
     return new Response("Oturum gerekli.", { status: 401 });
   }

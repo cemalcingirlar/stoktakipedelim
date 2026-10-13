@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { sifreDogrula } from "@/lib/sifre";
 import { oturumAc, oturumKapat, oturumuOku } from "@/lib/oturum";
+import { oturumBilgisiKur } from "@/lib/oturumKur";
 import { logYaz } from "@/lib/log";
-import { LOG_ISLEM, type Rol } from "@/lib/sabitler";
+import { LOG_ISLEM } from "@/lib/sabitler";
 
 export type GirisDurumu = {
   hata?: string;
@@ -51,21 +52,7 @@ export async function girisYap(
     data: { sonGiris: new Date() },
   });
 
-  // Ana mağaza her zaman listenin başında; ek mağazalar kod sırasıyla peşinden.
-  // Ana mağaza ek mağazalar arasında da işaretliyse iki kez girmesin.
-  const ekler = kullanici.ekMagazalar.filter((m) => m.id !== kullanici.magazaId);
-  const yetkiliMagazalar = kullanici.magaza ? [kullanici.magaza, ...ekler] : ekler;
-
-  const oturum = {
-    kullaniciId: kullanici.id,
-    kullaniciAdi: kullanici.kullaniciAdi,
-    adSoyad: kullanici.adSoyad,
-    rol: kullanici.rol as Rol,
-    magazaId: kullanici.magazaId,
-    magazaAdi: kullanici.magaza?.ad ?? null,
-    magazaIdleri: yetkiliMagazalar.map((m) => m.id),
-    magazaAdlari: yetkiliMagazalar.map((m) => m.ad),
-  };
+  const oturum = oturumBilgisiKur(kullanici);
 
   await oturumAc(oturum);
   await logYaz(oturum, { islem: LOG_ISLEM.GIRIS_YAP });

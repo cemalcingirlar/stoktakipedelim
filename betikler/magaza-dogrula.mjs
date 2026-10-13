@@ -79,12 +79,36 @@ console.log("   panelde mağaza kartı:", (await sayfa.locator("a", { hasText: a
 // --- Düzenleme
 await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
 await kartiBul(kod).locator('input[name="ad"]').fill(`${ad} Şube`);
-await kartiBul(kod).locator('button:has-text("Kaydet")').click();
+await kartiBul(kod).getByRole("button", { name: "Kaydet", exact: true }).click();
 console.log("5) düzenleme:", await mesajiBekle('[role="status"]', kartiBul(kod)), "✓");
 
-// --- Stoğu olan mağaza pasife alınamamalı (1 Nolu Mağaza'da cihaz var)
+// --- Stoğu olan mağaza pasife alınamamalı
+// Tohum veride stok yok; kuralı sınamak için 1 Nolu Mağaza'ya bir cihaz
+// giriyoruz. Aksi halde mağaza stoksuz sayılır ve pasife alma başarılı olur.
+await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
+await sayfa.fill("#okutma", "MAGTEST0001");
+await sayfa.press("#okutma", "Enter");
+await sayfa.waitForTimeout(1200);
+const stokKarti = sayfa.locator("section.space-y-3 > div.rounded-xl").first();
+await stokKarti.locator("select").first().selectOption({ label: "Cep Telefonu" });
+await stokKarti.locator("select").nth(1).selectOption({ index: 1 });
+const stokMetinleri = stokKarti.locator('input[type="text"], input:not([type])');
+await stokMetinleri.nth(1).fill("Test Marka");
+await stokMetinleri.nth(2).fill("Test Model");
+await stokKarti.locator('input[inputmode="decimal"]').fill("1.000,00");
+const stokImei = sayfa.locator('input[id^="imei-"]').first();
+await stokImei.fill(`35${Date.now()}`.slice(0, 15));
+await stokImei.press("Enter");
+await sayfa.waitForTimeout(600);
+await sayfa.selectOption("#tedarikciId", { index: 1 });
+await sayfa.fill("#faturaNo", `MAG-${Date.now()}`);
+await sayfa.selectOption("#magazaId", { label: "1 Nolu Mağaza" });
+await sayfa.click('button:has-text("Faturayı Kaydet")');
+await sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 30000 }).catch(() => {});
+
+await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
 await kartiBul("M1").locator('input[name="aktif"]').uncheck();
-await kartiBul("M1").locator('button:has-text("Kaydet")').click();
+await kartiBul("M1").getByRole("button", { name: "Kaydet", exact: true }).click();
 console.log("6) stoklu mağazayı pasife alma:", await mesajiBekle('[role="alert"]', kartiBul("M1")), "✓");
 
 // --- Stoğu olan mağaza silinememeli

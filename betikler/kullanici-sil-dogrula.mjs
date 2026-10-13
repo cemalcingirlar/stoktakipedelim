@@ -47,6 +47,7 @@ try {
   await sayfa.fill("#yeniKullaniciAdi", YENI);
   await sayfa.fill("#yeniAdSoyad", "Silinecek Deneme");
   await sayfa.fill("#yeniSifre", SIFRE);
+  await sayfa.fill("#yeniSifreTeyit", SIFRE);
   await sayfa.selectOption("#yeniMagaza", { index: 1 });
   await sayfa.click('button:has-text("Kullanıcı Ekle")');
   await sayfa.waitForTimeout(1500);
@@ -73,7 +74,18 @@ try {
   kontrol("silinen hesapla giriş yapılamıyor", !sayfa.url().includes("/panel"), sayfa.url());
 
   // 6) işlem kaydı olan hesap silinmeyip pasife alınmalı
-  // sorumlu1 fatura, sevkiyat ve sayım kayıtlarına sahip; geçmişi olan hesabı temsil eder.
+  // Tohum veride kimsenin işlem kaydı yok; sorumlu1'e bir sayım başlatarak
+  // geçmiş oluşturuyoruz (baslatilanSayimlar sayacı silmeyi engeller).
+  await giris("sorumlu1");
+  await sayfa.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
+  await sayfa.click('button:has-text("Sayımı Başlat")');
+  await sayfa.waitForTimeout(2000);
+  kontrol(
+    "sorumlu1 için işlem kaydı oluştu",
+    sayfa.url().includes("/sayim/"),
+    sayfa.url(),
+  );
+
   await giris("admin");
   await sayfa.goto(`${hedef}/ayarlar/kullanicilar`, { waitUntil: "networkidle" });
   await kart("sorumlu1").locator('button:has-text("Kullanıcıyı Sil")').click();
@@ -87,7 +99,7 @@ try {
   // 7) temizlik: personel1 tekrar aktif
   if (pasif) {
     await kart("sorumlu1").locator('input[name="aktif"]').check();
-    await kart("sorumlu1").locator('button:has-text("Kaydet")').click();
+    await kart("sorumlu1").getByRole("button", { name: "Kaydet", exact: true }).click();
     await sayfa.waitForTimeout(1500);
     const geriRozet = await kart("sorumlu1").locator("span").allTextContents();
     kontrol("hesap tekrar aktif edilebiliyor", geriRozet.some((t) => t.trim() === "Aktif"));
