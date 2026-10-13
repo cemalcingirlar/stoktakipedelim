@@ -359,6 +359,91 @@ export async function magazaGuncelle(_onceki: AyarDurumu, form: FormData): Promi
   });
 }
 
+/**
+ * Mağaza ekranından o mağazada yetkili kullanıcıları belirler.
+ *
+ * Yalnız ek yetkileri (ekMagazalar) ekler ve kaldırır. Kullanıcının ana
+ * mağazası buradan değiştirilmez: bir kişiyi ana mağazasından koparmak onu
+ * mağazasız bırakır ve hiçbir şubede işlem yapamaz hale getirir; o değişiklik
+ * kullanıcı ekranına ait. Yönetici de her mağazada yetkili olduğu için
+ * listede seçilebilir değil.
+ */
+export async function magazaYetkileriGuncelle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
+  return calistir(async (oturum) => {
+    const magazaId = Number(form.get("id"));
+    if (!Number.isInteger(magazaId) || magazaId <= 0) return { hata: "Mağaza bulunamadı." };
+
+    const magaza = await prisma.magaza.findUnique({ where: { id: magazaId } });
+    if (!magaza) return { hata: "Mağaza bulunamadı." };
+
+    const secilen = new Set(
+      form
+        .getAll("yetkililer")
+        .map((d) => Number(String(d)))
+        .filter((n) => Number.isInteger(n) && n > 0),
+    );
+
+    const adaylar = await prisma.kullanici.findMany({
+      where: { aktif: true, rol: { not: ROLLER.ADMIN } },
+      select: {
+        id: true,
+        adSoyad: true,
+        magazaId: true,
+        ekMagazalar: { where: { id: magazaId }, select: { id: true } },
+      },
+    });
+
+    // Ana mağazası burası olanlar bu ekrandan çıkarılamaz.
+    const duzenlenebilir = adaylar.filter((k) => k.magazaId !== magazaId);
+    const eklenecek = duzenlenebilir.filter(
+      (k) => secilen.has(k.id) && k.ekMagazalar.length === 0,
+    );
+    const cikarilacak = duzenlenebilir.filter(
+      (k) => !secilen.has(k.id) && k.ekMagazalar.length > 0,
+    );
+
+    if (eklenecek.length === 0 && cikarilacak.length === 0) {
+      return { basari: "Yetkilerde değişiklik yok." };
+    }
+
+    await prisma.$transaction([
+      ...eklenecek.map((k) =>
+        prisma.kullanici.update({
+          where: { id: k.id },
+          data: { ekMagazalar: { connect: { id: magazaId } } },
+        }),
+      ),
+      ...cikarilacak.map((k) =>
+        prisma.kullanici.update({
+          where: { id: k.id },
+          data: { ekMagazalar: { disconnect: { id: magazaId } } },
+        }),
+      ),
+    ]);
+
+    const parcalar = [
+      eklenecek.length > 0 ? `eklendi: ${eklenecek.map((k) => k.adSoyad).join(", ")}` : "",
+      cikarilacak.length > 0
+        ? `kaldırıldı: ${cikarilacak.map((k) => k.adSoyad).join(", ")}`
+        : "",
+    ].filter(Boolean);
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Magaza",
+      hedefId: magazaId,
+      detay: `${magaza.kod} yetkileri — ${parcalar.join(" · ")}`,
+    });
+    tazele();
+    return {
+      basari: `Yetkiler güncellendi: ${eklenecek.length} eklendi, ${cikarilacak.length} kaldırıldı.`,
+    };
+  });
+}
+
 export async function magazaSil(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
