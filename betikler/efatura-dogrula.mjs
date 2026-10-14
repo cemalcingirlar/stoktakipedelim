@@ -143,6 +143,55 @@ try {
     imei(1),
   );
 
+  // ---- toplu kategori seçimi
+  const topluAlan = sayfa.locator('[data-test="toplu-kategori"]');
+  kontrol("tümüne uygula alanı var", (await topluAlan.count()) === 1);
+
+  await sayfa.selectOption("#topluKategori", { label: "Cep Telefonu" });
+  await sayfa.waitForTimeout(300);
+
+  const altSecenekleri = await sayfa.locator("#topluAltKategori option").allTextContents();
+  kontrol(
+    "toplu alt kategori listesi seçilen kategoriye göre doldu",
+    altSecenekleri.some((a) => a.trim() === "Sıfır"),
+    altSecenekleri.join(" | "),
+  );
+
+  await sayfa.selectOption("#topluAltKategori", { label: "Sıfır" });
+  await sayfa.waitForTimeout(300);
+
+  // Her ürün satırındaki kategori seçimi değişmiş olmalı.
+  const urunKategorileri = await sayfa
+    .locator('[data-test="urun-satiri"] select')
+    .evaluateAll((ogeler) =>
+      ogeler.map((o) => o.options[o.selectedIndex]?.textContent?.trim() ?? ""),
+    );
+  const katSecimleri = urunKategorileri.filter((_, i) => i % 2 === 0);
+  const altSecimleri = urunKategorileri.filter((_, i) => i % 2 === 1);
+  kontrol(
+    "tümüne uygula bütün ürünlerin kategorisini değiştirdi",
+    katSecimleri.length === 2 && katSecimleri.every((k) => k === "Cep Telefonu"),
+    katSecimleri.join(" | "),
+  );
+  kontrol(
+    "tümüne uygula alt kategoriyi de yazdı",
+    altSecimleri.length === 2 && altSecimleri.every((a) => a === "Sıfır"),
+    altSecimleri.join(" | "),
+  );
+
+  // Tek satırı değiştirince toplu seçici "farklı" durumuna düşmeli.
+  const ilkKategori = sayfa.locator('[data-test="urun-satiri"] select').first();
+  await ilkKategori.selectOption({ label: "Aksesuar" });
+  await sayfa.waitForTimeout(300);
+  const topluDeger = await sayfa.locator("#topluKategori").inputValue();
+  kontrol("satır bazında değişiklik toplu seçiciyi boşa düşürüyor", topluDeger === "", topluDeger);
+
+  // Geri al: hepsini yine Cep Telefonu / Sıfır yap.
+  await sayfa.selectOption("#topluKategori", { label: "Cep Telefonu" });
+  await sayfa.waitForTimeout(200);
+  await sayfa.selectOption("#topluAltKategori", { label: "Sıfır" });
+  await sayfa.waitForTimeout(200);
+
   // Vade tarihi faturadan gelmeli: "Özel tarih" hazır seçili ve alan dolu.
   const vadeSecimi = await sayfa.locator("#vadeGun").inputValue();
   kontrol("vade seçimi 'özel tarih' olarak geldi", vadeSecimi === "ozel", vadeSecimi);

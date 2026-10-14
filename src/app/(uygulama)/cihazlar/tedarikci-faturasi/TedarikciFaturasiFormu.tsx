@@ -6,6 +6,12 @@ import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { TedarikciSecici } from "@/bilesenler/TedarikciSecici";
 import { VadeAlani } from "@/bilesenler/VadeAlani";
+import {
+  baskinSecim,
+  tumuneUygula,
+  urunSecimi,
+  type Secim,
+} from "@/lib/kategoriSecim";
 import { kurusuTLYaz } from "@/lib/para";
 import { inputTarih } from "@/lib/tarih";
 import type { TedarikciUrunGrubu } from "@/lib/tedarikciDosyasi";
@@ -64,9 +70,7 @@ export function TedarikciFaturasiFormu({
   // gerekmiyor — barkod geçmişi zaten varsayılan olarak geliyor.
   const [seciliNo, setSeciliNo] = useState<string | null>(null);
   const [tarihUstYazim, setTarihUstYazim] = useState<Record<string, string>>({});
-  const [secimUstYazim, setSecimUstYazim] = useState<
-    Record<string, { kat: string; alt: string }>
-  >({});
+  const [secimUstYazim, setSecimUstYazim] = useState<Record<string, Secim>>({});
 
   const faturalar = onizleme.faturalar ?? [];
   const fatura = faturalar.find((f) => f.faturaNo === seciliNo) ?? faturalar[0];
@@ -80,17 +84,48 @@ export function TedarikciFaturasiFormu({
     [onizleme.gecmis],
   );
 
-  /** Bir barkodun yürürlükteki kategori seçimi: kullanıcı seçtiyse o, yoksa geçmişten. */
-  function secimiOku(barkod: string): { kat: string; alt: string } {
-    const elle = secimUstYazim[barkod];
-    if (elle) return elle;
-    const bilinen = gecmisHarita.get(barkod);
-    return {
-      // Geçmiş yoksa "Sınıflandırılmamış" — kategori seçmek zorunlu değil.
-      kat: String(bilinen ? bilinen.kategoriId : varsayilanKategoriId),
-      alt: bilinen?.altKategoriId ? String(bilinen.altKategoriId) : "",
-    };
+  const barkodlar = useMemo(
+    () => (fatura ? fatura.gruplar.map((g) => g.barkod) : []),
+    [fatura],
+  );
+
+  /**
+   * Faturadaki baskın kategori: bir fatura genelde tek tür mal taşıdığı için
+   * geçmişi olmayan ürünler de bu kategoriye düşüyor, kullanıcı her satırı tek
+   * tek seçmek zorunda kalmıyor.
+   */
+  const baskin = useMemo(
+    () => baskinSecim(barkodlar, gecmisHarita),
+    [barkodlar, gecmisHarita],
+  );
+
+  /** Bir barkodun yürürlükteki kategori seçimi. Kurallar: src/lib/kategoriSecim.ts */
+  function secimiOku(barkod: string): Secim {
+    return urunSecimi(barkod, {
+      ustYazim: secimUstYazim,
+      gecmis: gecmisHarita,
+      baskin,
+      varsayilanKategoriId,
+    });
   }
+
+  /** Üstteki seçiciyle tüm ürünlere aynı kategoriyi yazar. */
+  function hepsineYaz(secim: Secim) {
+    setSecimUstYazim((m) => ({ ...m, ...tumuneUygula(barkodlar, secim) }));
+  }
+
+  // Toplu seçicide görünen değer: kullanıcı bir şey seçtiyse tüm ürünler aynı
+  // olduğunda onu gösteriyor, karışıksa boş kalıyor.
+  const ortakSecim: Secim | null = (() => {
+    if (barkodlar.length === 0) return null;
+    const ilk = secimiOku(barkodlar[0]);
+    return barkodlar.every((b) => {
+      const s = secimiOku(b);
+      return s.kat === ilk.kat && s.alt === ilk.alt;
+    })
+      ? ilk
+      : null;
+  })();
 
   const dosyadanTarih = fatura?.tarih
     ? inputTarih(new Date(fatura.tarih))
@@ -301,6 +336,66 @@ export function TedarikciFaturasiFormu({
               </div>
             ) : null}
 
+            {/* Fatura genelde tek tür mal taşıyor: tek seçimle hepsini ayarla. */}
+            <div
+              data-test="toplu-kategori"
+              className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
+            >
+              <p className="mb-2 text-sm font-medium text-slate-700">
+                Tümüne uygula
+                <span className="ml-1 font-normal text-slate-500">
+                  — buradan seçtiğiniz kategori {fatura.gruplar.length} ürünün hepsine yazılır,
+                  tek tek değiştirebilirsiniz
+                </span>
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <label htmlFor="topluKategori" className={KUCUK_ETIKET}>
+                    Kategori
+                  </label>
+                  <select
+                    id="topluKategori"
+                    value={ortakSecim?.kat ?? ""}
+                    onChange={(e) =>
+                      e.target.value ? hepsineYaz({ kat: e.target.value, alt: "" }) : undefined
+                    }
+                    className={GIRDI_SINIFI}
+                  >
+                    {ortakSecim ? null : <option value="">(ürünlerde farklı)</option>}
+                    {kategoriler.map((k) => (
+                      <option key={k.id} value={k.id}>
+                        {k.id === varsayilanKategoriId ? `${k.ad} (sonra düzeltilebilir)` : k.ad}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="topluAltKategori" className={KUCUK_ETIKET}>
+                    Alt Kategori
+                  </label>
+                  <select
+                    id="topluAltKategori"
+                    value={ortakSecim?.alt ?? ""}
+                    disabled={!ortakSecim}
+                    onChange={(e) =>
+                      ortakSecim
+                        ? hepsineYaz({ kat: ortakSecim.kat, alt: e.target.value })
+                        : undefined
+                    }
+                    className={GIRDI_SINIFI}
+                  >
+                    <option value="">—</option>
+                    {(kategoriler.find((k) => String(k.id) === ortakSecim?.kat)?.altKategoriler ??
+                      []).map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.ad}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               {fatura.gruplar.map((grup) => (
                 <UrunSatiri
@@ -463,7 +558,7 @@ function UrunSatiri({
   const seriNoEksik = Boolean(kategori?.seriNoZorunlu) && grup.cihazlar.some((c) => !c.seriNo);
 
   return (
-    <div className="rounded-lg border border-slate-200 p-3">
+    <div data-test="urun-satiri" className="rounded-lg border border-slate-200 p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
         <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-700">
           {grup.barkod}
