@@ -173,21 +173,23 @@ export function TedarikciFaturasiFormu({
           1. Tedarikçiden gelen Excel dosyasını yükleyin
         </h2>
         <p className="mb-3 text-sm text-slate-500">
-          Portaldaki <strong>Seri No Kontrolü</strong> ekranından{" "}
-          <strong>Excel&apos;e Aktar</strong> ile indirdiğiniz dosyayı olduğu gibi yükleyin.
-          Dosya yüklendiğinde hiçbir kayıt oluşmaz.
+          İki dosya türü de olur: tedarikçinizin gönderdiği{" "}
+          <strong>e-Fatura PDF&apos;i</strong> ya da portaldaki{" "}
+          <strong>Seri No Kontrolü</strong> ekranından{" "}
+          <strong>Excel&apos;e Aktar</strong> ile indirdiğiniz dosya. Olduğu gibi yükleyin;
+          dosya yüklendiğinde hiçbir kayıt oluşmaz.
         </p>
 
         <form action={onizleEylem} className="flex flex-wrap items-end gap-3">
           <div>
             <label htmlFor="dosya" className={KUCUK_ETIKET}>
-              Dosya (.xlsx)
+              Dosya (.pdf · .xlsx)
             </label>
             <input
               id="dosya"
               name="dosya"
               type="file"
-              accept=".xlsx"
+              accept=".pdf,.xlsx"
               required
               className="block w-full max-w-sm text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-700"
             />
@@ -323,7 +325,8 @@ export function TedarikciFaturasiFormu({
                 3. Fatura bilgileri ve kayıt
               </h2>
               <p className="mb-3 text-sm text-slate-500">
-                Fatura numarası ve tarihi dosyadan geldi. Tedarikçi, depo ve vadeyi siz seçin.
+                Fatura numarası ve tarihi dosyadan geldi. Tedarikçi ve depoyu siz seçin.
+                {fatura.vadeTarihi ? " Vade tarihi de faturada yazıyordu, hazır geldi." : " Vadeyi siz seçin."}
               </p>
 
               {kayit.hata ? (
@@ -395,7 +398,14 @@ export function TedarikciFaturasiFormu({
                   </select>
                 </div>
 
-                <VadeAlani faturaTarihi={faturaTarihi} />
+                {/* Fatura değişince vade seçimi de sıfırlansın. */}
+                <VadeAlani
+                  key={`vade-${fatura.faturaNo}`}
+                  faturaTarihi={faturaTarihi}
+                  baslangicVadeTarihi={
+                    fatura.vadeTarihi ? inputTarih(new Date(fatura.vadeTarihi)) : undefined
+                  }
+                />
 
                 <div>
                   <label htmlFor="not" className={KUCUK_ETIKET}>

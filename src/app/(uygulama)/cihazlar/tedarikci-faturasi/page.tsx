@@ -45,8 +45,9 @@ export default async function TedarikciFaturasiSayfasi() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Tedarikçi Faturası Yükle</h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Tedarikçi portalından indirdiğiniz seri no listesini doğrudan stoğa işler. Fatura
-            numarası, tarih, barkod, marka, seri numaraları ve birim tutar dosyadan okunur.
+            Tedarikçinizin e-Fatura PDF&apos;ini ya da portaldan indirdiğiniz seri no listesini
+            doğrudan stoğa işler. Fatura numarası, tarih, vade, barkod, marka, seri numaraları ve
+            birim tutar dosyadan okunur.
           </p>
         </div>
         <Link
@@ -61,13 +62,15 @@ export default async function TedarikciFaturasiSayfasi() {
         <h2 className="text-sm font-semibold text-slate-800">Nasıl çalışır</h2>
         <ol className="mt-2 list-inside list-decimal space-y-1 text-sm text-slate-600">
           <li>
-            Tedarikçi portalında <span className="font-medium text-slate-700">Seri No
-            Kontrolü</span> ekranını açıp <span className="font-medium text-slate-700">Excel&apos;e
-            Aktar</span> düğmesine basın.
+            <span className="font-medium text-slate-700">e-Fatura PDF&apos;i:</span> tedarikçinizin
+            e-posta ile gönderdiği faturayı olduğu gibi yükleyin. Ürün tablosu ve alttaki seri
+            numarası notu okunur; vade tarihi de faturadan gelir.
           </li>
           <li>
-            İnen dosyayı <span className="font-medium text-slate-700">olduğu gibi</span> buraya
-            yükleyin — sütunları düzenlemeniz gerekmez.
+            <span className="font-medium text-slate-700">Ya da portal Excel&apos;i:</span> portalda{" "}
+            <span className="font-medium text-slate-700">Seri No Kontrolü</span> ekranını açıp{" "}
+            <span className="font-medium text-slate-700">Excel&apos;e Aktar</span> düğmesine basın,
+            inen dosyayı olduğu gibi yükleyin — sütunları düzenlemeniz gerekmez.
           </li>
           <li>
             Program satırları ürün koduna göre gruplar. Daha önce girdiğiniz bir ürünse

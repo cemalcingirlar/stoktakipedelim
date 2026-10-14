@@ -66,6 +66,10 @@ export type TedarikciFaturasi = {
   siparisNo: string;
   /** Dosyadaki tarih; okunamadıysa null. */
   tarih: Date | null;
+  /** Faturada vade tarihi yazıyorsa (e-Fatura PDF'inde var); yoksa null. */
+  vadeTarihi?: Date | null;
+  /** Faturadaki satıcı unvanı — doğru tedarikçiyi önermek için. */
+  tedarikciAdi?: string;
   gruplar: TedarikciUrunGrubu[];
   cihazSayisi: number;
   toplamKurus: number;
