@@ -192,6 +192,98 @@ try {
   const vadeBaglanti = await sayfa.locator('a[href="/cihazlar?vade=gecen"]').count();
   kontrol("vade kartı cihaz listesine bağlanıyor", vadeBaglanti === 1);
 
+  // --------------- 5b) Bugün Stoktan Çıkanlar başlığı listeye götürüyor
+  const buguntarih = new Date();
+  const gunMetni = `${buguntarih.getFullYear()}-${String(buguntarih.getMonth() + 1).padStart(2, "0")}-${String(buguntarih.getDate()).padStart(2, "0")}`;
+  const cikisYolu = `/cihazlar?durum=SATILDI&satisBas=${gunMetni}&satisBit=${gunMetni}`;
+
+  const baslikBaglantisi = sayfa.locator(`a[href="${cikisYolu}"]`);
+  kontrol(
+    "Bugün Stoktan Çıkanlar başlığı tıklanabilir",
+    (await baslikBaglantisi.count()) >= 1,
+    `${await baslikBaglantisi.count()} bağlantı`,
+  );
+
+  await Promise.all([
+    sayfa.waitForURL("**/cihazlar**", { timeout: 20000 }),
+    baslikBaglantisi.first().click(),
+  ]);
+  kontrol(
+    "başlık bugünün satışlarına filtreli listeye götürdü",
+    sayfa.url().includes("durum=SATILDI") && sayfa.url().includes(`satisBas=${gunMetni}`),
+    sayfa.url(),
+  );
+
+  const cikisListesi = (await sayfa.locator("table tbody").textContent()) ?? "";
+  kontrol("listede bugün satılan cihaz var", cikisListesi.includes(imei(1)), imei(1));
+  kontrol(
+    "listede satılmayan cihaz yok",
+    !cikisListesi.includes(imei(2)),
+    "ikinci cihaz hâlâ stokta",
+  );
+
+  // -------------------------- 5c) Grafik dönem seçimi
+  await sayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
+  const secici = sayfa.locator('[data-test="donem-secici"] a');
+  kontrol("grafik dönem seçicisi 5 seçenek sunuyor", (await secici.count()) === 5, `${await secici.count()} seçenek`);
+
+  const seciciMetni = (await sayfa.locator('[data-test="donem-secici"]').textContent()) ?? "";
+  for (const etiket of ["1 Hafta", "1 Ay", "3 Ay", "6 Ay", "12 Ay"]) {
+    kontrol(`"${etiket}" seçeneği var`, seciciMetni.includes(etiket));
+  }
+
+  const varsayilanBaslik = (await bolumMetni("Giriş ve Satış")).slice(0, 40);
+  kontrol(
+    "varsayılan dönem 12 ay",
+    varsayilanBaslik.includes("Son 12 Ay"),
+    varsayilanBaslik,
+  );
+
+  // Dönem başına beklenen sütun sayısı: gün / hafta / ay kovaları.
+  const beklenen = [
+    ["1 Hafta", "1h", "Son 1 Hafta", 7],
+    ["1 Ay", "1a", "Son 1 Ay", 30],
+    ["3 Ay", "3a", "Son 3 Ay", 13],
+    ["6 Ay", "6a", "Son 6 Ay", 6],
+    ["12 Ay", "12a", "Son 12 Ay", 12],
+  ];
+
+  for (const [etiket, anahtar, baslik, kovaSayisi] of beklenen) {
+    await sayfa.goto(`${hedef}/panel?donem=${anahtar}`, { waitUntil: "networkidle" });
+    const bolum = await bolumMetni("Giriş ve Satış");
+    kontrol(`${etiket}: başlık "${baslik}" oldu`, bolum.includes(baslik), bolum.slice(0, 40));
+
+    const kovalar = await sayfa.locator('[data-test="grafik-kovasi"]').count();
+    kontrol(`${etiket}: ${kovaSayisi} sütun çizildi`, kovalar === kovaSayisi, `${kovalar} sütun`);
+
+    const secili = await sayfa
+      .locator(`[data-test="donem-secici"] a[aria-current="page"]`)
+      .textContent();
+    kontrol(`${etiket}: seçenek işaretli görünüyor`, (secili ?? "").trim() === etiket, secili ?? "");
+  }
+
+  // Tıklayarak da çalışmalı (bağlantı çapası grafiğe gidiyor).
+  await sayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
+  await sayfa.click('[data-test="donem-secici"] a:has-text("1 Hafta")');
+  await sayfa.waitForURL("**/panel?donem=1h**", { timeout: 20000 });
+  const tiklamaSonrasi = await bolumMetni("Giriş ve Satış");
+  kontrol("tıklayarak dönem değişiyor", tiklamaSonrasi.includes("Son 1 Hafta"), sayfa.url());
+
+  // Geçersiz dönem varsayılana düşmeli, hata vermemeli.
+  await sayfa.goto(`${hedef}/panel?donem=olmayan`, { waitUntil: "networkidle" });
+  const gecersiz = await bolumMetni("Giriş ve Satış");
+  kontrol("geçersiz dönem 12 aya düşüyor", gecersiz.includes("Son 12 Ay"), gecersiz.slice(0, 40));
+
+  // Bugünkü satış 1 haftalık grafikte de görünmeli.
+  await sayfa.goto(`${hedef}/panel?donem=1h`, { waitUntil: "networkidle" });
+  const haftaBolum = await bolumMetni("Giriş ve Satış");
+  kontrol(
+    "1 haftalık grafikte veri var",
+    !haftaBolum.includes("Henüz hareket kaydı yok"),
+    haftaBolum.slice(0, 60),
+  );
+
+  await sayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
   await sayfa.screenshot({ path: `${cikti}-panel.png`, fullPage: true });
 
   // ------------------------------------- 6) CSV ile toplu yükleme

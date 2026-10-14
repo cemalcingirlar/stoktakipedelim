@@ -3,20 +3,40 @@ import type { ReactNode } from "react";
 
 export function Kart({
   baslik,
+  baslikYolu,
   eylem,
   children,
   className = "",
 }: {
   baslik?: string;
+  /** Verilirse başlık tıklanabilir olur; karttaki özetin tam listesine götürür. */
+  baslikYolu?: string;
   eylem?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
+  const basligiYaz = () => {
+    if (!baslik) return <span />;
+    const metin = <h2 className="text-sm font-semibold text-slate-800">{baslik}</h2>;
+    if (!baslikYolu) return metin;
+    return (
+      <Link
+        href={baslikYolu}
+        className="group inline-flex items-center gap-1 text-slate-800 underline-offset-2 hover:underline"
+      >
+        {metin}
+        <span aria-hidden className="text-xs text-slate-400 group-hover:text-slate-600">
+          →
+        </span>
+      </Link>
+    );
+  };
+
   return (
     <section className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>
       {baslik || eylem ? (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
-          {baslik ? <h2 className="text-sm font-semibold text-slate-800">{baslik}</h2> : <span />}
+          {basligiYaz()}
           {eylem}
         </div>
       ) : null}

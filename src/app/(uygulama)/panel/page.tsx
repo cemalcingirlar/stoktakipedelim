@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { AylikGrafik } from "@/bilesenler/AylikGrafik";
+import { HareketGrafigi } from "@/bilesenler/HareketGrafigi";
 import { Kart, SayiKarti } from "@/bilesenler/Kart";
+import { GRAFIK_DONEMLERI, donemiCoz } from "@/lib/grafikDonem";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { HAREKET_TIP_ETIKET, type HareketTip } from "@/lib/sabitler";
-import { aylikHareketRaporu } from "@/lib/raporlar";
+import { hareketRaporu } from "@/lib/raporlar";
 import {
   bekleyenSevkiyatlar,
   bugunSatilanlar,
@@ -11,25 +12,33 @@ import {
   sonHareketler,
   vadesiGecenCihazSayisi,
 } from "@/lib/sorgular";
-import { saatYaz, tarihSaatYaz } from "@/lib/tarih";
+import { inputTarih, saatYaz, tarihSaatYaz } from "@/lib/tarih";
 import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
 
 export const metadata = { title: "Panel — Stok Takip" };
 
-export default async function PanelSayfasi() {
+export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">) {
   const oturum = await oturumGerekli();
   const yonetici = adminMi(oturum);
 
+  const params = await searchParams;
+  const donem = donemiCoz(Array.isArray(params.donem) ? params.donem[0] : params.donem);
+
   const kendiMagazalari = yonetici ? null : yetkiliMagazalar(oturum);
 
-  const [ozetler, vadeDurumu, bugun, bekleyen, hareketler, aylar] = await Promise.all([
+  const [ozetler, vadeDurumu, bugun, bekleyen, hareketler, kovalar] = await Promise.all([
     magazaStokOzeti(),
     vadesiGecenCihazSayisi(),
     bugunSatilanlar(kendiMagazalari),
     bekleyenSevkiyatlar(kendiMagazalari),
     sonHareketler(10),
-    aylikHareketRaporu(12),
+    hareketRaporu(donem),
   ]);
+
+  // Bugün satılanların tam listesi: cihaz listesinde satış tarihi bugüne
+  // kısıtlanmış filtre. Panel ilk 10'u gösteriyor, bağlantı tamamını açıyor.
+  const bugunku = inputTarih(new Date());
+  const bugunCikanlarYolu = `/cihazlar?durum=SATILDI&satisBas=${bugunku}&satisBit=${bugunku}`;
 
   const toplamAdet = ozetler.reduce((t, o) => t + o.adet, 0);
   const toplamDeger = ozetler.reduce((t, o) => t + o.degerKurus, 0);
@@ -54,7 +63,7 @@ export default async function PanelSayfasi() {
           deger={`${bugun.adet}`}
           altBilgi={bugun.adet > 0 ? `${kurusuTLYazSembollu(bugun.ciroKurus)} ciro` : "bugün satış yok"}
           vurgu={bugun.adet > 0 ? "basari" : "normal"}
-          yol="/satis"
+          yol={bugun.adet > 0 ? bugunCikanlarYolu : "/satis"}
         />
         <SayiKarti
           etiket="Vadesi Geçen"
@@ -101,6 +110,7 @@ export default async function PanelSayfasi() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Kart
+          baslikYolu={bugunCikanlarYolu}
           baslik="Bugün Stoktan Çıkanlar"
           eylem={
             bugun.adet > 0 ? (
@@ -145,11 +155,14 @@ export default async function PanelSayfasi() {
           )}
           {bugun.adet > 10 ? (
             <p className="mt-2 text-xs text-slate-500">
-              İlk 10 kayıt gösteriliyor; tamamı için{" "}
-              <Link href="/rapor" className="text-sky-700 underline-offset-2 hover:underline">
-                Rapor
-              </Link>{" "}
-              ekranına bakın.
+              İlk 10 kayıt gösteriliyor;{" "}
+              <Link
+                href={bugunCikanlarYolu}
+                className="text-sky-700 underline-offset-2 hover:underline"
+              >
+                tamamını görün ({bugun.adet} cihaz)
+              </Link>
+              .
             </p>
           ) : null}
         </Kart>
@@ -182,9 +195,31 @@ export default async function PanelSayfasi() {
         </Kart>
       </div>
 
-      <Kart baslik="Son 12 Ay — Giriş ve Satış">
-        <AylikGrafik aylar={aylar} />
-      </Kart>
+      <div id="grafik" className="scroll-mt-4">
+        <Kart
+          baslik={`${donem.baslik} — Giriş ve Satış`}
+          eylem={
+            <div className="flex flex-wrap gap-1" data-test="donem-secici">
+              {GRAFIK_DONEMLERI.map((d) => (
+                <Link
+                  key={d.anahtar}
+                  href={`/panel?donem=${d.anahtar}#grafik`}
+                  aria-current={d.anahtar === donem.anahtar ? "page" : undefined}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                    d.anahtar === donem.anahtar
+                      ? "bg-slate-800 text-white"
+                      : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {d.etiket}
+                </Link>
+              ))}
+            </div>
+          }
+        >
+          <HareketGrafigi kovalar={kovalar} />
+        </Kart>
+      </div>
 
       <Kart baslik="Son Hareketler">
         {hareketler.length === 0 ? (

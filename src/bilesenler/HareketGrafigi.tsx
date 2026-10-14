@@ -1,21 +1,15 @@
+import type { GrafikKovasi } from "@/lib/grafikDonem";
 import { kurusuTLYazSembollu } from "@/lib/para";
 
-export type AyVerisi = {
-  anahtar: string;
-  etiket: string;
-  giris: number;
-  satis: number;
-  ciroKurus: number;
-};
-
 /**
- * Son aylardaki giriş ve satış adetlerini gösteren basit çubuk grafik.
+ * Seçilen dönemdeki giriş ve satış adetlerini gösteren basit çubuk grafik.
  * Harici grafik kütüphanesi kullanılmaz; ölçekleme en yüksek değere göre yapılır.
+ * Sütunlar gün, hafta ya da ay olabilir — bileşen için fark etmez.
  */
-export function AylikGrafik({ aylar }: { aylar: AyVerisi[] }) {
-  const enYuksek = Math.max(1, ...aylar.map((a) => Math.max(a.giris, a.satis)));
+export function HareketGrafigi({ kovalar }: { kovalar: GrafikKovasi[] }) {
+  const enYuksek = Math.max(1, ...kovalar.map((a) => Math.max(a.giris, a.satis)));
 
-  if (aylar.every((a) => a.giris === 0 && a.satis === 0)) {
+  if (kovalar.every((a) => a.giris === 0 && a.satis === 0)) {
     return <p className="py-6 text-center text-sm text-slate-500">Henüz hareket kaydı yok.</p>;
   }
 
@@ -31,9 +25,16 @@ export function AylikGrafik({ aylar }: { aylar: AyVerisi[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <div className="flex min-w-[520px] items-end gap-2" style={{ height: "160px" }}>
-          {aylar.map((ay) => (
-            <div key={ay.anahtar} className="flex flex-1 flex-col items-center gap-1">
+        <div
+          className="flex items-end gap-1.5 sm:gap-2"
+          style={{ height: "160px", minWidth: `${Math.max(520, kovalar.length * 26)}px` }}
+        >
+          {kovalar.map((ay) => (
+            <div
+              key={ay.anahtar}
+              data-test="grafik-kovasi"
+              className="flex flex-1 flex-col items-center gap-1"
+            >
               <div className="flex h-full w-full items-end justify-center gap-0.5">
                 <div
                   className="w-full max-w-[14px] rounded-t bg-blue-500"
