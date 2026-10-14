@@ -131,16 +131,20 @@ try {
     (onizleme.match(/[\d.]+,\d{2} TL/) ?? [""])[0],
   );
 
-  // Seri numaraları varsayılan olarak katlı; açınca görünmeli.
+  // Seri numaraları varsayılan olarak katlı; açınca düzenlenebilir kutularda görünmeli.
   const acDugmesi = sayfa.locator('button:has-text("Seri numaralarını göster")').first();
   kontrol("seri numarası listesi açılabiliyor", (await acDugmesi.count()) === 1);
   await acDugmesi.click();
   await sayfa.waitForTimeout(300);
-  const acikMetin = (await sayfa.locator("main").textContent()) ?? "";
+  const okunanSeriler = await sayfa
+    .locator('[data-test="urun-satiri"]')
+    .first()
+    .locator('[data-test="seri-kutusu"]')
+    .evaluateAll((ogeler) => ogeler.map((o) => o.value));
   kontrol(
     "seri numaraları PDF'teki not bölümünden geldi",
-    acikMetin.includes(imei(1)) && acikMetin.includes(imei(2)),
-    imei(1),
+    okunanSeriler.includes(imei(1)) && okunanSeriler.includes(imei(2)),
+    okunanSeriler.join(", "),
   );
 
   // ---- toplu kategori seçimi
@@ -192,6 +196,95 @@ try {
   await sayfa.selectOption("#topluAltKategori", { label: "Sıfır" });
   await sayfa.waitForTimeout(200);
 
+  // ---- elle düzeltme: yanlış okunan alanlar değiştirilebilmeli
+  const ilkUrun = sayfa.locator('[data-test="urun-satiri"]').first();
+  await ilkUrun.locator('button:has-text("Bilgileri düzelt")').click();
+  await sayfa.waitForTimeout(200);
+
+  const duzeltmeAlani = ilkUrun.locator('[data-test="urun-duzeltme"]');
+  kontrol("düzeltme alanı açılıyor", (await duzeltmeAlani.count()) === 1);
+
+  const okunanMarka = await ilkUrun.locator('[data-test="duzelt-marka"]').inputValue();
+  const okunanModel = await ilkUrun.locator('[data-test="duzelt-model"]').inputValue();
+  kontrol(
+    "marka ve model okunan ürün adından ayrılmış geldi",
+    okunanMarka === "ALFA" && okunanModel === "FON 10 4/128GB SIYAH",
+    `${okunanMarka} / ${okunanModel}`,
+  );
+
+  const okunanFiyat = await ilkUrun.locator('[data-test="duzelt-fiyat"]').inputValue();
+  kontrol("fiyat Türkçe biçimde geldi", okunanFiyat === "10.000,00", okunanFiyat);
+
+  await ilkUrun.locator('[data-test="duzelt-marka"]').fill("Alfa Mobile");
+  await ilkUrun.locator('[data-test="duzelt-model"]').fill("Fon 10 Pro");
+  await ilkUrun.locator('[data-test="duzelt-barkod"]').fill("9990000000011");
+  await ilkUrun.locator('[data-test="duzelt-fiyat"]').fill("11.500,50");
+  await sayfa.waitForTimeout(300);
+
+  const basligi = (await ilkUrun.locator("div").first().textContent()) ?? "";
+  kontrol(
+    "düzeltme başlığa yansıyor",
+    basligi.includes("Alfa Mobile Fon 10 Pro") && basligi.includes("9990000000011"),
+    basligi.replace(/\s+/g, " ").slice(0, 90).trim(),
+  );
+  kontrol("düzeltilen ürün işaretleniyor", basligi.includes("elle düzeltildi"));
+  kontrol("yeni fiyat başlıkta görünüyor", basligi.includes("11.500,50"), "");
+
+  // ---- seri numarası düzeltme ve cihaz çıkarma (liste yukarıda açılmıştı)
+  const seriKutulari = ilkUrun.locator('[data-test="seri-kutusu"]');
+  kontrol("seri numaraları düzenlenebilir kutuda", (await seriKutulari.count()) === 2);
+
+  const duzeltilmisSeri = `${imei(1).slice(0, 14)}9`;
+  await seriKutulari.first().fill(duzeltilmisSeri);
+  await sayfa.waitForTimeout(200);
+
+  // İkinci cihazı faturadan çıkar.
+  await ilkUrun.locator('[data-test="seri-cikar"]').nth(1).click();
+  await sayfa.waitForTimeout(300);
+
+  const kaydetMetni =
+    (await sayfa.locator('button:has-text("Cihazı Kaydet")').textContent()) ?? "";
+  kontrol(
+    "çıkarılan cihaz kayıt sayısından düşüyor",
+    kaydetMetni.includes("4 Cihazı Kaydet"),
+    kaydetMetni.trim(),
+  );
+
+  // Geri al çalışmalı.
+  await ilkUrun.locator('[data-test="seri-cikar"]').nth(1).click();
+  await sayfa.waitForTimeout(300);
+  const geriMetni =
+    (await sayfa.locator('button:has-text("Cihazı Kaydet")').textContent()) ?? "";
+  kontrol("geri al cihazı faturaya döndürüyor", geriMetni.includes("5 Cihazı Kaydet"), geriMetni.trim());
+
+  // ---- hatalı düzeltme kaydı engelliyor
+  await seriKutulari.nth(1).fill(duzeltilmisSeri);
+  await sayfa.waitForTimeout(300);
+  const sorunKutusu = sayfa.locator('[data-test="duzenleme-sorunlari"]');
+  kontrol("aynı seri no iki kez yazılınca uyarı çıkıyor", (await sorunKutusu.count()) === 1);
+  kontrol(
+    "sorun varken kaydet düğmesi yok",
+    (await sayfa.locator('button:has-text("Cihazı Kaydet")').count()) === 0,
+  );
+
+  await seriKutulari.nth(1).fill(imei(2));
+  await sayfa.waitForTimeout(300);
+  kontrol(
+    "sorun giderilince kaydet düğmesi dönüyor",
+    (await sayfa.locator('button:has-text("Cihazı Kaydet")').count()) === 1,
+  );
+
+  await ilkUrun.locator('[data-test="duzelt-marka"]').fill("");
+  await sayfa.waitForTimeout(300);
+  const bosMarkaSorunu = (await sorunKutusu.textContent()) ?? "";
+  kontrol(
+    "boş marka uyarı veriyor",
+    /marka boş/.test(bosMarkaSorunu),
+    bosMarkaSorunu.replace(/\s+/g, " ").slice(0, 70).trim(),
+  );
+  await ilkUrun.locator('[data-test="duzelt-marka"]').fill("Alfa Mobile");
+  await sayfa.waitForTimeout(300);
+
   // Vade tarihi faturadan gelmeli: "Özel tarih" hazır seçili ve alan dolu.
   const vadeSecimi = await sayfa.locator("#vadeGun").inputValue();
   kontrol("vade seçimi 'özel tarih' olarak geldi", vadeSecimi === "ozel", vadeSecimi);
@@ -223,6 +316,18 @@ try {
   await sayfa.goto(`${hedef}/cihazlar?ara=${imei(3)}`, { waitUntil: "networkidle" });
   const cihaz = (await sayfa.locator("main").textContent()) ?? "";
   kontrol("seri numarası ile cihaz bulunuyor", cihaz.includes("BETA"), imei(3));
+
+  // Elle düzeltilen ürün, düzeltilmiş haliyle kaydedilmiş olmalı.
+  await sayfa.goto(`${hedef}/cihazlar?ara=${duzeltilmisSeri}`, { waitUntil: "networkidle" });
+  const duzeltilmisCihaz = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "elle düzeltilen seri numarası kaydedildi",
+    duzeltilmisCihaz.includes("Alfa Mobile") || duzeltilmisCihaz.includes("ALFA MOBILE"),
+    duzeltilmisSeri,
+  );
+  kontrol("elle düzeltilen marka/model kaydedildi", duzeltilmisCihaz.includes("Fon 10 Pro"));
+  kontrol("elle düzeltilen barkod kaydedildi", duzeltilmisCihaz.includes("9990000000011"));
+  kontrol("elle düzeltilen fiyat kaydedildi", duzeltilmisCihaz.includes("11.500,50"));
   kontrol("alış fiyatı KDV hariç yazıldı", cihaz.includes("20.000,00"), "");
   kontrol("barkod faturadan geldi", cihaz.includes("4000000000028"), "");
 

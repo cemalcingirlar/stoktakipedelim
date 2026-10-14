@@ -114,7 +114,12 @@ try {
   const seriliGrup = gruplar.filter({ hasText: "MatePad" });
   await seriliGrup.locator('button:has-text("Seri numaralarını göster")').click();
   await sayfa.waitForTimeout(300);
-  const seriMetni = (await seriliGrup.locator("ul").last().textContent()) ?? "";
+  // Seri numaraları artık düzenlenebilir kutularda; metin yerine değerleri oku.
+  const seriMetni = (
+    await seriliGrup
+      .locator('[data-test="seri-kutusu"]')
+      .evaluateAll((ogeler) => ogeler.map((o) => o.value))
+  ).join(" ");
   kontrol("seri numaraları listelendi", seriMetni.includes(seri("5MKUN", 1)),
     seriMetni.replace(/\s+/g, " ").trim().slice(0, 90) || "(liste boş)");
 
