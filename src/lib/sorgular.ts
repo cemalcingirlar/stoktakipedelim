@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "./prisma";
 import { STOK_DURUM, TRANSFER_DURUM } from "./sabitler";
+import { gunBasi, gunSonu } from "./tarih";
 
 export type MagazaOzeti = {
   magazaId: number;
@@ -46,6 +47,59 @@ export async function vadesiGecenFaturalar(bugun: Date = new Date()) {
     include: { tedarikci: true, magaza: true, _count: { select: { kalemler: true } } },
     orderBy: { vadeTarihi: "asc" },
   });
+}
+
+/**
+ * Vadesi geçmiş cihaz adedi.
+ *
+ * Fatura değil cihaz sayılır: ödemesi gecikmiş kaç cihaz olduğu, kaç fatura
+ * olduğundan daha anlamlı. Koşul cihaz listesindeki "Vadesi geçen" filtresiyle
+ * birebir aynı (src/lib/cihazFiltre.ts), böylece paneldeki sayıya tıklayınca
+ * aynı cihazlar listelenir.
+ */
+export async function vadesiGecenCihazSayisi(bugun: Date = new Date()) {
+  const vadeKosulu = {
+    alisFaturasi: { is: { vadeOdendi: false, vadeTarihi: { not: null, lt: bugun } } },
+  } as const;
+  const [toplam, stokta] = await Promise.all([
+    prisma.stokKalemi.count({ where: vadeKosulu }),
+    prisma.stokKalemi.count({ where: { ...vadeKosulu, durum: STOK_DURUM.STOKTA } }),
+  ]);
+  return { toplam, stokta };
+}
+
+/**
+ * Bugün satılan cihazlar. Personel için yalnız yetkili olduğu mağazalar;
+ * yönetici için (magazaIdleri null) tümü.
+ */
+export async function bugunSatilanlar(magazaIdleri: number[] | null, bugun: Date = new Date()) {
+  const kalemler = await prisma.stokKalemi.findMany({
+    where: {
+      durum: STOK_DURUM.SATILDI,
+      satisTarihi: { gte: gunBasi(bugun), lte: gunSonu(bugun) },
+      ...(magazaIdleri ? { magazaId: { in: magazaIdleri } } : {}),
+    },
+    orderBy: { satisTarihi: "desc" },
+    select: {
+      id: true,
+      marka: true,
+      model: true,
+      seriNo: true,
+      satisTarihi: true,
+      satisFiyatiKurus: true,
+      alisFiyatiKurus: true,
+      magaza: { select: { ad: true } },
+      satanKullanici: { select: { adSoyad: true } },
+      musteri: { select: { adSoyad: true } },
+    },
+  });
+
+  const ciroKurus = kalemler.reduce((t, k) => t + (k.satisFiyatiKurus ?? 0), 0);
+  const karKurus = kalemler.reduce(
+    (t, k) => t + ((k.satisFiyatiKurus ?? 0) - k.alisFiyatiKurus),
+    0,
+  );
+  return { kalemler, adet: kalemler.length, ciroKurus, karKurus };
 }
 
 /** Hedef mağazada onay bekleyen sevkiyatlar. magazaId verilmezse tümü. */

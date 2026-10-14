@@ -92,7 +92,8 @@ try {
   const ozet = (await sayfa.locator('h2:has-text("2. Okunan fatura") + p').textContent()) ?? "";
   kontrol("tek fatura olarak okundu", ozet.includes("1 fatura"), ozet.replace(/\s+/g, " ").trim());
 
-  const gruplar = sayfa.locator("div.rounded-lg.border.border-slate-200.p-3");
+  // Sınıf adı yerine data-test: ekrana eklenen başka kutular sayımı bozmasın.
+  const gruplar = sayfa.locator('[data-test="urun-satiri"]');
   kontrol("iki ürün grubu çıktı", (await gruplar.count()) === 2, `${await gruplar.count()} grup`);
 
   const govde = (await sayfa.locator("body").textContent()) ?? "";
@@ -113,7 +114,12 @@ try {
   const seriliGrup = gruplar.filter({ hasText: "MatePad" });
   await seriliGrup.locator('button:has-text("Seri numaralarını göster")').click();
   await sayfa.waitForTimeout(300);
-  const seriMetni = (await seriliGrup.locator("ul").last().textContent()) ?? "";
+  // Seri numaraları artık düzenlenebilir kutularda; metin yerine değerleri oku.
+  const seriMetni = (
+    await seriliGrup
+      .locator('[data-test="seri-kutusu"]')
+      .evaluateAll((ogeler) => ogeler.map((o) => o.value))
+  ).join(" ");
   kontrol("seri numaraları listelendi", seriMetni.includes(seri("5MKUN", 1)),
     seriMetni.replace(/\s+/g, " ").trim().slice(0, 90) || "(liste boş)");
 
@@ -126,9 +132,9 @@ try {
     !govde.includes("Kategorisi seçilmeyen ürünler kaydedilemez"));
 
   // 5) kasten yanlış seçim: serisiz kaleme seri no zorunlu kategori
-  const kilifGrubu = sayfa.locator("div.rounded-lg.border.border-slate-200.p-3")
+  const kilifGrubu = sayfa.locator('[data-test="urun-satiri"]')
     .filter({ hasText: "M Pen Lite" });
-  const tabletGrubu = sayfa.locator("div.rounded-lg.border.border-slate-200.p-3")
+  const tabletGrubu = sayfa.locator('[data-test="urun-satiri"]')
     .filter({ hasText: "MatePad" });
 
   await kilifGrubu.locator("select").first().selectOption({ label: "Cep Telefonu" });
@@ -180,7 +186,7 @@ try {
     /\b2 Cihazı Kaydet\b/.test(ikinciDugme.trim()), ikinciDugme.trim());
 
   // 9) kategori barkod geçmişinden otomatik geldi mi
-  const tabletTekrar = sayfa.locator("div.rounded-lg.border.border-slate-200.p-3")
+  const tabletTekrar = sayfa.locator('[data-test="urun-satiri"]')
     .filter({ hasText: "MatePad" });
   const seciliKategori = await tabletTekrar.locator("select").first().inputValue();
   kontrol("kategori barkod geçmişinden otomatik geldi", seciliKategori !== "",

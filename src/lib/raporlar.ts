@@ -1,6 +1,12 @@
 import "server-only";
 import { prisma } from "./prisma";
 import { SAYIM_DURUM, STOK_DURUM, TRANSFER_DURUM } from "./sabitler";
+import {
+  donemKovalari,
+  kovaAnahtari,
+  type GrafikDonemi,
+  type GrafikKovasi,
+} from "./grafikDonem";
 import { gunSonu } from "./tarih";
 
 export type RaporAraligi = { baslangic: Date | null; bitis: Date | null };
@@ -221,10 +227,17 @@ export async function sayimRaporu() {
   });
 }
 
-/** Son 12 ayın giriş ve satış adetleri — panel grafiği için. */
-export async function aylikHareketRaporu(aySayisi = 12) {
-  const bugun = new Date();
-  const baslangic = new Date(bugun.getFullYear(), bugun.getMonth() - (aySayisi - 1), 1);
+/**
+ * Seçilen dönemin giriş ve satış adetleri — panel grafiği için.
+ *
+ * Kova genişliği (gün / hafta / ay) dönemden geliyor; tarih matematiği
+ * grafikDonem.ts içinde, saf ve test edilmiş halde duruyor.
+ */
+export async function hareketRaporu(
+  donem: GrafikDonemi,
+  bugun: Date = new Date(),
+): Promise<GrafikKovasi[]> {
+  const { baslangic, kovalar } = donemKovalari(donem, bugun);
 
   const [girisler, satislar] = await Promise.all([
     prisma.stokKalemi.findMany({
@@ -237,36 +250,27 @@ export async function aylikHareketRaporu(aySayisi = 12) {
     }),
   ]);
 
-  const aylar: { anahtar: string; etiket: string; giris: number; satis: number; ciroKurus: number }[] =
-    [];
-  for (let i = 0; i < aySayisi; i++) {
-    const t = new Date(baslangic.getFullYear(), baslangic.getMonth() + i, 1);
-    aylar.push({
-      anahtar: `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`,
-      etiket: t.toLocaleDateString("tr-TR", { month: "short", year: "2-digit" }),
-      giris: 0,
-      satis: 0,
-      ciroKurus: 0,
-    });
-  }
-  const harita = new Map(aylar.map((a) => [a.anahtar, a]));
-
-  function anahtarla(t: Date) {
-    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`;
-  }
+  const satirlar: GrafikKovasi[] = kovalar.map((k) => ({
+    anahtar: k.anahtar,
+    etiket: k.etiket,
+    giris: 0,
+    satis: 0,
+    ciroKurus: 0,
+  }));
+  const harita = new Map(satirlar.map((a) => [a.anahtar, a]));
 
   for (const g of girisler) {
-    const a = harita.get(anahtarla(g.girisTarihi));
+    const a = harita.get(kovaAnahtari(g.girisTarihi, donem.kova));
     if (a) a.giris += 1;
   }
   for (const s of satislar) {
     if (!s.satisTarihi) continue;
-    const a = harita.get(anahtarla(s.satisTarihi));
+    const a = harita.get(kovaAnahtari(s.satisTarihi, donem.kova));
     if (a) {
       a.satis += 1;
       a.ciroKurus += s.satisFiyatiKurus ?? 0;
     }
   }
 
-  return aylar;
+  return satirlar;
 }

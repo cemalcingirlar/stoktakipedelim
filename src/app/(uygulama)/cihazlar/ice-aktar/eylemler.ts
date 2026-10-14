@@ -37,9 +37,8 @@ export async function exceliOnizle(
     if (dosya.size > EN_BUYUK_DOSYA) {
       return { hata: "Dosya 5 MB'tan büyük olamaz." };
     }
-    if (!/\.xlsx$/i.test(dosya.name)) {
-      return { hata: "Yalnız .xlsx dosyası yüklenebilir. Şablonu indirip kullanın." };
-    }
+    // Uzantıya güvenmiyoruz: dosyanın gerçek türü içeriğinden anlaşılıyor,
+    // desteklenmiyorsa exceliOku ne yapılacağını söyleyen mesajı döndürüyor.
 
     const kategoriler = await prisma.kategori.findMany({
       where: { aktif: true },
@@ -80,7 +79,7 @@ export async function exceliOnizle(
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Excel okunamadı:", hata);
-    return { hata: "Dosya okunamadı. Şablona uygun bir .xlsx dosyası olduğundan emin olun." };
+    return { hata: "Dosya okunamadı. Şablonu indirip doldurduğunuz dosyayı yükleyin." };
   }
 }
 

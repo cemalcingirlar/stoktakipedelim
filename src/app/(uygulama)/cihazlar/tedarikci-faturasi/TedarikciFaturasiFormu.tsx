@@ -6,7 +6,21 @@ import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { TedarikciSecici } from "@/bilesenler/TedarikciSecici";
 import { VadeAlani } from "@/bilesenler/VadeAlani";
-import { kurusuTLYaz } from "@/lib/para";
+import {
+  duzenlemeSorunlari,
+  duzenlenmisSeri,
+  duzenlenmisUrun,
+  seriAnahtari,
+  type SeriUstYazim,
+  type UrunUstYazim,
+} from "@/lib/faturaDuzenleme";
+import {
+  baskinSecim,
+  tumuneUygula,
+  urunSecimi,
+  type Secim,
+} from "@/lib/kategoriSecim";
+import { kurusuTLYaz, tlyiKurusaCevir } from "@/lib/para";
 import { inputTarih } from "@/lib/tarih";
 import type { TedarikciUrunGrubu } from "@/lib/tedarikciDosyasi";
 import type { FaturaSatiriGirdisi } from "../../faturalar/dogrulama";
@@ -25,15 +39,6 @@ export type KategoriSecimi = {
 };
 
 const KUCUK_ETIKET = "mb-1 block text-xs font-medium text-slate-600";
-
-/** Ürün adı markayla başlıyorsa modeli tekrarlamamak için markayı atar. */
-function modelAdi(urunAdi: string, marka: string): string {
-  const m = marka.trim();
-  if (m && urunAdi.toLocaleUpperCase("tr").startsWith(m.toLocaleUpperCase("tr"))) {
-    return urunAdi.slice(m.length).trim() || urunAdi;
-  }
-  return urunAdi;
-}
 
 export function TedarikciFaturasiFormu({
   kategoriler,
@@ -64,9 +69,11 @@ export function TedarikciFaturasiFormu({
   // gerekmiyor — barkod geçmişi zaten varsayılan olarak geliyor.
   const [seciliNo, setSeciliNo] = useState<string | null>(null);
   const [tarihUstYazim, setTarihUstYazim] = useState<Record<string, string>>({});
-  const [secimUstYazim, setSecimUstYazim] = useState<
-    Record<string, { kat: string; alt: string }>
-  >({});
+  const [secimUstYazim, setSecimUstYazim] = useState<Record<string, Secim>>({});
+  // Dosyadan okunan değerler yanlış çıkabiliyor; kullanıcının düzelttikleri
+  // burada tutuluyor, dokunulmayan alanlar okunan değerde kalıyor.
+  const [urunUstYazim, setUrunUstYazim] = useState<Record<string, UrunUstYazim>>({});
+  const [seriUstYazim, setSeriUstYazim] = useState<Record<string, SeriUstYazim>>({});
 
   const faturalar = onizleme.faturalar ?? [];
   const fatura = faturalar.find((f) => f.faturaNo === seciliNo) ?? faturalar[0];
@@ -80,17 +87,48 @@ export function TedarikciFaturasiFormu({
     [onizleme.gecmis],
   );
 
-  /** Bir barkodun yürürlükteki kategori seçimi: kullanıcı seçtiyse o, yoksa geçmişten. */
-  function secimiOku(barkod: string): { kat: string; alt: string } {
-    const elle = secimUstYazim[barkod];
-    if (elle) return elle;
-    const bilinen = gecmisHarita.get(barkod);
-    return {
-      // Geçmiş yoksa "Sınıflandırılmamış" — kategori seçmek zorunlu değil.
-      kat: String(bilinen ? bilinen.kategoriId : varsayilanKategoriId),
-      alt: bilinen?.altKategoriId ? String(bilinen.altKategoriId) : "",
-    };
+  const barkodlar = useMemo(
+    () => (fatura ? fatura.gruplar.map((g) => g.barkod) : []),
+    [fatura],
+  );
+
+  /**
+   * Faturadaki baskın kategori: bir fatura genelde tek tür mal taşıdığı için
+   * geçmişi olmayan ürünler de bu kategoriye düşüyor, kullanıcı her satırı tek
+   * tek seçmek zorunda kalmıyor.
+   */
+  const baskin = useMemo(
+    () => baskinSecim(barkodlar, gecmisHarita),
+    [barkodlar, gecmisHarita],
+  );
+
+  /** Bir barkodun yürürlükteki kategori seçimi. Kurallar: src/lib/kategoriSecim.ts */
+  function secimiOku(barkod: string): Secim {
+    return urunSecimi(barkod, {
+      ustYazim: secimUstYazim,
+      gecmis: gecmisHarita,
+      baskin,
+      varsayilanKategoriId,
+    });
   }
+
+  /** Üstteki seçiciyle tüm ürünlere aynı kategoriyi yazar. */
+  function hepsineYaz(secim: Secim) {
+    setSecimUstYazim((m) => ({ ...m, ...tumuneUygula(barkodlar, secim) }));
+  }
+
+  // Toplu seçicide görünen değer: kullanıcı bir şey seçtiyse tüm ürünler aynı
+  // olduğunda onu gösteriyor, karışıksa boş kalıyor.
+  const ortakSecim: Secim | null = (() => {
+    if (barkodlar.length === 0) return null;
+    const ilk = secimiOku(barkodlar[0]);
+    return barkodlar.every((b) => {
+      const s = secimiOku(b);
+      return s.kat === ilk.kat && s.alt === ilk.alt;
+    })
+      ? ilk
+      : null;
+  })();
 
   const dosyadanTarih = fatura?.tarih
     ? inputTarih(new Date(fatura.tarih))
@@ -104,30 +142,55 @@ export function TedarikciFaturasiFormu({
     if (kayit.faturaId) yonlendirici.push(`/faturalar/${kayit.faturaId}`);
   }, [kayit.faturaId, yonlendirici]);
 
+  /** Bir ürünün düzeltmeler uygulanmış hali. */
+  function urunuOku(grup: TedarikciUrunGrubu) {
+    return duzenlenmisUrun(grup, urunUstYazim[grup.barkod]);
+  }
+
+  /** Bir cihazın düzeltmeler uygulanmış seri numarası ve çıkarılma durumu. */
+  function seriyiOku(grup: TedarikciUrunGrubu, indeks: number) {
+    return duzenlenmisSeri(
+      grup.cihazlar[indeks]?.seriNo ?? null,
+      seriUstYazim[seriAnahtari(grup.barkod, indeks)],
+    );
+  }
+
   /** Seçili faturayı tek tek cihaz satırlarına açar. */
   function satirlariUret(): FaturaSatiriGirdisi[] {
     if (!fatura) return [];
     return fatura.gruplar.flatMap<FaturaSatiriGirdisi>((g) => {
       const secim = secimiOku(g.barkod);
+      const alanlar = urunuOku(g);
       const ortak = {
         kategoriId: Number(secim.kat) || 0,
         altKategoriId: Number(secim.alt) || null,
-        marka: g.marka || "—",
-        model: modelAdi(g.urunAdi, g.marka),
+        marka: alanlar.marka || "—",
+        model: alanlar.model,
         renk: null,
         kapasite: null,
-        barkod: g.barkod,
-        alisFiyatiKurus: g.alisFiyatiKurus,
+        barkod: alanlar.barkod || null,
+        alisFiyatiKurus: alanlar.alisFiyatiKurus,
         not: null,
       };
       return g.cihazlar
-        .filter((c) => !c.seriNo || !kayitliSeriNolar.has(c.seriNo))
-        .map((c) => ({ ...ortak, seriNo: c.seriNo }));
+        .map((_, i) => seriyiOku(g, i))
+        .filter((s) => !s.cikarildi)
+        .filter((s) => !s.seriNo || !kayitliSeriNolar.has(s.seriNo))
+        .map((s) => ({ ...ortak, seriNo: s.seriNo }));
     });
   }
 
   const satirlar = satirlariUret();
   const toplamKurus = satirlar.reduce((t, s) => t + s.alisFiyatiKurus, 0);
+
+  // Elle düzeltmeden sonra kalan sorunlar: boş marka/model, geçersiz fiyat,
+  // elle yazılırken tekrarlanan seri no.
+  const sorunlar = fatura
+    ? duzenlemeSorunlari(
+        fatura.gruplar.map((g) => ({ alanlar: urunuOku(g), urunAdi: g.urunAdi })),
+        satirlar.map((s) => ({ urunAdi: `${s.marka} ${s.model}`.trim(), seriNo: s.seriNo })),
+      )
+    : [];
   const sinifIandirilmamislar = fatura
     ? fatura.gruplar.filter((g) => Number(secimiOku(g.barkod).kat) === varsayilanKategoriId)
     : [];
@@ -173,21 +236,23 @@ export function TedarikciFaturasiFormu({
           1. Tedarikçiden gelen Excel dosyasını yükleyin
         </h2>
         <p className="mb-3 text-sm text-slate-500">
-          Portaldaki <strong>Seri No Kontrolü</strong> ekranından{" "}
-          <strong>Excel&apos;e Aktar</strong> ile indirdiğiniz dosyayı olduğu gibi yükleyin.
-          Dosya yüklendiğinde hiçbir kayıt oluşmaz.
+          İki dosya türü de olur: tedarikçinizin gönderdiği{" "}
+          <strong>e-Fatura PDF&apos;i</strong> ya da portaldaki{" "}
+          <strong>Seri No Kontrolü</strong> ekranından{" "}
+          <strong>Excel&apos;e Aktar</strong> ile indirdiğiniz dosya. Olduğu gibi yükleyin;
+          dosya yüklendiğinde hiçbir kayıt oluşmaz.
         </p>
 
         <form action={onizleEylem} className="flex flex-wrap items-end gap-3">
           <div>
             <label htmlFor="dosya" className={KUCUK_ETIKET}>
-              Dosya (.xlsx)
+              Dosya (.pdf · .xlsx)
             </label>
             <input
               id="dosya"
               name="dosya"
               type="file"
-              accept=".xlsx"
+              accept=".pdf,.xlsx"
               required
               className="block w-full max-w-sm text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-700"
             />
@@ -299,6 +364,82 @@ export function TedarikciFaturasiFormu({
               </div>
             ) : null}
 
+            {sorunlar.length > 0 ? (
+              <div
+                data-test="duzenleme-sorunlari"
+                className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3"
+              >
+                <p className="text-sm font-medium text-red-800">
+                  Düzelttiğiniz alanlarda sorun var:
+                </p>
+                <ul className="mt-1 list-inside list-disc text-sm text-red-700">
+                  {sorunlar.map((h) => (
+                    <li key={h}>{h}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {/* Fatura genelde tek tür mal taşıyor: tek seçimle hepsini ayarla. */}
+            <div
+              data-test="toplu-kategori"
+              className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
+            >
+              <p className="mb-2 text-sm font-medium text-slate-700">
+                Tümüne uygula
+                <span className="ml-1 font-normal text-slate-500">
+                  — buradan seçtiğiniz kategori {fatura.gruplar.length} ürünün hepsine yazılır,
+                  tek tek değiştirebilirsiniz
+                </span>
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <label htmlFor="topluKategori" className={KUCUK_ETIKET}>
+                    Kategori
+                  </label>
+                  <select
+                    id="topluKategori"
+                    value={ortakSecim?.kat ?? ""}
+                    onChange={(e) =>
+                      e.target.value ? hepsineYaz({ kat: e.target.value, alt: "" }) : undefined
+                    }
+                    className={GIRDI_SINIFI}
+                  >
+                    {ortakSecim ? null : <option value="">(ürünlerde farklı)</option>}
+                    {kategoriler.map((k) => (
+                      <option key={k.id} value={k.id}>
+                        {k.id === varsayilanKategoriId ? `${k.ad} (sonra düzeltilebilir)` : k.ad}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="topluAltKategori" className={KUCUK_ETIKET}>
+                    Alt Kategori
+                  </label>
+                  <select
+                    id="topluAltKategori"
+                    value={ortakSecim?.alt ?? ""}
+                    disabled={!ortakSecim}
+                    onChange={(e) =>
+                      ortakSecim
+                        ? hepsineYaz({ kat: ortakSecim.kat, alt: e.target.value })
+                        : undefined
+                    }
+                    className={GIRDI_SINIFI}
+                  >
+                    <option value="">—</option>
+                    {(kategoriler.find((k) => String(k.id) === ortakSecim?.kat)?.altKategoriler ??
+                      []).map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.ad}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               {fatura.gruplar.map((grup) => (
                 <UrunSatiri
@@ -309,6 +450,23 @@ export function TedarikciFaturasiFormu({
                   secim={secimiOku(grup.barkod)}
                   degistir={(yeni) =>
                     setSecimUstYazim((m) => ({ ...m, [grup.barkod]: yeni }))
+                  }
+                  alanlar={urunuOku(grup)}
+                  alanDegistir={(alan, deger) =>
+                    setUrunUstYazim((m) => ({
+                      ...m,
+                      [grup.barkod]: { ...m[grup.barkod], [alan]: deger },
+                    }))
+                  }
+                  seriyiOku={(i) => seriyiOku(grup, i)}
+                  seriDegistir={(i, yeni) =>
+                    setSeriUstYazim((m) => ({
+                      ...m,
+                      [seriAnahtari(grup.barkod, i)]: {
+                        ...m[seriAnahtari(grup.barkod, i)],
+                        ...yeni,
+                      },
+                    }))
                   }
                   kayitliSeriNolar={kayitliSeriNolar}
                 />
@@ -323,7 +481,8 @@ export function TedarikciFaturasiFormu({
                 3. Fatura bilgileri ve kayıt
               </h2>
               <p className="mb-3 text-sm text-slate-500">
-                Fatura numarası ve tarihi dosyadan geldi. Tedarikçi, depo ve vadeyi siz seçin.
+                Fatura numarası ve tarihi dosyadan geldi. Tedarikçi ve depoyu siz seçin.
+                {fatura.vadeTarihi ? " Vade tarihi de faturada yazıyordu, hazır geldi." : " Vadeyi siz seçin."}
               </p>
 
               {kayit.hata ? (
@@ -395,7 +554,14 @@ export function TedarikciFaturasiFormu({
                   </select>
                 </div>
 
-                <VadeAlani faturaTarihi={faturaTarihi} />
+                {/* Fatura değişince vade seçimi de sıfırlansın. */}
+                <VadeAlani
+                  key={`vade-${fatura.faturaNo}`}
+                  faturaTarihi={faturaTarihi}
+                  baslangicVadeTarihi={
+                    fatura.vadeTarihi ? inputTarih(new Date(fatura.vadeTarihi)) : undefined
+                  }
+                />
 
                 <div>
                   <label htmlFor="not" className={KUCUK_ETIKET}>
@@ -409,9 +575,17 @@ export function TedarikciFaturasiFormu({
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
-                <GonderDugmesi bekleyenMetin="Kaydediliyor…">
-                  {satirlar.length} Cihazı Kaydet
-                </GonderDugmesi>
+                {/* Sorun varken düğme çizilmiyor: GonderDugmesi'ne disabled
+                    geçmek bekleme kilidini de etkisizleştiriyor. */}
+                {sorunlar.length > 0 ? (
+                  <span className="text-sm font-medium text-red-800">
+                    Yukarıdaki sorunlar giderilmeden kaydedilemez.
+                  </span>
+                ) : (
+                  <GonderDugmesi bekleyenMetin="Kaydediliyor…">
+                    {satirlar.length} Cihazı Kaydet
+                  </GonderDugmesi>
+                )}
                 <span className="text-sm text-slate-500">
                   Toplam alış tutarı {kurusuTLYaz(toplamKurus)} TL (KDV hariç)
                 </span>
@@ -429,13 +603,17 @@ export function TedarikciFaturasiFormu({
   );
 }
 
-/** Bir ürün grubu: dosyadan gelen bilgiler ve kategori seçimi. */
+/** Bir ürün grubu: dosyadan okunan bilgiler, kategori seçimi ve elle düzeltme. */
 function UrunSatiri({
   grup,
   kategoriler,
   varsayilanKategoriId,
   secim,
   degistir,
+  alanlar,
+  alanDegistir,
+  seriyiOku,
+  seriDegistir,
   kayitliSeriNolar,
 }: {
   grup: TedarikciUrunGrubu;
@@ -443,25 +621,51 @@ function UrunSatiri({
   varsayilanKategoriId: number;
   secim: { kat: string; alt: string };
   degistir: (yeni: { kat: string; alt: string }) => void;
+  alanlar: { marka: string; model: string; barkod: string; alisFiyatiKurus: number };
+  alanDegistir: (alan: keyof UrunUstYazim, deger: string | number) => void;
+  seriyiOku: (indeks: number) => { seriNo: string | null; cikarildi: boolean };
+  seriDegistir: (indeks: number, yeni: SeriUstYazim) => void;
   kayitliSeriNolar: Set<string>;
 }) {
   const [acik, setAcik] = useState(false);
+  const [duzenle, setDuzenle] = useState(false);
+  // Fiyat kutusu yazarken serbest kalmalı ("8.270," gibi yarım değerler);
+  // bu yüzden metin olarak tutuluyor, kuruşa çevirme onChange'de yapılıyor.
+  const [fiyatMetni, setFiyatMetni] = useState<string | null>(null);
+
   const kategori = kategoriler.find((k) => String(k.id) === secim.kat);
-  const alinacak = grup.cihazlar.filter(
-    (c) => !c.seriNo || !kayitliSeriNolar.has(c.seriNo),
+
+  const cihazDurumlari = grup.cihazlar.map((_, i) => seriyiOku(i));
+  const alinacak = cihazDurumlari.filter(
+    (c) => !c.cikarildi && (!c.seriNo || !kayitliSeriNolar.has(c.seriNo)),
   );
-  const seriNoEksik = Boolean(kategori?.seriNoZorunlu) && grup.cihazlar.some((c) => !c.seriNo);
+  const seriNoEksik =
+    Boolean(kategori?.seriNoZorunlu) &&
+    cihazDurumlari.some((c) => !c.cikarildi && !c.seriNo);
+
+  const okunanAd = `${grup.urunAdi}`;
+  const degistirilmis =
+    alanlar.barkod !== grup.barkod ||
+    `${alanlar.marka} ${alanlar.model}`.trim() !== okunanAd.trim() ||
+    alanlar.alisFiyatiKurus !== grup.alisFiyatiKurus;
 
   return (
-    <div className="rounded-lg border border-slate-200 p-3">
+    <div data-test="urun-satiri" className="rounded-lg border border-slate-200 p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
         <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-700">
-          {grup.barkod}
+          {alanlar.barkod || "(barkod yok)"}
         </span>
-        <span className="font-medium text-slate-900">{grup.urunAdi}</span>
+        <span className="font-medium text-slate-900">
+          {`${alanlar.marka} ${alanlar.model}`.trim() || "(ürün adı yok)"}
+        </span>
         <span className="text-slate-500">
-          {alinacak.length} adet × {kurusuTLYaz(grup.alisFiyatiKurus)} TL
+          {alinacak.length} adet × {kurusuTLYaz(alanlar.alisFiyatiKurus)} TL
         </span>
+        {degistirilmis ? (
+          <span className="rounded bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">
+            elle düzeltildi
+          </span>
+        ) : null}
         {grup.fiyatFarkliMi ? (
           <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
             satırlarda farklı birim tutar var
@@ -472,7 +676,71 @@ function UrunSatiri({
             bu üründe seri no yok — {kategori?.ad} kategorisi seri no istiyor
           </span>
         ) : null}
+        <button
+          type="button"
+          onClick={() => setDuzenle((o) => !o)}
+          className="ml-auto text-sm font-medium text-slate-600 underline hover:text-slate-900"
+        >
+          {duzenle ? "Düzeltmeyi kapat" : "Bilgileri düzelt"}
+        </button>
       </div>
+
+      {duzenle ? (
+        <div
+          data-test="urun-duzeltme"
+          className="mb-2 grid grid-cols-1 gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-4"
+        >
+          <div>
+            <label className={KUCUK_ETIKET}>Marka</label>
+            <input
+              data-test="duzelt-marka"
+              value={alanlar.marka}
+              onChange={(e) => alanDegistir("marka", e.target.value)}
+              maxLength={60}
+              className={GIRDI_SINIFI}
+            />
+          </div>
+          <div>
+            <label className={KUCUK_ETIKET}>Model</label>
+            <input
+              data-test="duzelt-model"
+              value={alanlar.model}
+              onChange={(e) => alanDegistir("model", e.target.value)}
+              maxLength={80}
+              className={GIRDI_SINIFI}
+            />
+          </div>
+          <div>
+            <label className={KUCUK_ETIKET}>Barkod</label>
+            <input
+              data-test="duzelt-barkod"
+              value={alanlar.barkod}
+              onChange={(e) => alanDegistir("barkod", e.target.value)}
+              maxLength={40}
+              className={`${GIRDI_SINIFI} font-mono`}
+            />
+          </div>
+          <div>
+            <label className={KUCUK_ETIKET}>Birim Alış Fiyatı (TL)</label>
+            <input
+              data-test="duzelt-fiyat"
+              value={fiyatMetni ?? kurusuTLYaz(alanlar.alisFiyatiKurus)}
+              onChange={(e) => {
+                setFiyatMetni(e.target.value);
+                const kurus = tlyiKurusaCevir(e.target.value);
+                alanDegistir("alisFiyatiKurus", kurus ?? NaN);
+              }}
+              onBlur={() => setFiyatMetni(null)}
+              inputMode="decimal"
+              className={`${GIRDI_SINIFI} text-right tabular-nums`}
+            />
+          </div>
+          <p className="text-xs text-slate-500 sm:col-span-2 lg:col-span-4">
+            Dosyadan okunan: <span className="font-mono">{grup.barkod}</span> · {okunanAd} ·{" "}
+            {kurusuTLYaz(grup.alisFiyatiKurus)} TL
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <div>
@@ -511,26 +779,54 @@ function UrunSatiri({
             onClick={() => setAcik((o) => !o)}
             className="text-sm font-medium text-slate-600 underline hover:text-slate-900"
           >
-            {acik ? "Seri numaralarını gizle" : `Seri numaralarını göster (${grup.cihazlar.length})`}
+            {acik
+              ? "Seri numaralarını gizle"
+              : `Seri numaralarını göster / düzelt (${grup.cihazlar.length})`}
           </button>
         </div>
       </div>
 
       {acik ? (
-        <ul className="mt-2 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+        <ul
+          data-test="seri-listesi"
+          className="mt-2 grid max-h-60 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3"
+        >
           {grup.cihazlar.map((c, i) => {
-            const kayitli = c.seriNo ? kayitliSeriNolar.has(c.seriNo) : false;
+            const durum = seriyiOku(i);
+            const kayitli = durum.seriNo ? kayitliSeriNolar.has(durum.seriNo) : false;
             return (
-              <li
-                key={`${c.seriNo ?? "seri-yok"}-${i}`}
-                className={`rounded px-2 py-1 font-mono text-xs ring-1 ${
-                  kayitli
-                    ? "bg-red-50 text-red-700 ring-red-200 line-through"
-                    : "bg-white text-slate-700 ring-slate-200"
-                }`}
-                title={kayitli ? "Sistemde zaten kayıtlı, atlanacak" : undefined}
-              >
-                {c.seriNo ?? "(seri no yok)"}
+              <li key={seriAnahtari(grup.barkod, i)} className="flex items-center gap-1">
+                <input
+                  data-test="seri-kutusu"
+                  value={durum.seriNo ?? ""}
+                  onChange={(e) => seriDegistir(i, { seriNo: e.target.value })}
+                  disabled={durum.cikarildi}
+                  placeholder="(seri no yok)"
+                  maxLength={40}
+                  title={
+                    kayitli
+                      ? "Sistemde zaten kayıtlı, atlanacak"
+                      : c.seriNo && c.seriNo !== durum.seriNo
+                        ? `Dosyadan okunan: ${c.seriNo}`
+                        : undefined
+                  }
+                  className={`w-full rounded border px-2 py-1 font-mono text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                    durum.cikarildi
+                      ? "border-slate-200 bg-slate-100 text-slate-400 line-through"
+                      : kayitli
+                        ? "border-red-200 bg-red-50 text-red-700 line-through"
+                        : "border-slate-200 bg-white text-slate-700"
+                  }`}
+                />
+                <button
+                  type="button"
+                  data-test="seri-cikar"
+                  onClick={() => seriDegistir(i, { cikarildi: !durum.cikarildi })}
+                  title={durum.cikarildi ? "Faturaya geri al" : "Bu cihazı faturadan çıkar"}
+                  className="shrink-0 rounded px-1.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                >
+                  {durum.cikarildi ? "geri al" : "×"}
+                </button>
               </li>
             );
           })}

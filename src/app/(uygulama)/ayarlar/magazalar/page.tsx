@@ -4,6 +4,7 @@ import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { EylemFormu } from "@/bilesenler/EylemFormu";
 import { Kart } from "@/bilesenler/Kart";
 import { Rozet } from "@/bilesenler/Rozet";
+import { ayniDukkandakiler } from "@/lib/dukkan";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { ROLLER, ROL_ETIKET, STOK_DURUM, type Rol } from "@/lib/sabitler";
@@ -45,6 +46,11 @@ export default async function MagazalarSayfasi() {
   ]);
 
   const stokHarita = new Map(stokOzeti.map((s) => [s.magazaId, s]));
+  // Aynı dükkân kodunu taşıyan mağazalar tek fiziksel dükkânın kayıtlarıdır;
+  // aralarında sevkiyat onayı beklenmeden aktarım yapılabilir.
+  const dukkanKodlari = [
+    ...new Set(magazalar.map((m) => m.dukkanKodu).filter((k): k is string => Boolean(k))),
+  ].sort();
   // Yönetici her mağazada yetkili olduğu için kutu listesine girmez.
   const yoneticiler = kullanicilar.filter((k) => k.rol === ROLLER.ADMIN);
   const personel = kullanicilar.filter((k) => k.rol !== ROLLER.ADMIN);
@@ -66,9 +72,15 @@ export default async function MagazalarSayfasi() {
         </Link>
       </div>
 
+      <datalist id="dukkanKodlari">
+        {dukkanKodlari.map((k) => (
+          <option key={k} value={k} />
+        ))}
+      </datalist>
+
       <Kart baslik="Yeni Mağaza">
         <EylemFormu eylem={magazaEkle}>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div>
               <label htmlFor="yeniKod" className={KUCUK_ETIKET}>
                 Kod *
@@ -107,7 +119,25 @@ export default async function MagazalarSayfasi() {
               </label>
               <input id="yeniAdres" name="adres" maxLength={200} className={GIRDI_SINIFI} />
             </div>
+            <div>
+              <label htmlFor="yeniDukkanKodu" className={KUCUK_ETIKET}>
+                Dükkân kodu
+              </label>
+              <input
+                id="yeniDukkanKodu"
+                name="dukkanKodu"
+                list="dukkanKodlari"
+                maxLength={20}
+                placeholder="KOZAN"
+                className={`${GIRDI_SINIFI} uppercase`}
+              />
+            </div>
           </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Aynı dükkânda duran mağazalara (ör. kasa ve depo kaydı) aynı dükkân kodunu verin.
+            Bu mağazalar arasında <strong>Mağaza İçi Aktarım</strong> ekranından sevk onayı beklemeden
+            cihaz taşınabilir. Boş bırakırsanız mağaza hiçbir gruba girmez.
+          </p>
           <div className="mt-3">
             <GonderDugmesi bekleyenMetin="Ekleniyor…">Mağaza Ekle</GonderDugmesi>
           </div>
@@ -118,6 +148,7 @@ export default async function MagazalarSayfasi() {
         {magazalar.map((m) => {
           const stok = stokHarita.get(m.id);
           const ekYetkili = new Set(m.ekYetkililer.map((k) => k.id));
+          const esler = ayniDukkandakiler(m, magazalar);
           const yetkiliSayisi = new Set([
             ...m.kullanicilar.map((k) => k.id),
             ...m.ekYetkililer.map((k) => k.id),
@@ -135,7 +166,7 @@ export default async function MagazalarSayfasi() {
 
               <EylemFormu eylem={magazaGuncelle}>
                 <input type="hidden" name="id" value={m.id} />
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
                   <div>
                     <label className={KUCUK_ETIKET}>Kod *</label>
                     <input
@@ -177,6 +208,28 @@ export default async function MagazalarSayfasi() {
                       maxLength={200}
                       className={GIRDI_SINIFI}
                     />
+                  </div>
+                  <div>
+                    <label className={KUCUK_ETIKET}>Dükkân kodu</label>
+                    <input
+                      key={`dukkan-${m.dukkanKodu}`}
+                      name="dukkanKodu"
+                      defaultValue={m.dukkanKodu ?? ""}
+                      list="dukkanKodlari"
+                      maxLength={20}
+                      placeholder="—"
+                      className={`${GIRDI_SINIFI} uppercase`}
+                    />
+                    {esler.length > 0 ? (
+                      <p className="mt-1 text-xs text-emerald-700">
+                        Aynı dükkân: {esler.map((e) => e.ad).join(", ")}
+                      </p>
+                    ) : m.dukkanKodu ? (
+                      <p className="mt-1 text-xs text-amber-700">
+                        Bu kodu taşıyan başka mağaza yok — aktarım için eşini de aynı kodla
+                        işaretleyin.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 

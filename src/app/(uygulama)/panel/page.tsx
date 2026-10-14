@@ -1,35 +1,47 @@
 import Link from "next/link";
-import { AylikGrafik } from "@/bilesenler/AylikGrafik";
+import { HareketGrafigi } from "@/bilesenler/HareketGrafigi";
 import { Kart, SayiKarti } from "@/bilesenler/Kart";
+import { GRAFIK_DONEMLERI, donemiCoz } from "@/lib/grafikDonem";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { HAREKET_TIP_ETIKET, type HareketTip } from "@/lib/sabitler";
-import { aylikHareketRaporu } from "@/lib/raporlar";
+import { hareketRaporu } from "@/lib/raporlar";
 import {
   bekleyenSevkiyatlar,
+  bugunSatilanlar,
   magazaStokOzeti,
   sonHareketler,
-  vadesiGecenFaturalar,
+  vadesiGecenCihazSayisi,
 } from "@/lib/sorgular";
-import { tarihSaatYaz, tarihYaz } from "@/lib/tarih";
+import { inputTarih, saatYaz, tarihSaatYaz } from "@/lib/tarih";
 import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
 
 export const metadata = { title: "Panel — Stok Takip" };
 
-export default async function PanelSayfasi() {
+export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">) {
   const oturum = await oturumGerekli();
   const yonetici = adminMi(oturum);
 
-  const [ozetler, vadesiGecen, bekleyen, hareketler, aylar] = await Promise.all([
+  const params = await searchParams;
+  const donem = donemiCoz(Array.isArray(params.donem) ? params.donem[0] : params.donem);
+
+  const kendiMagazalari = yonetici ? null : yetkiliMagazalar(oturum);
+
+  const [ozetler, vadeDurumu, bugun, bekleyen, hareketler, kovalar] = await Promise.all([
     magazaStokOzeti(),
-    vadesiGecenFaturalar(),
-    bekleyenSevkiyatlar(yonetici ? null : yetkiliMagazalar(oturum)),
+    vadesiGecenCihazSayisi(),
+    bugunSatilanlar(kendiMagazalari),
+    bekleyenSevkiyatlar(kendiMagazalari),
     sonHareketler(10),
-    aylikHareketRaporu(12),
+    hareketRaporu(donem),
   ]);
+
+  // Bugün satılanların tam listesi: cihaz listesinde satış tarihi bugüne
+  // kısıtlanmış filtre. Panel ilk 10'u gösteriyor, bağlantı tamamını açıyor.
+  const bugunku = inputTarih(new Date());
+  const bugunCikanlarYolu = `/cihazlar?durum=SATILDI&satisBas=${bugunku}&satisBit=${bugunku}`;
 
   const toplamAdet = ozetler.reduce((t, o) => t + o.adet, 0);
   const toplamDeger = ozetler.reduce((t, o) => t + o.degerKurus, 0);
-  const vadesiGecenCihaz = vadesiGecen.reduce((t, f) => t + f._count.kalemler, 0);
 
   return (
     <div className="space-y-6">
@@ -43,20 +55,33 @@ export default async function PanelSayfasi() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <SayiKarti etiket="Toplam Stok" deger={`${toplamAdet}`} altBilgi="adet cihaz" />
         <SayiKarti etiket="Stok Değeri" deger={kurusuTLYazSembollu(toplamDeger)} altBilgi="alış fiyatı üzerinden" />
         <SayiKarti
+          etiket="Bugün Satılan"
+          deger={`${bugun.adet}`}
+          altBilgi={bugun.adet > 0 ? `${kurusuTLYazSembollu(bugun.ciroKurus)} ciro` : "bugün satış yok"}
+          vurgu={bugun.adet > 0 ? "basari" : "normal"}
+          yol={bugun.adet > 0 ? bugunCikanlarYolu : "/satis"}
+        />
+        <SayiKarti
           etiket="Vadesi Geçen"
-          deger={`${vadesiGecen.length}`}
-          altBilgi={`${vadesiGecenCihaz} cihaz · ödenmemiş fatura`}
-          vurgu={vadesiGecen.length > 0 ? "tehlike" : "normal"}
+          deger={`${vadeDurumu.toplam}`}
+          altBilgi={
+            vadeDurumu.toplam > 0
+              ? `cihaz · ${vadeDurumu.stokta} tanesi stokta`
+              : "ödemesi gecikmiş cihaz yok"
+          }
+          vurgu={vadeDurumu.toplam > 0 ? "tehlike" : "normal"}
+          yol="/cihazlar?vade=gecen"
         />
         <SayiKarti
           etiket="Bekleyen Sevkiyat"
           deger={`${bekleyen.length}`}
           altBilgi="onayınızı bekliyor"
           vurgu={bekleyen.length > 0 ? "uyari" : "normal"}
+          yol="/sevkiyat"
         />
       </div>
 
@@ -84,26 +109,62 @@ export default async function PanelSayfasi() {
       </Kart>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Kart baslik="Vadesi Geçen Faturalar">
-          {vadesiGecen.length === 0 ? (
-            <p className="text-sm text-slate-500">Vadesi geçmiş ödenmemiş fatura yok.</p>
+        <Kart
+          baslikYolu={bugunCikanlarYolu}
+          baslik="Bugün Stoktan Çıkanlar"
+          eylem={
+            bugun.adet > 0 ? (
+              <span className="text-xs text-slate-500">
+                {bugun.adet} cihaz · {kurusuTLYazSembollu(bugun.ciroKurus)} ciro ·{" "}
+                <span className={bugun.karKurus >= 0 ? "text-emerald-700" : "text-red-600"}>
+                  {kurusuTLYazSembollu(bugun.karKurus)} kâr
+                </span>
+              </span>
+            ) : null
+          }
+        >
+          {bugun.adet === 0 ? (
+            <p className="text-sm text-slate-500">Bugün henüz satış yapılmadı.</p>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {vadesiGecen.slice(0, 8).map((f) => (
-                <li key={f.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+              {bugun.kalemler.slice(0, 10).map((k) => (
+                <li key={k.id} className="flex items-center justify-between gap-3 py-2 text-sm">
                   <div className="min-w-0">
-                    <div className="truncate font-medium text-slate-800">{f.tedarikci.ad}</div>
+                    <Link
+                      href={`/cihazlar/${k.id}`}
+                      className="truncate font-medium text-slate-800 underline-offset-2 hover:underline"
+                    >
+                      {k.marka} {k.model}
+                    </Link>
                     <div className="text-xs text-slate-500">
-                      {f.faturaNo} · {f._count.kalemler} cihaz · {f.magaza.ad}
+                      {k.seriNo ? `${k.seriNo} · ` : ""}
+                      {k.magaza.ad}
+                      {k.musteri ? ` · ${k.musteri.adSoyad}` : ""}
+                      {k.satanKullanici ? ` · ${k.satanKullanici.adSoyad}` : ""}
                     </div>
                   </div>
-                  <span className="shrink-0 rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                    {tarihYaz(f.vadeTarihi)}
+                  <span className="shrink-0 text-right">
+                    <span className="block font-medium text-slate-800 tabular-nums">
+                      {kurusuTLYazSembollu(k.satisFiyatiKurus ?? 0)}
+                    </span>
+                    <span className="block text-xs text-slate-500">{saatYaz(k.satisTarihi)}</span>
                   </span>
                 </li>
               ))}
             </ul>
           )}
+          {bugun.adet > 10 ? (
+            <p className="mt-2 text-xs text-slate-500">
+              İlk 10 kayıt gösteriliyor;{" "}
+              <Link
+                href={bugunCikanlarYolu}
+                className="text-sky-700 underline-offset-2 hover:underline"
+              >
+                tamamını görün ({bugun.adet} cihaz)
+              </Link>
+              .
+            </p>
+          ) : null}
         </Kart>
 
         <Kart baslik="Onay Bekleyen Sevkiyatlar">
@@ -134,9 +195,31 @@ export default async function PanelSayfasi() {
         </Kart>
       </div>
 
-      <Kart baslik="Son 12 Ay — Giriş ve Satış">
-        <AylikGrafik aylar={aylar} />
-      </Kart>
+      <div id="grafik" className="scroll-mt-4">
+        <Kart
+          baslik={`${donem.baslik} — Giriş ve Satış`}
+          eylem={
+            <div className="flex flex-wrap gap-1" data-test="donem-secici">
+              {GRAFIK_DONEMLERI.map((d) => (
+                <Link
+                  key={d.anahtar}
+                  href={`/panel?donem=${d.anahtar}#grafik`}
+                  aria-current={d.anahtar === donem.anahtar ? "page" : undefined}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                    d.anahtar === donem.anahtar
+                      ? "bg-slate-800 text-white"
+                      : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {d.etiket}
+                </Link>
+              ))}
+            </div>
+          }
+        >
+          <HareketGrafigi kovalar={kovalar} />
+        </Kart>
+      </div>
 
       <Kart baslik="Son Hareketler">
         {hareketler.length === 0 ? (

@@ -87,6 +87,12 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
                 Tedarikçi Faturası Yükle
               </Link>
               <Link
+                href="/cihazlar/envanter"
+                className="rounded-lg border border-blue-300 bg-blue-50 px-3.5 py-2 text-sm font-medium text-blue-800 transition hover:bg-blue-100"
+              >
+                Envanter Dökümü Yükle
+              </Link>
+              <Link
                 href="/cihazlar/ice-aktar"
                 className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >

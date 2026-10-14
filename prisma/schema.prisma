@@ -23,6 +23,12 @@ model Magaza {
   merkezMi Boolean @default(false)
   aktif    Boolean @default(true)
 
+  /// Aynı fiziksel dükkânda duran mağazalar aynı kodu taşır (ör. bir dükkânın
+  /// kasa ve depo kaydı). Bu mağazalar arasında sevkiyat onayı beklenmeden
+  /// aktarım yapılabilir: mal fiziken yola çıkmadığı için kabul adımı
+  /// törensel kalır. Boşsa mağaza hiçbir dükkân grubuna ait değildir.
+  dukkanKodu String?
+
   createdAt DateTime @default(now())
 
   kullanicilar      Kullanici[]
@@ -34,6 +40,8 @@ model Magaza {
   sayimlar          Sayim[]
   kaynakHareketler  StokHareketi[] @relation("KaynakMagazaHareket")
   hedefHareketler   StokHareketi[] @relation("HedefMagazaHareket")
+
+  @@index([dukkanKodu])
 }
 
 model Kullanici {

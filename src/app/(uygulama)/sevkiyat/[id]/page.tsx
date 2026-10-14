@@ -79,7 +79,7 @@ export default async function SevkiyatDetaySayfasi({ params }: PageProps<"/sevki
           href="/sevkiyat"
           className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
         >
-          ← Sevkiyatlar
+          ← Mağazalar Arası Sevk
         </Link>
       </div>
 

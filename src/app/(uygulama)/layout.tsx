@@ -1,5 +1,6 @@
 import { cikisYap } from "@/app/giris/eylemler";
 import { UstMenu, type MenuOgesi } from "@/bilesenler/UstMenu";
+import { aktarimaUygunKaynaklar } from "@/lib/dukkan";
 import { prisma } from "@/lib/prisma";
 import { ROL_ETIKET } from "@/lib/sabitler";
 import { adminMi } from "@/lib/yetki";
@@ -9,7 +10,7 @@ const TEMEL_MENU: MenuOgesi[] = [
   { etiket: "Panel", yol: "/panel" },
   { etiket: "Cihazlar", yol: "/cihazlar" },
   { etiket: "Satış", yol: "/satis" },
-  { etiket: "Sevkiyat", yol: "/sevkiyat" },
+  { etiket: "Mağazalar Arası Sevk", yol: "/sevkiyat" },
   { etiket: "Müşteriler", yol: "/musteriler" },
   { etiket: "Sayım", yol: "/sayim" },
   { etiket: "Rapor", yol: "/rapor" },
@@ -18,11 +19,24 @@ const TEMEL_MENU: MenuOgesi[] = [
 export default async function UygulamaDuzeni({ children }: LayoutProps<"/">) {
   const oturum = await oturumGerekli();
 
-  const ayar = await prisma.ayar.findUnique({ where: { anahtar: "firma_adi" } });
+  const [ayar, magazalar] = await Promise.all([
+    prisma.ayar.findUnique({ where: { anahtar: "firma_adi" } }),
+    prisma.magaza.findMany({ where: { aktif: true }, select: { id: true, dukkanKodu: true } }),
+  ]);
+
+  // Dükkân içi aktarım yalnız aynı dükkân kodunu taşıyan iki mağazada da
+  // yetkili olanlar için anlamlı; kurulmamışsa menüde yer kaplamasın.
+  const aktarimVar = aktarimaUygunKaynaklar(oturum, magazalar).length > 0;
+  const temel = aktarimVar
+    ? TEMEL_MENU.flatMap((o) =>
+        o.yol === "/sevkiyat" ? [o, { etiket: "Mağaza İçi Aktarım", yol: "/aktarim" }] : [o],
+      )
+    : TEMEL_MENU;
+
   // Alış faturaları ve ayarlar yalnızca yöneticinin menüsünde.
   const menu = adminMi(oturum)
-    ? [...TEMEL_MENU, { etiket: "Faturalar", yol: "/faturalar" }, { etiket: "Ayarlar", yol: "/ayarlar" }]
-    : TEMEL_MENU;
+    ? [...temel, { etiket: "Faturalar", yol: "/faturalar" }, { etiket: "Ayarlar", yol: "/ayarlar" }]
+    : temel;
 
   return (
     <div className="flex min-h-dvh flex-col">

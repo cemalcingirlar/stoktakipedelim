@@ -41,6 +41,12 @@ export default async function IceAktarSayfasi() {
             ↓ Şablonu İndir
           </a>
           <Link
+            href="/cihazlar/envanter"
+            className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            Envanter dökümü yükle
+          </Link>
+          <Link
             href="/cihazlar"
             className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
           >

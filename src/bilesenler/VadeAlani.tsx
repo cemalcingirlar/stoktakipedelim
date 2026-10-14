@@ -12,8 +12,19 @@ const KUCUK_ETIKET = "mb-1 block text-xs font-medium text-slate-600";
  * "Özel tarih" seçilince `vadeTarihi` alanı forma eklenir; sunucu tarafı gün
  * sayısını bu tarihten hesaplar, böylece gün ile tarih asla çelişmez.
  */
-export function VadeAlani({ faturaTarihi }: { faturaTarihi?: string }) {
-  const [secim, setSecim] = useState("0");
+export function VadeAlani({
+  faturaTarihi,
+  baslangicVadeTarihi,
+}: {
+  faturaTarihi?: string;
+  /**
+   * Faturanın kendisinde yazan vade tarihi (e-Fatura PDF'inde var). Verilirse
+   * "Özel tarih" hazır seçili gelir ve tarih doldurulur; kullanıcı yine
+   * değiştirebilir.
+   */
+  baslangicVadeTarihi?: string;
+}) {
+  const [secim, setSecim] = useState(baslangicVadeTarihi ? "ozel" : "0");
   const ozel = secim === "ozel";
 
   return (
@@ -49,10 +60,13 @@ export function VadeAlani({ faturaTarihi }: { faturaTarihi?: string }) {
             type="date"
             required
             min={faturaTarihi}
+            defaultValue={baslangicVadeTarihi}
             className={GIRDI_SINIFI}
           />
           <p className="mt-1 text-xs text-slate-500">
-            Gün sayısı fatura tarihine göre kendiliğinden hesaplanır.
+            {baslangicVadeTarihi
+              ? "Vade tarihi faturadan geldi; gün sayısı buna göre hesaplanır."
+              : "Gün sayısı fatura tarihine göre kendiliğinden hesaplanır."}
           </p>
         </div>
       ) : null}

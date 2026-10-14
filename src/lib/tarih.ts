@@ -26,6 +26,14 @@ export function tarihSaatYaz(tarih: Date | string | null | undefined): string {
   return gunSaatBicim.format(new Date(tarih));
 }
 
+const saatBicim = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" });
+
+/** 14:35 — aynı güne ait kayıtlarda tarihi tekrar yazmak yer kaplıyor. */
+export function saatYaz(tarih: Date | string | null | undefined): string {
+  if (!tarih) return "";
+  return saatBicim.format(new Date(tarih));
+}
+
 /** <input type="date"> için gg.aa.yyyy yerine yyyy-aa-gg */
 export function inputTarih(tarih: Date | string | null | undefined): string {
   if (!tarih) return "";

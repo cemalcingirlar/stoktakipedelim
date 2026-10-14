@@ -5,8 +5,12 @@ import { faturaOlustur } from "@/lib/fatura";
 import { logYaz } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 import { LOG_ISLEM } from "@/lib/sabitler";
+import { dosyaTuruBul } from "@/lib/dosyaTuru";
+import { efaturaCoz, efaturadanTedarikciFaturasi } from "@/lib/efaturaPdf";
+import { pdfMetniCikar } from "@/lib/pdfMetni";
 import {
   tedarikciDosyasiniOku,
+  type TedarikciDosyaSonucu,
   type TedarikciFaturasi,
 } from "@/lib/tedarikciDosyasi";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
@@ -48,11 +52,25 @@ export async function tedarikciDosyasiniOnizle(
       return { hata: "Bir Excel dosyası seçin." };
     }
     if (dosya.size > EN_BUYUK_DOSYA) return { hata: "Dosya 5 MB'tan büyük olamaz." };
-    if (!/\.xlsx$/i.test(dosya.name)) {
-      return { hata: "Yalnız .xlsx dosyası yüklenebilir." };
+
+    // Uzantıya değil içeriğe bakılıyor: aynı ekran hem portal Excel'ini hem
+    // tedarikçinin e-Fatura PDF'ini kabul ediyor.
+    const veri = await dosya.arrayBuffer();
+    const tur = dosyaTuruBul(new Uint8Array(veri));
+
+    let sonuc: TedarikciDosyaSonucu;
+    if (tur === "pdf") {
+      sonuc = await pdfFaturasiniOku(veri);
+    } else if (tur === "xlsx") {
+      sonuc = await tedarikciDosyasiniOku(veri);
+    } else {
+      return {
+        hata:
+          "Bu dosya ne Excel (.xlsx) ne de PDF. Portaldan indirdiğiniz Excel'i ya da " +
+          "tedarikçinizin e-Fatura PDF'ini yükleyin.",
+      };
     }
 
-    const sonuc = await tedarikciDosyasiniOku(await dosya.arrayBuffer());
     if (!sonuc.basliklarTamam) {
       return { hata: sonuc.hatalar[0] ?? "Dosya okunamadı." };
     }
@@ -97,8 +115,44 @@ export async function tedarikciDosyasiniOnizle(
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Tedarikçi dosyası okunamadı:", hata);
-    return { hata: "Dosya okunamadı. Portaldan indirdiğiniz .xlsx dosyasını yükleyin." };
+    return {
+      hata: "Dosya okunamadı. Portaldan indirdiğiniz .xlsx dosyasını ya da e-Fatura PDF'ini yükleyin.",
+    };
   }
+}
+
+/**
+ * e-Fatura PDF'ini okur.
+ *
+ * Metin çıkarılamıyorsa dosya taranmış (resim) PDF'tir; o durumda tahmin
+ * yürütmek yerine kullanıcıyı Excel'e yönlendiriyoruz — yanlış fiyatla stok
+ * açmak okunamayan dosyadan kötü.
+ */
+async function pdfFaturasiniOku(veri: ArrayBuffer): Promise<TedarikciDosyaSonucu> {
+  let metin: string;
+  try {
+    metin = await pdfMetniCikar(veri);
+  } catch (hata) {
+    console.error("PDF metni çıkarılamadı:", hata);
+    return {
+      faturalar: [],
+      hatalar: ["PDF açılamadı. Dosya bozuk ya da şifreli olabilir."],
+      basliklarTamam: false,
+    };
+  }
+
+  if (metin.replace(/\s/g, "").length < 50) {
+    return {
+      faturalar: [],
+      hatalar: [
+        "Bu PDF taranmış bir görüntü; içinde okunabilir metin yok. Tedarikçinizden " +
+          "e-Fatura PDF'ini ya da Excel çıktısını isteyin.",
+      ],
+      basliklarTamam: false,
+    };
+  }
+
+  return efaturadanTedarikciFaturasi(efaturaCoz(metin));
 }
 
 export type KayitDurumu = { hata?: string; alanHatalari?: string[]; faturaId?: number };
