@@ -43,6 +43,9 @@ export const ENVANTER_BEKLENEN_SUTUNLAR = [
   "Ortalama Değer",
 ] as const;
 
+/** Seri numarası sayılmayan numaranın nota yazılırken aldığı önek. */
+export const TEKRAR_NOT_ONEKI = "Dosyadaki no: ";
+
 export type EnvanterMagazasi = { id: number; ad: string; kod: string };
 
 export type EnvanterKategorisi = {
@@ -60,6 +63,11 @@ export type EnvanterSatiri = {
   marka: string;
   model: string;
   seriNo: string | null;
+  /**
+   * Dosyada birden çok satırda geçtiği için seri numarası sayılmayan numara.
+   * Kullanıcı onayladığında dolu gelir; seriNo null olur, numara nota yazılır.
+   */
+  tekrarEdenNumara: string | null;
   barkod: string | null;
   alisFiyatiKurus: number;
   not: string | null;
@@ -70,12 +78,23 @@ export type EnvanterHatasi = { satirNo: number; mesaj: string };
 export type EnvanterSonucu = {
   satirlar: EnvanterSatiri[];
   hatalar: EnvanterHatasi[];
+  /**
+   * Hata değil, onay bekleyen durumlar. Dosyada tekrar eden numaralar burada
+   * toplanıyor: gerçek seri numarası olmayan ürünlere sıra numarası verilmiş
+   * olabiliyor, bu bir veri girişi hatası değil. Kullanıcı onaylarsa satırlar
+   * seri numarasız yükleniyor.
+   */
+  uyarilar: EnvanterHatasi[];
   /** Başlık satırı bulunamadıysa dosya bu rapor biçiminde değildir. */
   basliklarTamam: boolean;
   /** Hiçbir mağazaya denk gelmeyen ambar adları — tekrarsız. */
   eslesmeyenAmbarlar: string[];
   /** Dosyada okunmaya çalışılan toplam veri satırı (boşlar hariç). */
   okunanSatir: number;
+  /** Dosya içinde birden çok satırda geçen numaralar — tekrarsız. */
+  tekrarEdenNumaralar: string[];
+  /** Bu numaraları taşıyan satır sayısı. */
+  tekrarEdenSatirSayisi: number;
 };
 
 type Basliklar = { satirNo: number; yerler: Partial<Record<SutunAdi, number>> };
@@ -172,14 +191,23 @@ export function envanteriOku(
     kategori: EnvanterKategorisi;
     /** Sistemde kayıtlı seri numaraları — tekrar yüklemeyi önizlemede yakalar. */
     kayitliSeriNolar?: Set<string>;
+    /**
+     * Kullanıcı "bu numaralar gerçek seri numarası değil" dediğinde true.
+     * Tekrar eden numaralı satırlar atlanmak yerine seri numarasız alınır;
+     * numara nota yazılır, böylece aramada bulunmaya devam eder.
+     */
+    tekrarEdenleriSeriSayma?: boolean;
   },
 ): EnvanterSonucu {
   const bos: EnvanterSonucu = {
     satirlar: [],
     hatalar: [],
+    uyarilar: [],
     basliklarTamam: false,
     eslesmeyenAmbarlar: [],
     okunanSatir: 0,
+    tekrarEdenNumaralar: [],
+    tekrarEdenSatirSayisi: 0,
   };
 
   if (matris.length === 0) {
@@ -208,11 +236,27 @@ export function envanteriOku(
   };
   const metin = (satir: Hucre[], ad: SutunAdi): string => hucreYaz(al(satir, ad));
 
+  // Önce numaraları sayıyoruz: bir numaranın tekrar ettiği ancak dosyanın
+  // tamamı görüldükten sonra bilinir ve ilk satırın da seri numarası sayılmaması
+  // gerekir — yoksa gerçek seri numarası olmayan bir numara tek bir cihaza
+  // yapışır ve okutmada yanlış cihazı bulur.
+  const numaraAdedi = new Map<string, number>();
+  for (let i = baslikSatiri + 1; i <= matris.length; i++) {
+    const kod = kodNormalize(metin(matris[i - 1], "seriNo"));
+    if (kod) numaraAdedi.set(kod, (numaraAdedi.get(kod) ?? 0) + 1);
+  }
+  const tekrarEdenler = new Set(
+    [...numaraAdedi.entries()].filter(([, adet]) => adet > 1).map(([kod]) => kod),
+  );
+
   const satirlar: EnvanterSatiri[] = [];
   const hatalar: EnvanterHatasi[] = [];
+  const uyarilar: EnvanterHatasi[] = [];
   const eslesmeyen = new Set<string>();
   const gorulenSeriNolar = new Map<string, number>();
+  const gorulenTekrarlar = new Set<string>();
   let okunanSatir = 0;
+  let tekrarEdenSatirSayisi = 0;
 
   for (let i = baslikSatiri + 1; i <= matris.length; i++) {
     const satir = matris[i - 1];
@@ -264,17 +308,36 @@ export function envanteriOku(
     const { marka, model } = markaModelAyir(aciklama);
     if (!marka) satirHatalari.push("Malzeme açıklaması boş; marka/model okunamadı.");
 
-    const seriNo = kodNormalize(seriNoHam);
-    if (secenekler.kategori.seriNoZorunlu && !seriNo) {
+    const okunanNumara = kodNormalize(seriNoHam);
+    const tekrarEden = okunanNumara !== "" && tekrarEdenler.has(okunanNumara);
+    if (tekrarEden) tekrarEdenSatirSayisi += 1;
+
+    // Onaylanmış tekrar eden numara seri numarası sayılmaz: veritabanında seri
+    // no benzersiz, ayrıca numara gerçekten bir cihazı işaret etmiyor.
+    const numarayiYoksay = tekrarEden && secenekler.tekrarEdenleriSeriSayma === true;
+    const seriNo = numarayiYoksay ? "" : okunanNumara;
+
+    if (tekrarEden && !numarayiYoksay) {
+      // Hata değil onay konusu: ilk gören satır da listeye giriyor, çünkü onay
+      // verilirse ikisi de seri numarasız yüklenecek.
+      const onceki = gorulenSeriNolar.get(okunanNumara);
+      uyarilar.push({
+        satirNo: i,
+        mesaj: onceki
+          ? `${okunanNumara} numarası ${onceki}. satırda da var.`
+          : `${okunanNumara} numarası dosyada birden çok satırda geçiyor.`,
+      });
+      if (!onceki) gorulenSeriNolar.set(okunanNumara, i);
+      gorulenTekrarlar.add(okunanNumara);
+    }
+
+    // Seri no zorunluluğu, numarası yoksayılan satırlar için aranmıyor:
+    // kullanıcı bu ürünlerin seri numarası olmadığını zaten onayladı.
+    if (secenekler.kategori.seriNoZorunlu && !seriNo && !numarayiYoksay) {
       satirHatalari.push(`${secenekler.kategori.ad} için seri no (IMEI) zorunlu.`);
     }
     if (seriNo) {
-      const onceki = gorulenSeriNolar.get(seriNo);
-      if (onceki) {
-        satirHatalari.push(`Seri no ${seriNo} ${onceki}. satırda da var.`);
-      } else {
-        gorulenSeriNolar.set(seriNo, i);
-      }
+      gorulenSeriNolar.set(seriNo, i);
       if (secenekler.kayitliSeriNolar?.has(seriNo)) {
         satirHatalari.push(`${seriNo} sistemde zaten kayıtlı.`);
       }
@@ -307,6 +370,16 @@ export function envanteriOku(
       continue;
     }
 
+    // Onay verilmediği sürece tekrar eden numaralı satır yüklenmez.
+    if (tekrarEden && !numarayiYoksay) continue;
+
+    // Numara seri no sayılmıyorsa nota yazılıyor: aramaMetni notu da kapsadığı
+    // için kullanıcı o numarayı yine arayıp bulabiliyor.
+    const notParcalari = [
+      numarayiYoksay ? `${TEKRAR_NOT_ONEKI}${okunanNumara}` : "",
+      seriAciklama,
+    ].filter((n) => n !== "");
+
     satirlar.push({
       satirNo: i,
       magazaId: magaza!.id,
@@ -315,23 +388,32 @@ export function envanteriOku(
       marka,
       model,
       seriNo: seriNo || null,
+      tekrarEdenNumara: numarayiYoksay ? okunanNumara : null,
       barkod: kodNormalize(malzemeKodu) || null,
       alisFiyatiKurus: fiyatKurus,
-      not: seriAciklama || null,
+      not: notParcalari.length > 0 ? notParcalari.join(" · ") : null,
     });
   }
 
-  if (satirlar.length === 0 && hatalar.length === 0) {
+  if (satirlar.length === 0 && hatalar.length === 0 && uyarilar.length === 0) {
     hatalar.push({ satirNo: 0, mesaj: "Dosyada cihaz satırı bulunamadı." });
   }
 
   return {
     satirlar,
     hatalar,
+    uyarilar,
     basliklarTamam: true,
     eslesmeyenAmbarlar: [...eslesmeyen],
     okunanSatir,
+    tekrarEdenNumaralar: [...(numarayiYoksaydiMi(secenekler) ? tekrarEdenler : gorulenTekrarlar)],
+    tekrarEdenSatirSayisi,
   };
+}
+
+/** Onay verilmişse uyarı listesi boş kalır; numaralar yine de raporlanmalı. */
+function numarayiYoksaydiMi(secenekler: { tekrarEdenleriSeriSayma?: boolean }): boolean {
+  return secenekler.tekrarEdenleriSeriSayma === true;
 }
 
 /** Önizlemedeki satırları mağazaya göre toplar — ekrandaki özet tablosu için. */

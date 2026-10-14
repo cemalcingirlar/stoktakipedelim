@@ -6,6 +6,7 @@ import {
   envanteriOku,
   magazayaGoreToplam,
   markaModelAyir,
+  TEKRAR_NOT_ONEKI,
   type EnvanterKategorisi,
   type EnvanterMagazasi,
 } from "./envanterDosyasi";
@@ -154,6 +155,7 @@ test("geçerli satır okunur ve mağazaya bağlanır", () => {
     marka: "SAMSUNG",
     model: "GALAXY A55",
     seriNo: "352000111222333",
+    tekrarEdenNumara: null,
     barkod: "TEL-001",
     alisFiyatiKurus: 1250000,
     not: "Siyah",
@@ -224,17 +226,142 @@ test("seri no zorunlu olmayan kategoride boş seri kabul edilir", () => {
   assert.equal(sonuc.satirlar[0].seriNo, null);
 });
 
-test("dosya içinde tekrarlayan seri no yakalanır", () => {
+// --------------------------------------------- tekrar eden numara / onay akışı
+
+/** Aynı numarayı taşıyan iki satır — gerçek seri numarası olmayan ürünler. */
+function tekrarliDosya() {
+  return dosya(
+    satir("AKS-1", "KILIF SİLİKON", "OPTİMUM", "1", "26546", "Siyah"),
+    satir("AKS-2", "KILIF DERİ", "OPTİMUM", "1", "26546", "Kahve"),
+    satir("TEL-9", "SAMSUNG GALAXY A55", "OPTİMUM", "1", "352000999888777"),
+  );
+}
+
+test("onay verilmeden tekrar eden numaralı satırlar yüklenmez", () => {
+  const sonuc = envanteriOku(tekrarliDosya(), {
+    magazalar: MAGAZALAR,
+    kategori: KATEGORI,
+  });
+  // Yalnız gerçek seri numaralı satır geçerli.
+  assert.equal(sonuc.satirlar.length, 1);
+  assert.equal(sonuc.satirlar[0].seriNo, "352000999888777");
+  assert.deepEqual(sonuc.hatalar, []);
+});
+
+test("tekrar eden numara hata değil uyarı olarak raporlanır", () => {
+  const sonuc = envanteriOku(tekrarliDosya(), {
+    magazalar: MAGAZALAR,
+    kategori: KATEGORI,
+  });
+  assert.deepEqual(sonuc.hatalar, []);
+  assert.equal(sonuc.uyarilar.length, 2);
+  assert.deepEqual(sonuc.tekrarEdenNumaralar, ["26546"]);
+  assert.equal(sonuc.tekrarEdenSatirSayisi, 2);
+});
+
+test("uyarı ilk satırı da kapsar: numara tek cihaza yapışmamalı", () => {
+  const sonuc = envanteriOku(tekrarliDosya(), {
+    magazalar: MAGAZALAR,
+    kategori: KATEGORI,
+  });
+  assert.deepEqual(
+    sonuc.uyarilar.map((u) => u.satirNo),
+    [4, 5],
+  );
+  assert.match(sonuc.uyarilar[1].mesaj, /4\. satırda da var/);
+});
+
+test("onay verilince tekrar eden satırlar seri numarasız yüklenir", () => {
+  const sonuc = envanteriOku(tekrarliDosya(), {
+    magazalar: MAGAZALAR,
+    kategori: KATEGORI,
+    tekrarEdenleriSeriSayma: true,
+  });
+  assert.deepEqual(sonuc.hatalar, []);
+  assert.equal(sonuc.satirlar.length, 3);
+
+  const tekrarlilar = sonuc.satirlar.filter((s) => s.tekrarEdenNumara !== null);
+  assert.equal(tekrarlilar.length, 2);
+  for (const s of tekrarlilar) {
+    assert.equal(s.seriNo, null, "numara seri no olarak yazılmamalı");
+    assert.equal(s.tekrarEdenNumara, "26546");
+  }
+});
+
+test("onaylanan numara nota yazılır, aramada kaybolmaz", () => {
+  const sonuc = envanteriOku(tekrarliDosya(), {
+    magazalar: MAGAZALAR,
+    kategori: KATEGORI,
+    tekrarEdenleriSeriSayma: true,
+  });
+  const ilk = sonuc.satirlar.find((s) => s.tekrarEdenNumara !== null);
+  assert.equal(ilk?.not, `${TEKRAR_NOT_ONEKI}26546 · Siyah`);
+});
+
+test("gerçek seri numaralı satır onaydan etkilenmez", () => {
+  const sonuc = envanteriOku(tekrarliDosya(), {
+    magazalar: MAGAZALAR,
+    kategori: KATEGORI,
+    tekrarEdenleriSeriSayma: true,
+  });
+  const gercek = sonuc.satirlar.find((s) => s.seriNo !== null);
+  assert.equal(gercek?.seriNo, "352000999888777");
+  assert.equal(gercek?.tekrarEdenNumara, null);
+});
+
+test("onay seri no zorunluluğunu yalnız o satırlar için kaldırır", () => {
+  // Seri numarası hiç yazılmamış satır onaya rağmen hata vermeli: orada
+  // kullanıcının "bu numara seri değil" dediği bir numara yok.
   const sonuc = envanteriOku(
     dosya(
-      satir("A", "X Y", "OPTİMUM", "1", "111"),
-      satir("A", "X Y", "OPTİMUM", "1", "111"),
+      satir("AKS-1", "KILIF SİLİKON", "OPTİMUM", "1", "26546"),
+      satir("AKS-2", "KILIF DERİ", "OPTİMUM", "1", "26546"),
+      satir("AKS-3", "KILIF CAM", "OPTİMUM", "1", ""),
+    ),
+    { magazalar: MAGAZALAR, kategori: KATEGORI, tekrarEdenleriSeriSayma: true },
+  );
+  assert.equal(sonuc.satirlar.length, 2);
+  assert.equal(sonuc.hatalar.length, 1);
+  assert.match(sonuc.hatalar[0].mesaj, /seri no \(IMEI\) zorunlu/);
+});
+
+test("onaylanan numara sistemde kayıtlı olsa da çakışma saymaz", () => {
+  // Numara seri no olarak yazılmayacağı için kayıtlı seri ile çakışmaz.
+  const sonuc = envanteriOku(tekrarliDosya(), {
+    magazalar: MAGAZALAR,
+    kategori: KATEGORI,
+    kayitliSeriNolar: new Set(["26546"]),
+    tekrarEdenleriSeriSayma: true,
+  });
+  assert.deepEqual(sonuc.hatalar, []);
+  assert.equal(sonuc.satirlar.length, 3);
+});
+
+test("üç kez geçen numara da tek uyarı grubunda toplanır", () => {
+  const sonuc = envanteriOku(
+    dosya(
+      satir("A", "X Y", "OPTİMUM", "1", "500"),
+      satir("A", "X Y", "OPTİMUM", "1", "500"),
+      satir("A", "X Y", "OPTİMUM", "1", "500"),
     ),
     { magazalar: MAGAZALAR, kategori: KATEGORI },
   );
+  assert.deepEqual(sonuc.tekrarEdenNumaralar, ["500"]);
+  assert.equal(sonuc.tekrarEdenSatirSayisi, 3);
+  assert.equal(sonuc.satirlar.length, 0);
+});
+
+test("tekrar eden satırda başka bir hata varsa onay onu geçersiz kılmaz", () => {
+  const sonuc = envanteriOku(
+    dosya(
+      satir("A", "X Y", "BİLİNMEYEN", "99", "26546"),
+      satir("A", "X Y", "OPTİMUM", "1", "26546"),
+    ),
+    { magazalar: MAGAZALAR, kategori: KATEGORI, tekrarEdenleriSeriSayma: true },
+  );
   assert.equal(sonuc.satirlar.length, 1);
   assert.equal(sonuc.hatalar.length, 1);
-  assert.match(sonuc.hatalar[0].mesaj, /4\. satırda da var/);
+  assert.match(sonuc.hatalar[0].mesaj, /anlaşılamadı/);
 });
 
 test("sistemde kayıtlı seri no önizlemede hata olur", () => {

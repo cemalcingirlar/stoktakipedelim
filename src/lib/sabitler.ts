@@ -71,7 +71,7 @@ export const HAREKET_TIP_ETIKET: Record<HareketTip, string> = {
   TRANSFER_GONDERIM: "Sevkiyat Gönderildi",
   TRANSFER_KABUL: "Sevkiyat Kabul Edildi",
   TRANSFER_RED: "Sevkiyat Reddedildi",
-  DUKKAN_ICI: "Dükkân İçi Aktarım",
+  DUKKAN_ICI: "Mağaza İçi Aktarım",
   SATIS: "Satış",
   IADE: "İade",
   DUZELTME: "Düzeltme",

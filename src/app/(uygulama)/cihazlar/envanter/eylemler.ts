@@ -23,6 +23,11 @@ export type EnvanterOnizlemesi = {
   dosyaAdi?: string;
   satirlar?: EnvanterSatiri[];
   hatalar?: EnvanterHatasi[];
+  uyarilar?: EnvanterHatasi[];
+  tekrarEdenNumaralar?: string[];
+  tekrarEdenSatirSayisi?: number;
+  /** Kullanıcı tekrar eden numaraları seri saymama onayını verdi mi. */
+  tekrarOnayi?: boolean;
   eslesmeyenAmbarlar?: string[];
   okunanSatir?: number;
   kategoriId?: number;
@@ -63,6 +68,9 @@ export async function envanteriOnizle(
       select: { id: true, ad: true, kod: true },
     });
 
+    // Onay kutusu işaretlenip dosya yeniden okunduğunda geliyor.
+    const tekrarOnayi = form.get("tekrarOnayi") === "1";
+
     const matris = await dosyadanMatris(await dosya.arrayBuffer());
     if ("hata" in matris) return { hata: matris.hata };
 
@@ -71,13 +79,23 @@ export async function envanteriOnizle(
     const sonuc = envanteriOku(matris.matris, {
       magazalar,
       kategori,
-      kayitliSeriNolar: await kayitliSeriNolariBul(matris.matris, magazalar, kategori),
+      tekrarEdenleriSeriSayma: tekrarOnayi,
+      kayitliSeriNolar: await kayitliSeriNolariBul(
+        matris.matris,
+        magazalar,
+        kategori,
+        tekrarOnayi,
+      ),
     });
 
     return {
       dosyaAdi: dosya.name,
       satirlar: sonuc.satirlar,
       hatalar: sonuc.hatalar,
+      uyarilar: sonuc.uyarilar,
+      tekrarEdenNumaralar: sonuc.tekrarEdenNumaralar,
+      tekrarEdenSatirSayisi: sonuc.tekrarEdenSatirSayisi,
+      tekrarOnayi,
       eslesmeyenAmbarlar: sonuc.eslesmeyenAmbarlar,
       okunanSatir: sonuc.okunanSatir,
       kategoriId: kategori.id,
@@ -100,8 +118,13 @@ async function kayitliSeriNolariBul(
   matris: Matris,
   magazalar: { id: number; ad: string; kod: string }[],
   kategori: { id: number; ad: string; seriNoZorunlu: boolean },
+  tekrarOnayi: boolean,
 ): Promise<Set<string>> {
-  const ilk = envanteriOku(matris, { magazalar, kategori });
+  const ilk = envanteriOku(matris, {
+    magazalar,
+    kategori,
+    tekrarEdenleriSeriSayma: tekrarOnayi,
+  });
   const seriNolar = ilk.satirlar
     .map((s) => s.seriNo)
     .filter((s): s is string => Boolean(s));
@@ -190,9 +213,14 @@ export async function envanteriKaydet(
     const tekrar = seriNolar.find((s, i) => seriNolar.indexOf(s) !== i);
     if (tekrar) return { hata: `Aynı seri numarası birden fazla satırda var: ${tekrar}` };
 
-    if (kategori.seriNoZorunlu && seriNolar.length !== veri.satirlar.length) {
+    // Seri no zorunluluğu satır bazında: kullanıcının "bu numara gerçek seri
+    // numarası değil" diye onayladığı satırlarda aranmıyor, diğerlerinde
+    // aranıyor. Toplu bir muafiyet vermiyoruz.
+    const seriSiz = veri.satirlar.filter((s) => !s.seriNo && !s.tekrarEdenNumara);
+    if (kategori.seriNoZorunlu && seriSiz.length > 0) {
       return { hata: `${kategori.ad} kategorisinde her satırda seri no (IMEI) olmalı.` };
     }
+    const onayliSerisiz = veri.satirlar.filter((s) => !s.seriNo && s.tekrarEdenNumara).length;
 
     if (seriNolar.length > 0) {
       const cakisan: string[] = [];
@@ -262,7 +290,11 @@ export async function envanteriKaydet(
     await logYaz(oturum, {
       islem: LOG_ISLEM.STOK_EKLE,
       hedefTip: "StokKalemi",
-      detay: `Envanter dökümü: ${veri.satirlar.length} cihaz · ${kategori.ad} · ${ozet}`,
+      detay:
+        `Envanter dökümü: ${veri.satirlar.length} cihaz · ${kategori.ad} · ${ozet}` +
+        (onayliSerisiz > 0
+          ? ` · ${onayliSerisiz} cihaz kullanıcı onayıyla seri numarasız`
+          : ""),
     });
 
     revalidatePath("/cihazlar");

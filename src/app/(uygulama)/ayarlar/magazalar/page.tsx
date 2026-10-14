@@ -135,7 +135,7 @@ export default async function MagazalarSayfasi() {
           </div>
           <p className="mt-2 text-xs text-slate-500">
             Aynı dükkânda duran mağazalara (ör. kasa ve depo kaydı) aynı dükkân kodunu verin.
-            Bu mağazalar arasında <strong>Aktarım</strong> ekranından sevkiyat onayı beklemeden
+            Bu mağazalar arasında <strong>Mağaza İçi Aktarım</strong> ekranından sevk onayı beklemeden
             cihaz taşınabilir. Boş bırakırsanız mağaza hiçbir gruba girmez.
           </p>
           <div className="mt-3">

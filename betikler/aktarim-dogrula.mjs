@@ -170,7 +170,7 @@ try {
   const depo = await depoOku();
   kontrol("cihaz artık 2 Nolu Mağaza deposunda", depo === "2 Nolu Mağaza", depo);
   const detay = (await sayfa.locator("main").textContent()) ?? "";
-  kontrol("tarihçede dükkân içi aktarım yazıyor", detay.includes("Dükkân İçi Aktarım"));
+  kontrol("tarihçede mağaza içi aktarım yazıyor", detay.includes("Mağaza İçi Aktarım"));
   kontrol(
     "hareket açıklaması iki mağazayı da içeriyor",
     detay.includes("1 Nolu Mağaza → 2 Nolu Mağaza"),

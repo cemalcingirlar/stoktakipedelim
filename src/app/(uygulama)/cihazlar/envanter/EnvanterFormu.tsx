@@ -30,7 +30,7 @@ export function EnvanterFormu({
   kategoriler: EnvanterKategorisiSecenegi[];
   varsayilanKategoriId: number | null;
 }) {
-  const [onizleme, onizleEylem] = useActionState<EnvanterOnizlemesi, FormData>(
+  const [onizleme, onizleEylem, onizleniyor] = useActionState<EnvanterOnizlemesi, FormData>(
     envanteriOnizle,
     {},
   );
@@ -42,9 +42,28 @@ export function EnvanterFormu({
   const [altKategoriId, setAltKategoriId] = useState<number | "">("");
   const [girisTarihi, setGirisTarihi] = useState(inputTarih(new Date()));
   const [tumunuGoster, setTumunuGoster] = useState(false);
+  const [tekrarListesiAcik, setTekrarListesiAcik] = useState(false);
+  // Onay dosyanın yeniden okunmasını gerektiriyor (ayrıştırma sunucuda). React
+  // eylem bitince formu sıfırladığı için dosya girdide kalmıyor; seçilen
+  // dosyayı burada tutuyoruz ki kullanıcı yeniden seçmek zorunda kalmasın.
+  const [secilenDosya, setSecilenDosya] = useState<File | null>(null);
 
   const satirlar = onizleme.satirlar ?? [];
   const hatalar = onizleme.hatalar ?? [];
+  const uyarilar = onizleme.uyarilar ?? [];
+  const tekrarNumaralari = onizleme.tekrarEdenNumaralar ?? [];
+  const tekrarSatirSayisi = onizleme.tekrarEdenSatirSayisi ?? 0;
+  const onayBekliyor = !onizleme.tekrarOnayi && uyarilar.length > 0;
+  const serisizYuklenen = satirlar.filter((s) => s.tekrarEdenNumara !== null).length;
+
+  function tekrarlariOnayla() {
+    if (!secilenDosya) return;
+    const form = new FormData();
+    form.set("dosya", secilenDosya);
+    form.set("kategoriId", String(kategoriId));
+    form.set("tekrarOnayi", "1");
+    onizleEylem(form);
+  }
   const toplamKurus = satirlar.reduce((t, s) => t + s.alisFiyatiKurus, 0);
   const gosterilen = tumunuGoster ? satirlar : satirlar.slice(0, 25);
   const magazaOzeti = magazayaGoreToplam(satirlar);
@@ -67,6 +86,7 @@ export function EnvanterFormu({
         marka: s.marka,
         model: s.model,
         seriNo: s.seriNo,
+        tekrarEdenNumara: s.tekrarEdenNumara,
         barkod: s.barkod,
         alisFiyatiKurus: s.alisFiyatiKurus,
         not: s.not,
@@ -175,6 +195,7 @@ export function EnvanterFormu({
                 type="file"
                 accept=".xlsx,.csv,.txt,.xls,.xml"
                 required
+                onChange={(e) => setSecilenDosya(e.target.files?.[0] ?? null)}
                 className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-700"
               />
             </div>
@@ -212,6 +233,14 @@ export function EnvanterFormu({
               </>
             ) : null}
             {satirlar.length > 0 ? ` · toplam ${kurusuTLYaz(toplamKurus)} TL` : null}
+            {serisizYuklenen > 0 ? (
+              <>
+                {" · "}
+                <span className="font-medium text-amber-700">
+                  {serisizYuklenen} cihaz seri numarasız
+                </span>
+              </>
+            ) : null}
           </p>
 
           {magazaOzeti.length > 0 ? (
@@ -228,6 +257,90 @@ export function EnvanterFormu({
                   </span>
                 </span>
               ))}
+            </div>
+          ) : null}
+
+          {onayBekliyor ? (
+            <div
+              data-test="tekrar-onayi"
+              className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3"
+            >
+              <p className="text-sm font-semibold text-amber-900">
+                {tekrarSatirSayisi} satırda tekrar eden numara var — onayınız gerekiyor
+              </p>
+              <p className="mt-1 text-sm text-amber-900">
+                Dosyada {tekrarNumaralari.length} numara birden çok satırda geçiyor. Seri
+                numarası olmayan ürünlere sıra numarası verildiyse bu normaldir.
+              </p>
+
+              <div className="mt-2 rounded-md border border-amber-200 bg-white px-3 py-2">
+                <p className="text-sm text-slate-700">
+                  <span className="font-medium">Onaylarsanız ne olur:</span> bu{" "}
+                  {tekrarSatirSayisi} satırın her biri <strong>ayrı bir cihaz</strong> olarak
+                  eklenir, ama numara <strong>seri numarası olarak yazılmaz</strong> — aynı seri
+                  numarası iki cihazda olamaz. Numara cihazın notuna yazılır, aramada yine
+                  bulunur. Gerçek seri numaralı satırlar bundan etkilenmez.
+                </p>
+              </div>
+
+              {tekrarNumaralari.length > 0 ? (
+                <div className="mt-2 text-sm text-amber-900">
+                  <span className="font-medium">Tekrar eden numaralar: </span>
+                  <span className="font-mono text-xs">
+                    {(tekrarListesiAcik ? tekrarNumaralari : tekrarNumaralari.slice(0, 15)).join(
+                      ", ",
+                    )}
+                  </span>
+                  {tekrarNumaralari.length > 15 ? (
+                    <button
+                      type="button"
+                      onClick={() => setTekrarListesiAcik((o) => !o)}
+                      className="ml-2 font-medium underline"
+                    >
+                      {tekrarListesiAcik ? "kısalt" : `+${tekrarNumaralari.length - 15} tane daha`}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={tekrarlariOnayla}
+                  disabled={onizleniyor || !secilenDosya}
+                  className="rounded-lg bg-amber-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {onizleniyor ? "Okunuyor…" : "Onaylıyorum, seri numarasız olarak yükle"}
+                </button>
+                <span className="text-sm text-amber-800">
+                  Onaylamazsanız bu satırlar atlanır, diğerleri yüklenir.
+                </span>
+              </div>
+
+              <details className="mt-2">
+                <summary className="cursor-pointer text-sm font-medium text-amber-900">
+                  Etkilenen satırları gör ({uyarilar.length})
+                </summary>
+                <ul
+                  data-test="tekrar-satirlari"
+                  className="mt-1 max-h-52 list-inside list-disc space-y-0.5 overflow-y-auto text-sm text-amber-800"
+                >
+                  {uyarilar.map((u) => (
+                    <li key={`${u.satirNo}-${u.mesaj}`}>
+                      {u.satirNo}. satır: {u.mesaj}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </div>
+          ) : null}
+
+          {onizleme.tekrarOnayi && serisizYuklenen > 0 ? (
+            <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <p className="text-sm text-emerald-900">
+                Onayınızla {serisizYuklenen} cihaz seri numarasız olarak yüklenecek; dosyadaki
+                numara her birinin notuna yazılacak.
+              </p>
             </div>
           ) : null}
 
@@ -297,7 +410,16 @@ export function EnvanterFormu({
                         </td>
                         <td className="px-3 py-1.5">{s.marka}</td>
                         <td className="px-3 py-1.5">{s.model}</td>
-                        <td className="px-3 py-1.5 font-mono text-xs">{s.seriNo ?? "—"}</td>
+                        <td className="px-3 py-1.5 font-mono text-xs">
+                          {s.seriNo ??
+                            (s.tekrarEdenNumara ? (
+                              <span className="text-amber-700" title="Seri numarası sayılmadı">
+                                ({s.tekrarEdenNumara})
+                              </span>
+                            ) : (
+                              "—"
+                            ))}
+                        </td>
                         <td className="px-3 py-1.5 font-mono text-xs text-slate-500">
                           {s.barkod ?? "—"}
                         </td>
@@ -346,6 +468,16 @@ export function EnvanterFormu({
                     ))}
                   </ul>
                 ) : null}
+              </div>
+            ) : null}
+
+            {onayBekliyor ? (
+              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+                <p className="text-sm text-amber-900">
+                  <strong>{tekrarSatirSayisi} satır onayınızı bekliyor.</strong> Şimdi
+                  kaydederseniz o satırlar atlanır. Yüklenmelerini istiyorsanız yukarıdaki
+                  “Onaylıyorum” düğmesine basın.
+                </p>
               </div>
             ) : null}
 

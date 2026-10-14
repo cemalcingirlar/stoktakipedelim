@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { adminMi, oturumGerekli } from "@/lib/yetki";
 import { AktarimFormu } from "./AktarimFormu";
 
-export const metadata = { title: "Dükkân İçi Aktarım — Stok Takip" };
+export const metadata = { title: "Mağaza İçi Aktarım — Stok Takip" };
 
 export default async function AktarimSayfasi() {
   const oturum = await oturumGerekli();
@@ -21,10 +21,10 @@ export default async function AktarimSayfasi() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Dükkân İçi Aktarım</h1>
+        <h1 className="text-xl font-semibold text-slate-900">Mağaza İçi Aktarım</h1>
         <p className="mt-0.5 text-sm text-slate-500">
           Aynı dükkânda duran iki kayıt arasında cihazı tek adımda taşır — sevkiyat açılmaz,
-          kabul beklenmez. Farklı dükkânlar arasında <Link href="/sevkiyat/yeni" className="text-sky-700 underline-offset-2 hover:underline">Sevkiyat</Link> kullanılır,
+          kabul beklenmez. Farklı dükkânlar arasında <Link href="/sevkiyat/yeni" className="text-sky-700 underline-offset-2 hover:underline">Mağazalar Arası Sevk</Link> kullanılır,
           çünkü orada mal fiziken yolda ve karşı tarafın teslim aldığını onaylaması gerekir.
         </p>
       </div>
@@ -32,7 +32,7 @@ export default async function AktarimSayfasi() {
       {uygun.length === 0 ? (
         <Kart baslik="Önce dükkân grubu tanımlanmalı">
           <p className="text-sm text-slate-700">
-            Aktarım yapabilmek için aynı dükkânda duran mağazaların <strong>aynı dükkân
+            Mağaza içi aktarım için aynı dükkânda duran mağazaların <strong>aynı dükkân
             kodunu</strong> taşıması ve sizin ikisinde de yetkili olmanız gerekiyor. Şu anda
             böyle bir eşleşme yok.
           </p>

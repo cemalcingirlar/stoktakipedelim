@@ -11,6 +11,12 @@ export const envanterSatiriSemasi = z.object({
   marka: z.string().trim().min(1, "Marka zorunlu.").max(60),
   model: z.string().trim().min(1, "Model zorunlu.").max(80),
   seriNo: z.string().trim().max(40).nullable(),
+  /**
+   * Dosyada tekrar ettiği için seri numarası sayılmayan numara. Dolu olan
+   * satırlarda seri no zorunluluğu aranmıyor: kullanıcı bu ürünlerin gerçek
+   * seri numarası olmadığını önizlemede onayladı.
+   */
+  tekrarEdenNumara: z.string().trim().max(40).nullable(),
   barkod: z.string().trim().max(40).nullable(),
   alisFiyatiKurus: kurusTutar,
   not: z.string().trim().max(500).nullable(),

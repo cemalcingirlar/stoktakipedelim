@@ -6,7 +6,7 @@ import { TRANSFER_DURUM, TRANSFER_KALEM_DURUM } from "@/lib/sabitler";
 import { tarihSaatYaz } from "@/lib/tarih";
 import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
 
-export const metadata = { title: "Sevkiyatlar — Stok Takip" };
+export const metadata = { title: "Mağazalar Arası Sevk — Stok Takip" };
 
 export default async function SevkiyatlarSayfasi() {
   const oturum = await oturumGerekli();
@@ -42,7 +42,7 @@ export default async function SevkiyatlarSayfasi() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Sevkiyatlar</h1>
+          <h1 className="text-xl font-semibold text-slate-900">Mağazalar Arası Sevk</h1>
           <p className="mt-0.5 text-sm text-slate-500">
             Gönderilen cihazlar hedef mağaza okutup onaylayana kadar yolda sayılır.
           </p>

@@ -133,8 +133,9 @@ try {
   sf.addRow(["TEL-005", "OPPO A78", magazaA, "01", imei(5), "", 3, "AD", "7.000,00", "21.000,00"]);
   // Hatalı: seri no boş (seri no zorunlu kategori)
   sf.addRow(["TEL-006", "VESTEL VENUS", magazaA, "01", "", "", 1, "AD", "3.000,00", "3.000,00"]);
-  // Hatalı: dosya içinde tekrarlayan seri no
-  sf.addRow(["TEL-007", "SAMSUNG GALAXY A55 128GB", magazaA, "01", imei(1), "", 1, "AD", "12.500,50", "12.500,50"]);
+  // Onay bekleyen: gerçek seri numarası olmayan ürünlere verilmiş sıra numarası
+  sf.addRow(["AKS-1", "KILIF SILIKON", magazaA, "01", "26546", "Siyah", 1, "AD", "250,00", "250,00"]);
+  sf.addRow(["AKS-2", "KILIF DERI", magazaA, "01", "26546", "Kahve", 1, "AD", "250,00", "250,00"]);
   // Atlanmalı: ara toplam satırı
   sf.addRow(["", "", "", "", "", "", 9, "AD", "", "99.999,00"]);
 
@@ -148,7 +149,7 @@ try {
 
   const ozetMetni = (await sayfa.locator('h2:has-text("2. Önizleme") + p').textContent()) ?? "";
   kontrol("3 geçerli satır okundu", ozetMetni.includes("3 geçerli satır"), ozetMetni.trim());
-  kontrol("4 hatalı satır bildirildi", ozetMetni.includes("4 hatalı satır"), ozetMetni.trim());
+  kontrol("3 hatalı satır bildirildi", ozetMetni.includes("3 hatalı satır"), ozetMetni.trim());
   // 12.500,50 + 2.097,50 + 45.000,00 = 59.598,00
   kontrol(
     "metin ve sayı hücreli tutarlar doğru toplandı",
@@ -161,11 +162,73 @@ try {
   kontrol("tanınmayan ambar hatası var", /BİLİNMEYEN ŞUBE/.test(hataMetni), hataMetni.slice(0, 160));
   kontrol("miktar 1'den büyük satır elendi", /tek cihaz tutuyor/.test(hataMetni));
   kontrol("boş seri no yakalandı", /seri no \(IMEI\) zorunlu/.test(hataMetni));
-  kontrol("dosya içindeki tekrar seri no yakalandı", /satırda da var/.test(hataMetni));
-  kontrol("ara toplam satırı hata üretmedi", hataListesi.length === 4, `${hataListesi.length} hata`);
+  kontrol("ara toplam satırı hata üretmedi", hataListesi.length === 3, `${hataListesi.length} hata`);
 
   const ambarUyarisi = (await sayfa.locator("text=hiçbir mağazaya denk gelmedi").count()) > 0;
   kontrol("eşleşmeyen ambar uyarısı gösteriliyor", ambarUyarisi);
+
+  // --------------------------------------------- tekrar eden numara onayı
+  const onayKutusu = sayfa.locator('[data-test="tekrar-onayi"]');
+  kontrol("tekrar eden numara için onay kutusu çıktı", (await onayKutusu.count()) === 1);
+
+  const onayMetni = (await onayKutusu.textContent()) ?? "";
+  kontrol(
+    "onay kutusu etkilenen satır sayısını söylüyor",
+    onayMetni.includes("2 satırda tekrar eden numara"),
+    onayMetni.slice(0, 80).trim(),
+  );
+  kontrol("onay kutusu tekrar eden numarayı gösteriyor", onayMetni.includes("26546"));
+  kontrol(
+    "onay kutusu ne olacağını açıklıyor",
+    onayMetni.includes("seri numarası olarak yazılmaz"),
+  );
+
+  // Tekrar eden numaralı satırlar onaysız yüklenmemeli; hata listesinde de
+  // olmamalı (hata değil, onay konusu).
+  const onaysizHatalar = await sayfa
+    .locator('[data-test="satir-hatalari"] li')
+    .allTextContents();
+  kontrol(
+    "tekrar eden numara hata listesine düşmüyor",
+    !onaysizHatalar.join(" ").includes("26546"),
+  );
+
+  const onaysizOzet = (await sayfa.locator('h2:has-text("2. Önizleme") + p').textContent()) ?? "";
+  kontrol(
+    "onay verilmeden tekrar eden satırlar sayılmıyor",
+    onaysizOzet.includes("3 geçerli satır"),
+    onaysizOzet.trim(),
+  );
+
+  // Onayla: dosya aynı formla yeniden okunuyor, kullanıcı dosyayı tekrar
+  // seçmek zorunda kalmamalı.
+  await sayfa.click('button:has-text("Onaylıyorum")');
+  await sayfa.waitForSelector("text=seri numarasız olarak yüklenecek", { timeout: 25000 });
+
+  const onayliOzet = (await sayfa.locator('h2:has-text("2. Önizleme") + p').textContent()) ?? "";
+  kontrol(
+    "onaydan sonra 5 geçerli satır var",
+    onayliOzet.includes("5 geçerli satır"),
+    onayliOzet.trim(),
+  );
+  kontrol(
+    "onaydan sonra 2 cihaz seri numarasız işaretli",
+    onayliOzet.includes("2 cihaz seri numarasız"),
+    onayliOzet.trim(),
+  );
+  // 59.598,00 + 250,00 + 250,00
+  kontrol(
+    "onaylanan satırların tutarı toplama eklendi",
+    onayliOzet.includes("60.098,00"),
+    onayliOzet.trim(),
+  );
+  kontrol(
+    "onay kutusu kayboldu",
+    (await sayfa.locator('[data-test="tekrar-onayi"]').count()) === 0,
+  );
+
+  const onayliTablo = (await sayfa.locator("table tbody").textContent()) ?? "";
+  kontrol("tabloda numara parantez içinde gösteriliyor", onayliTablo.includes("(26546)"));
 
   const magazaOzeti = (await sayfa.locator('[data-test="magaza-ozeti"]').textContent()) ?? "";
   kontrol("mağaza özeti ilk mağazayı sayıyor", magazaOzeti.includes(magazaA), magazaOzeti.trim());
@@ -174,7 +237,7 @@ try {
   }
 
   const onizlemeSatirlari = await sayfa.locator("table tbody tr").count();
-  kontrol("önizleme tablosunda 3 satır var", onizlemeSatirlari === 3, `${onizlemeSatirlari} satır`);
+  kontrol("onaydan sonra tabloda 5 satır var", onizlemeSatirlari === 5, `${onizlemeSatirlari} satır`);
 
   const ilkSatir = (await sayfa.locator("table tbody tr").first().textContent()) ?? "";
   kontrol(
@@ -200,6 +263,8 @@ try {
   await sayfa.setInputFiles("#dosya", dosyaYolu);
   await sayfa.click('button:has-text("Dosyayı Oku")');
   await sayfa.waitForSelector('h2:has-text("3. Stoğa aktar")', { timeout: 25000 });
+  await sayfa.click('button:has-text("Onaylıyorum")');
+  await sayfa.waitForSelector("text=seri numarasız olarak yüklenecek", { timeout: 25000 });
 
   await sayfa.click('button:has-text("Cihazı Stoğa Aktar")');
   // Sayfa kabuğundaki "Nasıl çalışır" başlığı kalıyor; başarı bölümünü adıyla
@@ -207,7 +272,7 @@ try {
   const basariBasligi = sayfa.locator('h2:has-text("cihaz stoğa eklendi")');
   await basariBasligi.waitFor({ timeout: 40000 });
   const basariMetni = (await basariBasligi.textContent()) ?? "";
-  kontrol("3 cihaz eklendi mesajı", basariMetni.includes("3 cihaz"), basariMetni.trim());
+  kontrol("5 cihaz eklendi mesajı", basariMetni.includes("5 cihaz"), basariMetni.trim());
 
   // ------------------------------------------------ 6) kayıtlar doğru mu
   // Tam seri no ile arama doğrudan cihaz detayına yönleniyor.
@@ -228,6 +293,22 @@ try {
     "ikinci mağazanın cihazı o mağazaya yazıldı",
     ikinciCihaz.includes(magazaB),
     magazaB,
+  );
+
+  // Seri numarasız yüklenen cihazlar numaradan bulunabilmeli (numara nota yazıldı).
+  await sayfa.goto(`${hedef}/cihazlar?ara=26546`, { waitUntil: "networkidle" });
+  const numaraAramasi = await sayfa.locator("table tbody tr").count();
+  kontrol(
+    "seri numarasız cihazlar dosyadaki numaradan bulunuyor",
+    numaraAramasi === 2,
+    `${numaraAramasi} satır`,
+  );
+
+  const numaraMetni = (await sayfa.locator("table tbody").textContent()) ?? "";
+  kontrol(
+    "iki ayrı cihaz olarak eklendiler",
+    numaraMetni.includes("KILIF") && numaraMetni.includes("SILIKON"),
+    numaraMetni.slice(0, 120).trim(),
   );
 
   // Fatura oluşmamalı: döküm devir girişi.

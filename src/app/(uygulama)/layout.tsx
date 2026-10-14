@@ -10,7 +10,7 @@ const TEMEL_MENU: MenuOgesi[] = [
   { etiket: "Panel", yol: "/panel" },
   { etiket: "Cihazlar", yol: "/cihazlar" },
   { etiket: "Satış", yol: "/satis" },
-  { etiket: "Sevkiyat", yol: "/sevkiyat" },
+  { etiket: "Mağazalar Arası Sevk", yol: "/sevkiyat" },
   { etiket: "Müşteriler", yol: "/musteriler" },
   { etiket: "Sayım", yol: "/sayim" },
   { etiket: "Rapor", yol: "/rapor" },
@@ -29,7 +29,7 @@ export default async function UygulamaDuzeni({ children }: LayoutProps<"/">) {
   const aktarimVar = aktarimaUygunKaynaklar(oturum, magazalar).length > 0;
   const temel = aktarimVar
     ? TEMEL_MENU.flatMap((o) =>
-        o.yol === "/sevkiyat" ? [o, { etiket: "Aktarım", yol: "/aktarim" }] : [o],
+        o.yol === "/sevkiyat" ? [o, { etiket: "Mağaza İçi Aktarım", yol: "/aktarim" }] : [o],
       )
     : TEMEL_MENU;
 
