@@ -16,11 +16,14 @@ export function KabulPaneli({
   transferId,
   bekleyenAdet,
   okutulanAdet,
+  tamamlanacakAdet,
   toplamAdet,
 }: {
   transferId: number;
   bekleyenAdet: number;
   okutulanAdet: number;
+  /** Okutulmuş ama henüz depoya alınmamış cihaz sayısı. */
+  tamamlanacakAdet: number;
   toplamAdet: number;
 }) {
   const router = useRouter();
@@ -31,8 +34,10 @@ export function KabulPaneli({
   async function okut(kod: string): Promise<OkutmaGeriBildirimi> {
     const sonuc = await kabulCihaziOkut(transferId, kod);
     // Sunucu kalemi işaretledi; listedeki durumların tazelenmesi için sayfayı yenile.
-    if (sonuc.durum === "KABUL") router.refresh();
-    if (sonuc.durum === "KABUL") return { tur: "basari", mesaj: sonuc.mesaj };
+    if (sonuc.durum === "KABUL" || sonuc.durum === "TAMAMLANDI") router.refresh();
+    if (sonuc.durum === "KABUL" || sonuc.durum === "TAMAMLANDI") {
+      return { tur: "basari", mesaj: sonuc.mesaj };
+    }
     if (sonuc.durum === "ZATEN_OKUTULDU") return { tur: "uyari", mesaj: sonuc.mesaj };
     return { tur: "hata", mesaj: sonuc.mesaj };
   }
@@ -77,7 +82,7 @@ export function KabulPaneli({
               ? "Tüm cihazlar okutuldu. Kabulü tamamlayın."
               : `${okutulanAdet} cihaz okutuldu, ${bekleyenAdet} cihaz bekliyor. Şimdi tamamlarsanız sevkiyat kısmi kabul olur.`}
           </p>
-          <GonderDugmesi tur="basari" bekleyenMetin="Kaydediliyor…" disabled={okutulanAdet === 0}>
+          <GonderDugmesi tur="basari" bekleyenMetin="Kaydediliyor…" disabled={tamamlanacakAdet === 0}>
             Kabulü Tamamla
           </GonderDugmesi>
         </div>

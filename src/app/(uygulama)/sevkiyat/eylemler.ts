@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logYaz } from "@/lib/log";
+import type { OturumBilgisi } from "@/lib/oturum";
 import { kodNormalize } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
 import {
@@ -238,6 +239,7 @@ export async function sevkiyatGonder(
 
 export type KabulOkutmaSonucu =
   | { durum: "KABUL"; mesaj: string; kalemId: number }
+  | { durum: "TAMAMLANDI"; mesaj: string; kalemId: number }
   | { durum: "ZATEN_OKUTULDU"; mesaj: string }
   | { durum: "HATA"; mesaj: string };
 
@@ -297,6 +299,22 @@ export async function kabulCihaziOkut(
       data: { durum: TRANSFER_KALEM_DURUM.KABUL, kabulTarihi: new Date() },
     });
 
+    // Son cihaz da okutulduysa kabulü otomatik tamamla: cihazlar hedef depoya geçer,
+    // sevkiyat "Kabul Edildi" olur. Ayrıca butona basmayı unutmak sevkiyatı askıda bırakmaz.
+    const kalanBekleyen = await prisma.transferKalemi.count({
+      where: { transferId, durum: TRANSFER_KALEM_DURUM.BEKLIYOR },
+    });
+    if (kalanBekleyen === 0) {
+      const tamam = await okutulanlariDepoyaAl(oturum, transferId);
+      if (tamam.basari) {
+        return {
+          durum: "TAMAMLANDI",
+          kalemId: kalem.id,
+          mesaj: `Tüm cihazlar okutuldu, sevkiyat kabul edildi. ${tamam.basari}`,
+        };
+      }
+    }
+
     revalidatePath(`/sevkiyat/${transferId}`);
     return {
       durum: "KABUL",
@@ -313,6 +331,93 @@ export async function kabulCihaziOkut(
 export type KabulDurumu = { hata?: string; basari?: string };
 
 /**
+ * Okutulan cihazları hedef depoya geçirir ve sevkiyatın durumunu günceller.
+ * Hem "Kabulü Tamamla" butonu hem de son cihaz okutulduğunda otomatik kabul kullanır.
+ */
+async function okutulanlariDepoyaAl(
+  oturum: OturumBilgisi,
+  transferId: number,
+): Promise<KabulDurumu> {
+  const transfer = await prisma.transfer.findUnique({
+    where: { id: transferId },
+    include: { kalemler: true, hedefMagaza: { select: { ad: true } } },
+  });
+  if (!transfer) return { hata: "Sevkiyat bulunamadı." };
+  magazaIslemiZorunlu(oturum, transfer.hedefMagazaId);
+
+  if (transfer.durum !== TRANSFER_DURUM.BEKLIYOR && transfer.durum !== TRANSFER_DURUM.KISMI_KABUL) {
+    return { hata: "Bu sevkiyat üzerinde işlem yapılamaz." };
+  }
+
+  const kabulEdilen = transfer.kalemler.filter((k) => k.durum === TRANSFER_KALEM_DURUM.KABUL);
+  const bekleyen = transfer.kalemler.filter((k) => k.durum === TRANSFER_KALEM_DURUM.BEKLIYOR);
+
+  if (kabulEdilen.length === 0) {
+    return { hata: "Hiç cihaz okutulmadı. Önce cihazları okutun." };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Hedef depoya yalnız fiilen okutulanlar geçer.
+    for (const kalem of kabulEdilen) {
+      const guncel = await tx.stokKalemi.findUnique({
+        where: { id: kalem.stokKalemiId },
+        select: { durum: true },
+      });
+      // Zaten taşınmışsa (çift tıklama) tekrar hareket yazma.
+      if (!guncel || guncel.durum !== STOK_DURUM.TRANSFERDE) continue;
+
+      await tx.stokKalemi.update({
+        where: { id: kalem.stokKalemiId },
+        data: {
+          magazaId: transfer.hedefMagazaId,
+          durum: STOK_DURUM.STOKTA,
+          cikisTarihi: null,
+        },
+      });
+      await tx.stokHareketi.create({
+        data: {
+          stokKalemiId: kalem.stokKalemiId,
+          tip: HAREKET_TIP.TRANSFER_KABUL,
+          kaynakMagazaId: transfer.kaynakMagazaId,
+          hedefMagazaId: transfer.hedefMagazaId,
+          kullaniciId: oturum.kullaniciId,
+          transferId: transfer.id,
+          aciklama: `${transfer.transferNo} kabul edildi`,
+        },
+      });
+    }
+
+    await tx.transfer.update({
+      where: { id: transfer.id },
+      data: {
+        durum: bekleyen.length === 0 ? TRANSFER_DURUM.KABUL : TRANSFER_DURUM.KISMI_KABUL,
+        kabulEdenId: oturum.kullaniciId,
+        kabulTarihi: new Date(),
+      },
+    });
+  });
+
+  await logYaz(oturum, {
+    islem: LOG_ISLEM.TRANSFER_KABUL,
+    hedefTip: "Transfer",
+    hedefId: transfer.id,
+    detay: `${transfer.transferNo} · ${kabulEdilen.length} kabul, ${bekleyen.length} eksik`,
+  });
+
+  revalidatePath(`/sevkiyat/${transferId}`);
+  revalidatePath("/sevkiyat");
+  revalidatePath("/cihazlar");
+  revalidatePath("/panel");
+
+  return {
+    basari:
+      bekleyen.length === 0
+        ? `${kabulEdilen.length} cihaz ${transfer.hedefMagaza.ad} deposuna alındı.`
+        : `${kabulEdilen.length} cihaz alındı. ${bekleyen.length} cihaz okutulmadı, sevkiyatta bekliyor.`,
+  };
+}
+
+/**
  * Okutulan cihazları hedef depoya geçirir.
  * Okutulmayanlar sevkiyatta bekler; sevkiyat "Kısmi Kabul" olur.
  */
@@ -321,84 +426,7 @@ export async function kabuluTamamla(_onceki: KabulDurumu, form: FormData): Promi
     const oturum = await oturumZorunlu();
     const transferId = Number(form.get("transferId"));
     if (!Number.isInteger(transferId) || transferId <= 0) return { hata: "Sevkiyat bulunamadı." };
-
-    const transfer = await prisma.transfer.findUnique({
-      where: { id: transferId },
-      include: { kalemler: true, hedefMagaza: { select: { ad: true } } },
-    });
-    if (!transfer) return { hata: "Sevkiyat bulunamadı." };
-    magazaIslemiZorunlu(oturum, transfer.hedefMagazaId);
-
-    if (transfer.durum !== TRANSFER_DURUM.BEKLIYOR && transfer.durum !== TRANSFER_DURUM.KISMI_KABUL) {
-      return { hata: "Bu sevkiyat üzerinde işlem yapılamaz." };
-    }
-
-    const kabulEdilen = transfer.kalemler.filter((k) => k.durum === TRANSFER_KALEM_DURUM.KABUL);
-    const bekleyen = transfer.kalemler.filter((k) => k.durum === TRANSFER_KALEM_DURUM.BEKLIYOR);
-
-    if (kabulEdilen.length === 0) {
-      return { hata: "Hiç cihaz okutulmadı. Önce cihazları okutun." };
-    }
-
-    await prisma.$transaction(async (tx) => {
-      // Hedef depoya yalnız fiilen okutulanlar geçer.
-      for (const kalem of kabulEdilen) {
-        const guncel = await tx.stokKalemi.findUnique({
-          where: { id: kalem.stokKalemiId },
-          select: { durum: true },
-        });
-        // Zaten taşınmışsa (çift tıklama) tekrar hareket yazma.
-        if (!guncel || guncel.durum !== STOK_DURUM.TRANSFERDE) continue;
-
-        await tx.stokKalemi.update({
-          where: { id: kalem.stokKalemiId },
-          data: {
-            magazaId: transfer.hedefMagazaId,
-            durum: STOK_DURUM.STOKTA,
-            cikisTarihi: null,
-          },
-        });
-        await tx.stokHareketi.create({
-          data: {
-            stokKalemiId: kalem.stokKalemiId,
-            tip: HAREKET_TIP.TRANSFER_KABUL,
-            kaynakMagazaId: transfer.kaynakMagazaId,
-            hedefMagazaId: transfer.hedefMagazaId,
-            kullaniciId: oturum.kullaniciId,
-            transferId: transfer.id,
-            aciklama: `${transfer.transferNo} kabul edildi`,
-          },
-        });
-      }
-
-      await tx.transfer.update({
-        where: { id: transfer.id },
-        data: {
-          durum: bekleyen.length === 0 ? TRANSFER_DURUM.KABUL : TRANSFER_DURUM.KISMI_KABUL,
-          kabulEdenId: oturum.kullaniciId,
-          kabulTarihi: new Date(),
-        },
-      });
-    });
-
-    await logYaz(oturum, {
-      islem: LOG_ISLEM.TRANSFER_KABUL,
-      hedefTip: "Transfer",
-      hedefId: transfer.id,
-      detay: `${transfer.transferNo} · ${kabulEdilen.length} kabul, ${bekleyen.length} eksik`,
-    });
-
-    revalidatePath(`/sevkiyat/${transferId}`);
-    revalidatePath("/sevkiyat");
-    revalidatePath("/cihazlar");
-    revalidatePath("/panel");
-
-    return {
-      basari:
-        bekleyen.length === 0
-          ? `${kabulEdilen.length} cihaz ${transfer.hedefMagaza.ad} deposuna alındı.`
-          : `${kabulEdilen.length} cihaz alındı. ${bekleyen.length} cihaz okutulmadı, sevkiyatta bekliyor.`,
-    };
+    return await okutulanlariDepoyaAl(oturum, transferId);
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Kabul tamamlanamadı:", hata);

@@ -152,6 +152,7 @@ export function SevkiyatFormu({
         ipucu="Cihaz gönderen mağazada ve stokta olmalı. Aynı cihaz iki kez okutulursa uyarır."
         okut={okut}
         devreDisi={!kaynakId}
+        odakTetik={`${kaynakId}-${hedefId}`}
       />
 
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
