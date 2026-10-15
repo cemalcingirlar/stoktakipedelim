@@ -167,6 +167,7 @@ export function AktarimFormu({
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <OkutmaKutusu
+        odakVer
           etiket="Seri No / Barkod Okut"
           ipucu={
             kaynak && hedef

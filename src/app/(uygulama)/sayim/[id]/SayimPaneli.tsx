@@ -72,6 +72,7 @@ export function SayimPaneli({
       </div>
 
       <OkutmaKutusu
+        odakVer
         etiket="Cihazı Okut"
         ipucu="Raftaki her cihazı okutun. Bu mağazaya ait olmayan veya kayıtsız cihazlar fazla listesine düşer."
         okut={okut}

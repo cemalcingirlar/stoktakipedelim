@@ -126,6 +126,7 @@ export function SatisFormu({
       ) : null}
 
       <OkutmaKutusu
+        odakVer
         etiket={sepet.length === 0 ? "Satılacak Cihazı Okut" : "Başka Cihaz Okut"}
         ipucu={
           sepet.length === 0

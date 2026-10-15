@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { GIRDI_SINIFI } from "./Alan";
 import { KameraDugmesi } from "./KameraOkuyucu";
 
@@ -26,6 +26,7 @@ export function OkutmaKutusu({
   okut,
   devreDisi = false,
   kameraSurekli = true,
+  odakVer = false,
 }: {
   etiket: string;
   ipucu?: string;
@@ -34,11 +35,28 @@ export function OkutmaKutusu({
   devreDisi?: boolean;
   /** Kamera okumada: true ise açık kalır, false ise ilk okumada kapanır. */
   kameraSurekli?: boolean;
+  /**
+   * Ekran açılır açılmaz imleci kutuya koyar; barkod okuyucu doğrudan buraya
+   * yazsın diye. Yalnız fare/klavyeli cihazlarda çalışır: dokunmatikte her
+   * açılışta ekran klavyesini açmak işi zorlaştırıyor.
+   */
+  odakVer?: boolean;
 }) {
   const [deger, setDeger] = useState("");
   const [geriBildirim, setGeriBildirim] = useState<OkutmaGeriBildirimi>(null);
   const [bekliyor, basla] = useTransition();
   const girdiRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!odakVer || devreDisi) return;
+    // Dokunmatik cihazda odak vermek ekran klavyesini açıyor; yalnız işaretçisi
+    // olan (fare/klavye) cihazlarda imleci kutuya alıyoruz.
+    const inceIsaretci =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(pointer: fine)").matches;
+    if (inceIsaretci) girdiRef.current?.focus();
+  }, [odakVer, devreDisi]);
 
   const kodGonder = useCallback(
     (kod: string) => {

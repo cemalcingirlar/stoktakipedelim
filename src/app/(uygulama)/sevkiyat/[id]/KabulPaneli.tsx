@@ -63,6 +63,7 @@ export function KabulPaneli({
       </div>
 
       <OkutmaKutusu
+        odakVer
         etiket="Gelen Cihazı Okut"
         ipucu="Paketten çıkan her cihazı okutun. Listede olmayan bir cihaz okutulursa uyarır."
         okut={okut}
