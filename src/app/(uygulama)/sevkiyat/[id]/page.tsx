@@ -55,8 +55,12 @@ export default async function SevkiyatDetaySayfasi({ params }: PageProps<"/sevki
 
   const acikMi =
     transfer.durum === TRANSFER_DURUM.BEKLIYOR || transfer.durum === TRANSFER_DURUM.KISMI_KABUL;
-  const kabulEdebilir =
-    acikMi && bekleyen.length > 0 && magazadaIslemYapabilirMi(oturum, transfer.hedefMagazaId);
+  // Hedef mağazada yetkili olmak yeter; bekleyen kalem kalmaması paneli
+  // kapatmamalı. Tüm cihazlar okutulduğunda "Kabulü Tamamla" düğmesine hâlâ
+  // basılması gerekiyor — aksi halde sevkiyat sonsuza kadar "Onay Bekliyor"da
+  // kalıyordu.
+  const hedefteYetkili = magazadaIslemYapabilirMi(oturum, transfer.hedefMagazaId);
+  const kabulEdebilir = acikMi && hedefteYetkili;
   const geriCekebilir =
     transfer.durum === TRANSFER_DURUM.BEKLIYOR &&
     kabulEdilen.length === 0 &&
@@ -125,7 +129,7 @@ export default async function SevkiyatDetaySayfasi({ params }: PageProps<"/sevki
           okutulanAdet={kabulEdilen.length}
           bekleyenAdet={bekleyen.length}
         />
-      ) : acikMi ? (
+      ) : acikMi && !hedefteYetkili ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Bu sevkiyatı yalnızca <strong>{transfer.hedefMagaza.ad}</strong> kullanıcıları kabul
           edebilir.
@@ -163,7 +167,7 @@ export default async function SevkiyatDetaySayfasi({ params }: PageProps<"/sevki
 
         <Kart baslik={`Cihazlar (${transfer.kalemler.length})`} className="lg:col-span-2">
           <div className="mb-3 flex flex-wrap gap-2">
-            <Rozet ton="yesil">{kabulEdilen.length} kabul</Rozet>
+            <Rozet ton="yesil" data-test="kabul-rozeti">{kabulEdilen.length} kabul</Rozet>
             <Rozet ton="sari">{bekleyen.length} bekliyor</Rozet>
             {reddedilen.length > 0 ? <Rozet ton="kirmizi">{reddedilen.length} red</Rozet> : null}
           </div>

@@ -2,9 +2,15 @@ import Link from "next/link";
 import { HareketGrafigi } from "@/bilesenler/HareketGrafigi";
 import { Kart, SayiKarti } from "@/bilesenler/Kart";
 import { GRAFIK_DONEMLERI, donemiCoz } from "@/lib/grafikDonem";
-import { kurusuTLYazSembollu } from "@/lib/para";
+import { kurusuTLYaz, kurusuTLYazSembollu } from "@/lib/para";
 import { HAREKET_TIP_ETIKET, type HareketTip } from "@/lib/sabitler";
-import { hareketRaporu } from "@/lib/raporlar";
+import { hareketRaporu, kullaniciSatisRaporu, magazaSatisRaporu } from "@/lib/raporlar";
+import {
+  SATIS_DONEMLERI,
+  satisDonemAraligi,
+  satisDonemiCoz,
+  satisToplami,
+} from "@/lib/satisDonemi";
 import {
   bekleyenSevkiyatlar,
   bugunSatilanlar,
@@ -23,17 +29,35 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
 
   const params = await searchParams;
   const donem = donemiCoz(Array.isArray(params.donem) ? params.donem[0] : params.donem);
+  const satisDonemi = satisDonemiCoz(
+    Array.isArray(params.satisDonem) ? params.satisDonem[0] : params.satisDonem,
+  );
+  const satisAraligi = satisDonemAraligi(satisDonemi);
 
   const kendiMagazalari = yonetici ? null : yetkiliMagazalar(oturum);
 
-  const [ozetler, vadeDurumu, bugun, bekleyen, hareketler, kovalar] = await Promise.all([
+  const [
+    ozetler,
+    vadeDurumu,
+    bugun,
+    bekleyen,
+    hareketler,
+    kovalar,
+    magazaSatislari,
+    personelSatislari,
+  ] = await Promise.all([
     magazaStokOzeti(),
     vadesiGecenCihazSayisi(),
     bugunSatilanlar(kendiMagazalari),
     bekleyenSevkiyatlar(kendiMagazalari),
     sonHareketler(10),
     hareketRaporu(donem),
+    magazaSatisRaporu(satisAraligi),
+    kullaniciSatisRaporu(satisAraligi),
   ]);
+
+  const magazaToplami = satisToplami(magazaSatislari);
+  const personelToplami = satisToplami(personelSatislari);
 
   // Bugün satılanların tam listesi: cihaz listesinde satış tarihi bugüne
   // kısıtlanmış filtre. Panel ilk 10'u gösteriyor, bağlantı tamamını açıyor.
@@ -195,6 +219,144 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
         </Kart>
       </div>
 
+      {/* ------------------------------------- satış dökümleri */}
+      <div id="satislar" className="scroll-mt-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-800">
+            Satış Dökümü — {satisDonemi.baslik}
+          </h2>
+          <div className="flex flex-wrap gap-1" data-test="satis-donem-secici">
+            {SATIS_DONEMLERI.map((d) => (
+              <Link
+                key={d.anahtar}
+                href={`/panel?donem=${donem.anahtar}&satisDonem=${d.anahtar}#satislar`}
+                aria-current={d.anahtar === satisDonemi.anahtar ? "page" : undefined}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  d.anahtar === satisDonemi.anahtar
+                    ? "bg-slate-800 text-white"
+                    : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {d.etiket}
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <Kart
+            baslik="Personel Bazlı Satış"
+            eylem={
+              personelToplami.adet > 0 ? (
+                <span className="text-xs text-slate-500">
+                  {personelToplami.adet} cihaz · {kurusuTLYazSembollu(personelToplami.satisKurus)}{" "}
+                  ·{" "}
+                  <span
+                    className={
+                      personelToplami.karKurus >= 0 ? "text-emerald-700" : "text-red-600"
+                    }
+                  >
+                    {kurusuTLYazSembollu(personelToplami.karKurus)} kâr
+                  </span>
+                </span>
+              ) : null
+            }
+          >
+            {personelSatislari.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                {satisDonemi.baslik} satış yapılmadı.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table data-test="personel-satis" className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                      <th className="py-2 pr-3 font-medium">Personel</th>
+                      <th className="py-2 pr-3 font-medium">Mağaza</th>
+                      <th className="py-2 pr-3 text-right font-medium">Adet</th>
+                      <th className="py-2 pr-3 text-right font-medium">Satış</th>
+                      <th className="py-2 text-right font-medium">Kâr</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {personelSatislari.map((k) => (
+                      <tr key={`${k.adSoyad}-${k.magaza}`}>
+                        <td className="py-2 pr-3 font-medium text-slate-800">{k.adSoyad}</td>
+                        <td className="py-2 pr-3 text-slate-600">{k.magaza}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{k.adet}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">
+                          {kurusuTLYaz(k.satisKurus)}
+                        </td>
+                        <td
+                          className={`py-2 text-right tabular-nums ${
+                            k.karKurus < 0 ? "text-red-600" : "text-emerald-700"
+                          }`}
+                        >
+                          {kurusuTLYaz(k.karKurus)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Kart>
+
+          <Kart
+            baslik="Mağaza Bazlı Satış"
+            eylem={
+              magazaToplami.adet > 0 ? (
+                <span className="text-xs text-slate-500">
+                  {magazaToplami.adet} cihaz · {kurusuTLYazSembollu(magazaToplami.satisKurus)} ·{" "}
+                  <span
+                    className={magazaToplami.karKurus >= 0 ? "text-emerald-700" : "text-red-600"}
+                  >
+                    {kurusuTLYazSembollu(magazaToplami.karKurus)} kâr
+                  </span>
+                </span>
+              ) : null
+            }
+          >
+            {magazaSatislari.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                {satisDonemi.baslik} satış yapılmadı.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table data-test="magaza-satis" className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                      <th className="py-2 pr-3 font-medium">Mağaza</th>
+                      <th className="py-2 pr-3 text-right font-medium">Adet</th>
+                      <th className="py-2 pr-3 text-right font-medium">Satış</th>
+                      <th className="py-2 text-right font-medium">Kâr</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {magazaSatislari.map((m) => (
+                      <tr key={m.ad}>
+                        <td className="py-2 pr-3 font-medium text-slate-800">{m.ad}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{m.adet}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">
+                          {kurusuTLYaz(m.satisKurus)}
+                        </td>
+                        <td
+                          className={`py-2 text-right tabular-nums ${
+                            m.karKurus < 0 ? "text-red-600" : "text-emerald-700"
+                          }`}
+                        >
+                          {kurusuTLYaz(m.karKurus)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Kart>
+        </div>
+      </div>
+
       <div id="grafik" className="scroll-mt-4">
         <Kart
           baslik={`${donem.baslik} — Giriş ve Satış`}
@@ -203,7 +365,7 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
               {GRAFIK_DONEMLERI.map((d) => (
                 <Link
                   key={d.anahtar}
-                  href={`/panel?donem=${d.anahtar}#grafik`}
+                  href={`/panel?donem=${d.anahtar}&satisDonem=${satisDonemi.anahtar}#grafik`}
                   aria-current={d.anahtar === donem.anahtar ? "page" : undefined}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
                     d.anahtar === donem.anahtar

@@ -129,7 +129,8 @@ await sayfa.goto(`${hedef}/satis`, { waitUntil: "networkidle" });
 console.log("9) başka mağazanın cihazını satma:", await okut(imei[1]));
 // 2 Nolu Mağaza'ya gelen cihazı sat
 console.log("   kendi cihazı:", await okut(imei[0]));
-await sayfa.fill("#satisFiyati", "7.500,50");
+// Satış fiyatı artık cihaz başına: sepetteki ilk satırın kutusu.
+await sayfa.locator('[data-test="sepet-fiyat"]').first().fill("7.500,50");
 await sayfa.selectOption("#odemeTipi", "KREDI_KARTI");
 await sayfa.fill("#yeniAd", "Ayşe Yılmaz");
 await sayfa.fill("#yeniTelefon", "0532 111 22 33");

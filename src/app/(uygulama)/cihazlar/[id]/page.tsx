@@ -9,13 +9,15 @@ import {
   HAREKET_TIP,
   HAREKET_TIP_ETIKET,
   ODEME_TIPI_ETIKET,
+  STOK_DURUM,
   type HareketTip,
   type OdemeTipi,
 } from "@/lib/sabitler";
 import { beklemeGunu, karKurus } from "@/lib/sutunlar";
 import { tarihSaatYaz, tarihYaz } from "@/lib/tarih";
 import { vadeDurumu, vadeEtiketi } from "@/lib/vade";
-import { oturumGerekli } from "@/lib/yetki";
+import { adminMi, oturumGerekli } from "@/lib/yetki";
+import { SatisDuzenleme } from "./SatisDuzenleme";
 import { CIHAZ_ICERIK } from "@/lib/cihazFiltre";
 
 export const metadata = { title: "Cihaz Detayı — Stok Takip" };
@@ -42,7 +44,7 @@ const HAREKET_NOKTASI: Record<HareketTip, string> = {
 };
 
 export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar/[id]">) {
-  await oturumGerekli();
+  const oturum = await oturumGerekli();
   const { id } = await params;
   const cihazId = Number(id);
   if (!Number.isInteger(cihazId)) notFound();
@@ -62,6 +64,24 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
   ]);
 
   if (!cihaz) notFound();
+
+  // Satış düzeltme formu yalnız yöneticide; listeleri de yalnız o zaman çek.
+  const yonetici = adminMi(oturum);
+  const satisDuzenlenebilir = yonetici && cihaz.durum === STOK_DURUM.SATILDI;
+  const [duzenlemeKullanicilari, duzenlemeMusterileri] = satisDuzenlenebilir
+    ? await Promise.all([
+        prisma.kullanici.findMany({
+          where: { aktif: true },
+          orderBy: { adSoyad: "asc" },
+          select: { id: true, adSoyad: true },
+        }),
+        prisma.musteri.findMany({
+          orderBy: { adSoyad: "asc" },
+          take: 500,
+          select: { id: true, adSoyad: true, telefon: true },
+        }),
+      ])
+    : [[], []];
 
   const bugun = new Date();
   const vade = vadeDurumu(cihaz.alisFaturasi, bugun);
@@ -90,12 +110,23 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
             {cihaz.magaza.ad}
           </p>
         </div>
-        <Link
-          href="/cihazlar"
-          className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-        >
-          ← Cihazlar
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {/* Satış kaydından sonra bu sayfaya düşülüyor; sıradaki müşteriye
+              geçmek için satış ekranına dönüş burada duruyor. */}
+          <Link
+            href="/satis"
+            data-test="yeni-satis"
+            className="rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+          >
+            + Yeni Satış
+          </Link>
+          <Link
+            href="/cihazlar"
+            className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            ← Cihazlar
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -205,6 +236,23 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
                   <Satir etiket="Müşteri Telefonu">{cihaz.musteri.telefon}</Satir>
                 ) : null}
               </dl>
+
+              {satisDuzenlenebilir ? (
+                <SatisDuzenleme
+                  satis={{
+                    cihazId: cihaz.id,
+                    satisFiyatiKurus: cihaz.satisFiyatiKurus,
+                    odemeTipi: cihaz.odemeTipi,
+                    satisTarihi: cihaz.satisTarihi ? cihaz.satisTarihi.toISOString() : null,
+                    satanKullaniciId: cihaz.satanKullaniciId,
+                    musteriId: cihaz.musteriId,
+                    not: cihaz.not,
+                    alisFiyatiKurus: cihaz.alisFiyatiKurus,
+                  }}
+                  kullanicilar={duzenlemeKullanicilari}
+                  musteriler={duzenlemeMusterileri}
+                />
+              ) : null}
             </Kart>
           ) : null}
 

@@ -222,6 +222,77 @@ try {
     "ikinci cihaz hâlâ stokta",
   );
 
+  // -------------------------- 5b2) Personel ve mağaza bazlı satış dökümü
+  await sayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
+
+  kontrol(
+    "personel bazlı satış tablosu var",
+    (await sayfa.locator('[data-test="personel-satis"]').count()) === 1,
+  );
+  kontrol(
+    "mağaza bazlı satış tablosu var",
+    (await sayfa.locator('[data-test="magaza-satis"]').count()) === 1,
+  );
+
+  const personelTablosu = (await sayfa.locator('[data-test="personel-satis"]').textContent()) ?? "";
+  kontrol(
+    "satışı yapan personel dökümde",
+    personelTablosu.includes("Sistem Yöneticisi"),
+    personelTablosu.replace(/\s+/g, " ").slice(0, 80).trim(),
+  );
+  kontrol("personel dökümünde satış tutarı var", /13\.000,00/.test(personelTablosu));
+
+  const magazaTablosu = (await sayfa.locator('[data-test="magaza-satis"]').textContent()) ?? "";
+  kontrol(
+    "satışın yapıldığı mağaza dökümde",
+    magazaTablosu.includes("1 Nolu Mağaza"),
+    magazaTablosu.replace(/\s+/g, " ").slice(0, 80).trim(),
+  );
+  kontrol("mağaza dökümünde kâr var", /3\.000,00/.test(magazaTablosu), "13.000 − 10.000");
+
+  // Dönem seçenekleri
+  const satisSecici = sayfa.locator('[data-test="satis-donem-secici"] a');
+  kontrol("satış dökümünde 3 dönem seçeneği var", (await satisSecici.count()) === 3, `${await satisSecici.count()}`);
+  const satisSeciciMetni = (await sayfa.locator('[data-test="satis-donem-secici"]').textContent()) ?? "";
+  for (const etiket of ["Bugün", "Bu Hafta", "Bu Ay"]) {
+    kontrol(`"${etiket}" seçeneği var`, satisSeciciMetni.includes(etiket));
+  }
+
+  const varsayilanSecili =
+    (await sayfa.locator('[data-test="satis-donem-secici"] a[aria-current="page"]').textContent()) ??
+    "";
+  kontrol("varsayılan dönem Bugün", varsayilanSecili.trim() === "Bugün", varsayilanSecili.trim());
+
+  // Haftalık ve aylık dönemlerde de bugünkü satış görünmeli (bugün bu haftanın
+  // ve bu ayın içinde).
+  for (const [anahtar, etiket] of [["hafta", "Bu Hafta"], ["ay", "Bu Ay"]]) {
+    await sayfa.goto(`${hedef}/panel?satisDonem=${anahtar}`, { waitUntil: "networkidle" });
+    const secili =
+      (await sayfa
+        .locator('[data-test="satis-donem-secici"] a[aria-current="page"]')
+        .textContent()) ?? "";
+    kontrol(`${etiket}: seçenek işaretli`, secili.trim() === etiket, secili.trim());
+
+    const tablo = (await sayfa.locator('[data-test="personel-satis"]').textContent()) ?? "";
+    kontrol(`${etiket}: bugünkü satış dökümde görünüyor`, /13\.000,00/.test(tablo));
+  }
+
+  // Geçersiz dönem güne düşmeli, hata vermemeli.
+  await sayfa.goto(`${hedef}/panel?satisDonem=olmayan`, { waitUntil: "networkidle" });
+  const gecersizSecili =
+    (await sayfa.locator('[data-test="satis-donem-secici"] a[aria-current="page"]').textContent()) ??
+    "";
+  kontrol("geçersiz dönem Bugün'e düşüyor", gecersizSecili.trim() === "Bugün", gecersizSecili.trim());
+
+  // İki seçici birbirini bozmamalı: grafik dönemi değişince satış dönemi kalmalı.
+  await sayfa.goto(`${hedef}/panel?satisDonem=ay`, { waitUntil: "networkidle" });
+  await sayfa.click('[data-test="donem-secici"] a:has-text("1 Hafta")');
+  await sayfa.waitForTimeout(1200);
+  const korunan =
+    (await sayfa.locator('[data-test="satis-donem-secici"] a[aria-current="page"]').textContent()) ??
+    "";
+  kontrol("grafik dönemi değişince satış dönemi korunuyor", korunan.trim() === "Bu Ay", korunan.trim());
+
   // -------------------------- 5c) Grafik dönem seçimi
   await sayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
   const secici = sayfa.locator('[data-test="donem-secici"] a');

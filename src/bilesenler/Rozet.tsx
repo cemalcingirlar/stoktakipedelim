@@ -15,13 +15,15 @@ export function Rozet({
   ton = "nötr",
   children,
   className = "",
+  ...kalan
 }: {
   ton?: RozetTonu;
   children: ReactNode;
   className?: string;
-}) {
+} & React.HTMLAttributes<HTMLSpanElement>) {
   return (
     <span
+      {...kalan}
       className={`inline-block whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium ${TONLAR[ton]} ${className}`}
     >
       {children}

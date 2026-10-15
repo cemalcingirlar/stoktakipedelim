@@ -6,6 +6,7 @@ import { OkutmaKutusu, type OkutmaGeriBildirimi } from "@/bilesenler/OkutmaKutus
 import { Rozet } from "@/bilesenler/Rozet";
 import { ayniDukkandakiler, type DukkanMagazasi } from "@/lib/dukkan";
 import { dukkanIciAktar } from "./eylemler";
+import { FiyatDuzeltme } from "./FiyatDuzeltme";
 
 type Magaza = DukkanMagazasi & { ad: string };
 
@@ -19,6 +20,8 @@ type Satir = {
   hedefId: number;
   hedefAd: string;
   geriAlindi: boolean;
+  alisFiyatiKurus: number;
+  not: string | null;
 };
 
 const KUCUK_ETIKET = "mb-1 block text-xs font-medium text-slate-600";
@@ -26,9 +29,12 @@ const KUCUK_ETIKET = "mb-1 block text-xs font-medium text-slate-600";
 export function AktarimFormu({
   magazalar,
   varsayilanKaynakId,
+  yonetici,
 }: {
   magazalar: Magaza[];
   varsayilanKaynakId: number | null;
+  /** Alış fiyatı kâr hesabının temeli; düzeltme yalnız yöneticide. */
+  yonetici: boolean;
 }) {
   const ilkKaynak =
     varsayilanKaynakId && magazalar.some((m) => m.id === varsayilanKaynakId)
@@ -53,6 +59,9 @@ export function AktarimFormu({
     setElleHedefId(0);
   }
 
+  /** Aktarımın nedeni; cihazın tarihçesine yazılıyor. */
+  const [not, setNot] = useState("");
+
   /** Yön değiştir: kaynak ile hedefi takas eder. */
   function yonuCevir() {
     if (!kaynak || !hedef) return;
@@ -63,7 +72,7 @@ export function AktarimFormu({
   async function okut(kod: string): Promise<OkutmaGeriBildirimi> {
     if (!kaynak || !hedef) return { tur: "hata", mesaj: "Önce mağazaları seçin." };
 
-    const sonuc = await dukkanIciAktar(kod, kaynak.id, hedef.id);
+    const sonuc = await dukkanIciAktar(kod, kaynak.id, hedef.id, not);
     if (sonuc.durum === "HATA") return { tur: "hata", mesaj: sonuc.mesaj };
 
     setSatirlar((mevcut) => [
@@ -76,6 +85,8 @@ export function AktarimFormu({
         hedefId: hedef.id,
         hedefAd: hedef.ad,
         geriAlindi: false,
+        alisFiyatiKurus: sonuc.cihaz.alisFiyatiKurus,
+        not: sonuc.cihaz.not,
       },
       ...mevcut.filter((s) => s.anahtar !== sonuc.cihaz.id),
     ]);
@@ -85,7 +96,7 @@ export function AktarimFormu({
   async function geriAl(satir: Satir) {
     if (!satir.kod) return;
     setGeriAlinan(satir.anahtar);
-    const sonuc = await dukkanIciAktar(satir.kod, satir.hedefId, satir.kaynakId);
+    const sonuc = await dukkanIciAktar(satir.kod, satir.hedefId, satir.kaynakId, "Geri alındı");
     setGeriAlinan(null);
     if (sonuc.durum === "TAMAM") {
       setSatirlar((mevcut) =>
@@ -166,7 +177,28 @@ export function AktarimFormu({
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        {/* Not okutmadan önce yazılıyor; o andan sonra okutulan cihazların
+            tarihçesine geçiyor. Aktarımın nedeni sonradan okunabilsin. */}
+        <div className="mb-3">
+          <label htmlFor="aktarimNotu" className="mb-1 block text-xs font-medium text-slate-600">
+            Not (bu aktarıma ait açıklama)
+          </label>
+          <input
+            id="aktarimNotu"
+            data-test="aktarim-notu"
+            value={not}
+            onChange={(e) => setNot(e.target.value)}
+            maxLength={200}
+            placeholder="Örn. müşteri siparişi, vitrin değişimi"
+            className={GIRDI_SINIFI}
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Yazdığınız not, bundan sonra okuttuğunuz cihazların tarihçesine eklenir.
+          </p>
+        </div>
+
         <OkutmaKutusu
+          odakVer
           etiket="Seri No / Barkod Okut"
           ipucu={
             kaynak && hedef
@@ -188,6 +220,7 @@ export function AktarimFormu({
             {satirlar.map((s) => (
               <li
                 key={s.anahtar}
+                data-test="aktarilan-satir"
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
               >
                 <div className="min-w-0">
@@ -210,6 +243,13 @@ export function AktarimFormu({
                   >
                     {geriAlinan === s.anahtar ? "Geri alınıyor…" : "Geri al"}
                   </button>
+                ) : null}
+                {yonetici && !s.geriAlindi ? (
+                  <FiyatDuzeltme
+                    cihazId={s.anahtar}
+                    baslangicFiyatiKurus={s.alisFiyatiKurus}
+                    baslangicNotu={s.not}
+                  />
                 ) : null}
               </li>
             ))}
