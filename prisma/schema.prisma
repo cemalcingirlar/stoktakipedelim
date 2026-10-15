@@ -31,27 +31,28 @@ model Magaza {
 
   createdAt DateTime @default(now())
 
-  kullanicilar      Kullanici[]
-  ekYetkililer      Kullanici[]    @relation("KullaniciEkMagaza")
-  stokKalemleri     StokKalemi[]
-  alisFaturalari    AlisFaturasi[]
-  gonderilenTransfer Transfer[]    @relation("KaynakMagaza")
-  alinanTransfer    Transfer[]     @relation("HedefMagaza")
-  sayimlar          Sayim[]
-  kaynakHareketler  StokHareketi[] @relation("KaynakMagazaHareket")
-  hedefHareketler   StokHareketi[] @relation("HedefMagazaHareket")
+  kullanicilar       Kullanici[]
+  ekYetkililer       Kullanici[]     @relation("KullaniciEkMagaza")
+  stokKalemleri      StokKalemi[]
+  alisFaturalari     AlisFaturasi[]
+  gonderilenTransfer Transfer[]      @relation("KaynakMagaza")
+  alinanTransfer     Transfer[]      @relation("HedefMagaza")
+  sayimlar           Sayim[]
+  kaynakHareketler   StokHareketi[]  @relation("KaynakMagazaHareket")
+  hedefHareketler    StokHareketi[]  @relation("HedefMagazaHareket")
+  aktarimSatislari   AktarimSatisi[]
 
   @@index([dukkanKodu])
 }
 
 model Kullanici {
-  id          Int     @id @default(autoincrement())
-  kullaniciAdi String @unique
-  adSoyad     String
-  sifreHash   String
-  rol         String // ADMIN | MAGAZA_SORUMLUSU | MAGAZA_PERSONELI
-  magazaId    Int?
-  aktif       Boolean @default(true)
+  id           Int     @id @default(autoincrement())
+  kullaniciAdi String  @unique
+  adSoyad      String
+  sifreHash    String
+  rol          String // ADMIN | MAGAZA_SORUMLUSU | MAGAZA_PERSONELI
+  magazaId     Int?
+  aktif        Boolean @default(true)
   sutunTercihi String? // JSON: liste ekranında görünen sütunlar
 
   sonGiris  DateTime?
@@ -63,15 +64,16 @@ model Kullanici {
   /// şubede çalışabilir; ana mağaza yalnızca formlardaki varsayılan seçimdir.
   ekMagazalar Magaza[] @relation("KullaniciEkMagaza")
 
-  olusturulanFaturalar AlisFaturasi[] @relation("FaturaOlusturan")
-  gonderilenTransferler Transfer[]    @relation("TransferGonderen")
-  kabulEdilenTransferler Transfer[]   @relation("TransferKabulEden")
-  satislar             StokKalemi[]   @relation("SatanKullanici")
-  hareketler           StokHareketi[]
-  baslatilanSayimlar   Sayim[]        @relation("SayimBaslatan")
-  kapatilanSayimlar    Sayim[]        @relation("SayimKapatan")
-  okutmalar            SayimKalemi[]  @relation("SayimOkutan")
-  loglar               Log[]
+  olusturulanFaturalar   AlisFaturasi[]  @relation("FaturaOlusturan")
+  gonderilenTransferler  Transfer[]      @relation("TransferGonderen")
+  kabulEdilenTransferler Transfer[]      @relation("TransferKabulEden")
+  satislar               StokKalemi[]    @relation("SatanKullanici")
+  aktarimSatislari       AktarimSatisi[] @relation("AktarimSatani")
+  hareketler             StokHareketi[]
+  baslatilanSayimlar     Sayim[]         @relation("SayimBaslatan")
+  kapatilanSayimlar      Sayim[]         @relation("SayimKapatan")
+  okutmalar              SayimKalemi[]   @relation("SayimOkutan")
+  loglar                 Log[]
 
   @@index([magazaId])
 }
@@ -121,16 +123,17 @@ model Tedarikci {
 }
 
 model Musteri {
-  id       Int     @id @default(autoincrement())
-  adSoyad  String
-  telefon  String?
-  tcknVkn  String?
-  adres    String?
-  not      String?
+  id      Int     @id @default(autoincrement())
+  adSoyad String
+  telefon String?
+  tcknVkn String?
+  adres   String?
+  not     String?
 
   createdAt DateTime @default(now())
 
-  satinAlinanlar StokKalemi[]
+  satinAlinanlar   StokKalemi[]
+  aktarimSatislari AktarimSatisi[]
 
   @@index([telefon])
   @@index([adSoyad])
@@ -151,13 +154,13 @@ model AlisFaturasi {
   vadeOdendi  Boolean   @default(false)
   odemeTarihi DateTime?
 
-  not        String?
+  not         String?
   olusturanId Int
-  createdAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
 
-  tedarikci Tedarikci  @relation(fields: [tedarikciId], references: [id])
-  magaza    Magaza     @relation(fields: [magazaId], references: [id])
-  olusturan Kullanici  @relation("FaturaOlusturan", fields: [olusturanId], references: [id])
+  tedarikci Tedarikci    @relation(fields: [tedarikciId], references: [id])
+  magaza    Magaza       @relation(fields: [magazaId], references: [id])
+  olusturan Kullanici    @relation("FaturaOlusturan", fields: [olusturanId], references: [id])
   kalemler  StokKalemi[]
 
   @@unique([tedarikciId, faturaNo])
@@ -169,9 +172,9 @@ model AlisFaturasi {
 
 /// Her satır TEK bir fiziksel ürünü temsil eder (adet kavramı yoktur).
 model StokKalemi {
-  id      Int     @id @default(autoincrement())
-  barkod  String?
-  seriNo  String? @unique // IMEI / seri numarası
+  id     Int     @id @default(autoincrement())
+  barkod String?
+  seriNo String? @unique // IMEI / seri numarası
 
   kategoriId    Int
   altKategoriId Int?
@@ -181,8 +184,8 @@ model StokKalemi {
   renk     String?
   kapasite String?
 
-  alisFaturasiId Int?
-  tedarikciId    Int?
+  alisFaturasiId  Int?
+  tedarikciId     Int?
   alisFiyatiKurus Int      @default(0)
   girisTarihi     DateTime @default(now())
 
@@ -206,17 +209,18 @@ model StokKalemi {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  kategori     Kategori      @relation(fields: [kategoriId], references: [id])
-  altKategori  AltKategori?  @relation(fields: [altKategoriId], references: [id])
-  alisFaturasi AlisFaturasi? @relation(fields: [alisFaturasiId], references: [id])
-  tedarikci    Tedarikci?    @relation(fields: [tedarikciId], references: [id])
-  magaza       Magaza        @relation(fields: [magazaId], references: [id])
-  satanKullanici Kullanici?  @relation("SatanKullanici", fields: [satanKullaniciId], references: [id])
-  musteri      Musteri?      @relation(fields: [musteriId], references: [id])
+  kategori       Kategori      @relation(fields: [kategoriId], references: [id])
+  altKategori    AltKategori?  @relation(fields: [altKategoriId], references: [id])
+  alisFaturasi   AlisFaturasi? @relation(fields: [alisFaturasiId], references: [id])
+  tedarikci      Tedarikci?    @relation(fields: [tedarikciId], references: [id])
+  magaza         Magaza        @relation(fields: [magazaId], references: [id])
+  satanKullanici Kullanici?    @relation("SatanKullanici", fields: [satanKullaniciId], references: [id])
+  musteri        Musteri?      @relation(fields: [musteriId], references: [id])
 
-  hareketler      StokHareketi[]
+  hareketler        StokHareketi[]
   transferKalemleri TransferKalemi[]
-  sayimKalemleri  SayimKalemi[]
+  sayimKalemleri    SayimKalemi[]
+  aktarimSatislari  AktarimSatisi[]
 
   @@index([barkod])
   @@index([aramaMetni])
@@ -228,11 +232,54 @@ model StokKalemi {
   @@index([model])
 }
 
+/// Mağaza içi aktarımda yapılan "müşteriye sat, geri al" işleminin satış kaydı.
+///
+/// Dükkân içinde cihaz taşınırken ürün fiilen müşteriye satılıp geri alınıyor.
+/// Cihaz dükkânda kaldığı ve stokta görünmeye devam ettiği için StokKalemi'nin
+/// satış alanları kullanılamıyor: orası cihazın nihai satışına ayrılmış, bir
+/// satır hem STOKTA hem SATILDI olamaz. Bu yüzden satış ayrı bir kayıt.
+///
+/// Kâr satış anındaki alış fiyatına göre hesaplanıyor (maliyetKurus); geri alış
+/// fiyatı (yeniAlisFiyatiKurus) ise cihazın yeni maliyeti oluyor ve StokKalemi
+/// üzerine yazılıyor. İkisi ayrı tutulmazsa kâr geri alış fiyatına göre
+/// hesaplanır ve satıştan kazanılan tutar kaybolur.
+model AktarimSatisi {
+  id           Int @id @default(autoincrement())
+  stokKalemiId Int
+
+  /// Satışın yapıldığı mağaza — aktarımın kaynağı. Mağaza bazlı satış raporu
+  /// cihazın şu an bulunduğu yere değil, satışın yapıldığı yere yazılmalı.
+  magazaId         Int
+  musteriId        Int?
+  satanKullaniciId Int
+
+  satisFiyatiKurus    Int
+  /// Satış anındaki alış fiyatı; kâr bundan hesaplanıyor.
+  maliyetKurus        Int
+  /// Geri alış fiyatı. Cihazın yeni maliyeti bu.
+  yeniAlisFiyatiKurus Int
+
+  odemeTipi   String
+  satisTarihi DateTime @default(now())
+  not         String?
+  createdAt   DateTime @default(now())
+
+  stokKalemi     StokKalemi @relation(fields: [stokKalemiId], references: [id], onDelete: Cascade)
+  magaza         Magaza     @relation(fields: [magazaId], references: [id])
+  musteri        Musteri?   @relation(fields: [musteriId], references: [id])
+  satanKullanici Kullanici  @relation("AktarimSatani", fields: [satanKullaniciId], references: [id])
+
+  @@index([satisTarihi])
+  @@index([magazaId, satisTarihi])
+  @@index([satanKullaniciId, satisTarihi])
+  @@index([stokKalemiId])
+}
+
 /// Ürünün tüm yaşam döngüsü: giriş, transferler, satış. Detay sayfasındaki tarihçe.
 model StokHareketi {
-  id           Int      @id @default(autoincrement())
-  stokKalemiId Int
-  tip          String // GIRIS | TRANSFER_GONDERIM | TRANSFER_KABUL | TRANSFER_RED | SATIS | IADE | DUZELTME | SAYIM_FARK
+  id             Int      @id @default(autoincrement())
+  stokKalemiId   Int
+  tip            String // GIRIS | TRANSFER_GONDERIM | TRANSFER_KABUL | TRANSFER_RED | SATIS | IADE | DUZELTME | SAYIM_FARK
   kaynakMagazaId Int?
   hedefMagazaId  Int?
   kullaniciId    Int
@@ -253,26 +300,26 @@ model StokHareketi {
 // ---------------------------------------------------------------- Transfer (çift onaylı sevkiyat)
 
 model Transfer {
-  id             Int      @id @default(autoincrement())
-  transferNo     String   @unique
+  id             Int    @id @default(autoincrement())
+  transferNo     String @unique
   kaynakMagazaId Int
   hedefMagazaId  Int
-  durum          String   @default("BEKLIYOR") // BEKLIYOR | KABUL | KISMI_KABUL | RED | IPTAL
+  durum          String @default("BEKLIYOR") // BEKLIYOR | KABUL | KISMI_KABUL | RED | IPTAL
 
   gonderenId     Int
   gonderimTarihi DateTime @default(now())
 
-  kabulEdenId  Int?
-  kabulTarihi  DateTime?
-  redNedeni    String?
-  not          String?
+  kabulEdenId Int?
+  kabulTarihi DateTime?
+  redNedeni   String?
+  not         String?
 
   kaynakMagaza Magaza     @relation("KaynakMagaza", fields: [kaynakMagazaId], references: [id])
   hedefMagaza  Magaza     @relation("HedefMagaza", fields: [hedefMagazaId], references: [id])
   gonderen     Kullanici  @relation("TransferGonderen", fields: [gonderenId], references: [id])
   kabulEden    Kullanici? @relation("TransferKabulEden", fields: [kabulEdenId], references: [id])
 
-  kalemler  TransferKalemi[]
+  kalemler   TransferKalemi[]
   hareketler StokHareketi[]
 
   @@index([hedefMagazaId, durum])
@@ -318,12 +365,12 @@ model Sayim {
 }
 
 model SayimKalemi {
-  id           Int     @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   sayimId      Int
-  stokKalemiId Int?    // null => sistemde kayıtlı olmayan (fazla) okutma
+  stokKalemiId Int? // null => sistemde kayıtlı olmayan (fazla) okutma
   okutulanKod  String? // okutulan barkod / seri no
-  beklenen     Boolean @default(true) // sayım başında bu mağazada mıydı
-  sayildi      Boolean @default(false)
+  beklenen     Boolean   @default(true) // sayım başında bu mağazada mıydı
+  sayildi      Boolean   @default(false)
   sonuc        String? // BULUNDU | BASKA_MAGAZADA | KAYITSIZ | EKSIK
   okutmaTarihi DateTime?
   okutanId     Int?

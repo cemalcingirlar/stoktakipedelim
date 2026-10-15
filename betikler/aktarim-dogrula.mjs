@@ -324,9 +324,10 @@ try {
     (await sayfa.getByText("Yöneticinizden").count()) === 1,
   );
 
-  // ------------------ 10) Personele fiyat düzeltme bağlantısı çıkmamalı
-  // personel1 yalnız 1 Nolu Mağaza'da yetkili; aktarım iki mağazada da yetki
-  // istediği için önce M2 yetkisini verelim.
+  // ------------------ 10) Personel de fiyat düzeltebiliyor
+  // Aktarımı fiilen yapan mağaza personeli; fiyat da onun girdiği bir bilgi.
+  // personel1 yalnız 1 Nolu Mağaza'da yetkili, aktarım iki mağazada da yetki
+  // istiyor — önce M2 yetkisini verelim.
   await giris("admin");
   await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
   const m2Kutusu = magazaKarti("M2").locator(
@@ -346,15 +347,30 @@ try {
   await sayfa.waitForTimeout(400);
   const mesaj3 = await aktar(imei(2));
   kontrol("personel aktarım yapabiliyor", mesaj3.includes("aktarıldı"), mesaj3);
+
+  const personelSatiri = sayfa.locator('[data-test="aktarilan-satir"]').first();
   kontrol(
-    "personele fiyat düzeltme bağlantısı çıkmıyor",
-    (await sayfa.locator('[data-test="fiyat-duzelt-ac"]').count()) === 0,
+    "personele de fiyat düzeltme bağlantısı çıkıyor",
+    (await personelSatiri.locator('[data-test="fiyat-duzelt-ac"]').count()) === 1,
   );
+
+  await personelSatiri.locator('[data-test="fiyat-duzelt-ac"]').click();
+  await sayfa.waitForTimeout(300);
+  await personelSatiri.locator('[data-test="fiyat-girdisi"]').fill("7.750,00");
+  await personelSatiri.locator('[data-test="fiyat-kaydet"]').click();
+  await sayfa.waitForTimeout(2000);
   kontrol(
-    "personele alış fiyatı da gösterilmiyor",
-    !((await sayfa.locator('[data-test="aktarilan-satir"]').first().textContent()) ?? "").includes(
-      "Alış:",
-    ),
+    "personelin fiyat düzeltmesi kaydedildi",
+    (await personelSatiri.locator('[data-test="fiyat-basari"]').count()) === 1,
+    ((await personelSatiri.textContent()) ?? "").replace(/\s+/g, " ").slice(0, 120),
+  );
+
+  await sayfa.goto(`${hedef}/cihazlar?ara=${imei(2)}`, { waitUntil: "networkidle" });
+  const personelFiyati = await kunyeOku("Alış Fiyatı");
+  kontrol(
+    "personelin yazdığı fiyat künyeye işlendi",
+    personelFiyati.includes("7.750,00"),
+    `${personelFiyati} (beklenen 7.750,00)`,
   );
 
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
