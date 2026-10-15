@@ -1,10 +1,20 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { OkutmaKutusu, type OkutmaGeriBildirimi } from "@/bilesenler/OkutmaKutusu";
-import { kurusuTLYaz, kurusuTLYazSembollu, tlyiKurusaCevir } from "@/lib/para";
+import { kurusuTLYaz, kurusuTLYazSembollu } from "@/lib/para";
+import {
+  cihazKari,
+  fiyatiYaz,
+  sepetOzeti,
+  sepetSatirlari,
+  sepetSorunlari,
+  sepeteEkle,
+  sepettenCikar,
+  type SepetCihazi,
+} from "@/lib/satisSepeti";
 import { ODEME_TIPI, ODEME_TIPI_ETIKET, type OdemeTipi } from "@/lib/sabitler";
 import { inputTarih } from "@/lib/tarih";
 import {
@@ -15,25 +25,22 @@ import {
   type SatisDurumu,
 } from "./eylemler";
 
-type Cihaz = {
-  id: number;
-  marka: string;
-  model: string;
-  renk: string | null;
-  kapasite: string | null;
-  seriNo: string | null;
-  barkod: string | null;
-  kategori: string;
-  magazaAdi: string;
-  alisFiyatiKurus: number;
-};
-
 const KUCUK_ETIKET = "mb-1 block text-xs font-medium text-slate-600";
 
 export function SatisFormu() {
   const [durum, eylem] = useActionState<SatisDurumu, FormData>(satisKaydet, {});
-  const [cihaz, setCihaz] = useState<Cihaz | null>(null);
-  const [satisFiyati, setSatisFiyati] = useState("");
+  // Bir müşteri birden çok cihaz alabiliyor; okutulan her cihaz listeye ekleniyor.
+  const [sepet, setSepet] = useState<SepetCihazi[]>([]);
+  /**
+   * Okutma bir geçiş (transition) içinde çalışıyor ve okutma kutusu geri
+   * çağrımı bir önceki render'dan kalmış olabiliyor. Barkod okuyucu iki kodu
+   * arka arkaya gönderdiğinde ikinci okutma eski sepeti görüp ilk cihazı
+   * düşürüyordu; güncel sepet bu yüzden ref'te tutuluyor.
+   */
+  const sepetRef = useRef(sepet);
+  useEffect(() => {
+    sepetRef.current = sepet;
+  }, [sepet]);
   const [odemeTipi, setOdemeTipi] = useState<string>(ODEME_TIPI.NAKIT);
   const [satisTarihi, setSatisTarihi] = useState(inputTarih(new Date()));
   const [not, setNot] = useState("");
@@ -51,10 +58,19 @@ export function SatisFormu() {
   async function okut(kod: string): Promise<OkutmaGeriBildirimi> {
     const sonuc = await satisCihaziOkut(kod);
     if (sonuc.durum === "HATA") return { tur: "hata", mesaj: sonuc.mesaj };
-    setCihaz(sonuc.cihaz);
+
+    const eklenen = sepeteEkle(sepetRef.current, sonuc.cihaz);
+    if ("hata" in eklenen) return { tur: "hata", mesaj: eklenen.hata };
+    sepetRef.current = eklenen.sepet;
+    setSepet(eklenen.sepet);
+
+    const adet = eklenen.sepet.length;
     return {
       tur: "basari",
-      mesaj: `${sonuc.cihaz.marka} ${sonuc.cihaz.model} seçildi. Satış bilgilerini doldurun.`,
+      mesaj:
+        adet === 1
+          ? `${sonuc.cihaz.marka} ${sonuc.cihaz.model} eklendi. Satış fiyatını girin.`
+          : `${sonuc.cihaz.marka} ${sonuc.cihaz.model} eklendi — listede ${adet} cihaz var.`,
     };
   }
 
@@ -69,13 +85,13 @@ export function SatisFormu() {
     });
   }
 
-  const satisKurus = tlyiKurusaCevir(satisFiyati);
-  const kar = cihaz && satisKurus !== null ? satisKurus - cihaz.alisFiyatiKurus : null;
+  const ozet = sepetOzeti(sepet);
+  const musteriVarMi = Boolean(seciliMusteri || yeniAd.trim());
+  const sorunlar = sepetSorunlari(sepet, musteriVarMi);
 
   function veriyiHazirla(): FormData {
     const yuk = {
-      cihazId: cihaz?.id ?? 0,
-      satisFiyatiKurus: satisKurus ?? -1,
+      satirlar: sepetSatirlari(sepet) ?? [],
       odemeTipi,
       satisTarihi,
       musteriId: seciliMusteri?.id ?? null,
@@ -90,7 +106,7 @@ export function SatisFormu() {
     return form;
   }
 
-  const kaydedebilir = Boolean(cihaz) && satisKurus !== null && (seciliMusteri || yeniAd.trim());
+  const kaydedebilir = sorunlar.length === 0;
 
   return (
     <div className="space-y-5">
@@ -101,62 +117,125 @@ export function SatisFormu() {
       ) : null}
 
       <OkutmaKutusu
-        etiket="Satılacak Cihazı Okut"
-        ipucu="Cihaz kendi mağazanızda ve stokta olmalı."
+        etiket={sepet.length === 0 ? "Satılacak Cihazı Okut" : "Başka Cihaz Okut"}
+        ipucu={
+          sepet.length === 0
+            ? "Cihaz kendi mağazanızda ve stokta olmalı."
+            : "Aynı müşteriye satılacak diğer cihazları da buradan okutun."
+        }
         okut={okut}
       />
 
-      {!cihaz ? (
+      {sepet.length === 0 ? (
         <p className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
-          Satışa başlamak için cihazı okutun.
+          Satışa başlamak için cihazı okutun. Aynı müşteriye birden çok cihaz satıyorsanız
+          hepsini sırayla okutun.
         </p>
       ) : (
         <form action={() => eylem(veriyiHazirla())} className="space-y-5">
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-slate-900">
-                  {cihaz.marka} {cihaz.model}
-                </h2>
-                <p className="mt-0.5 text-sm text-slate-500">
-                  {[cihaz.kategori, cihaz.renk, cihaz.kapasite].filter(Boolean).join(" · ")}
-                </p>
-                <p className="mt-0.5 font-mono text-xs text-slate-600">
-                  {cihaz.seriNo ?? cihaz.barkod ?? "seri no yok"} · {cihaz.magazaAdi}
-                </p>
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-slate-500">Alış fiyatı</div>
-                <div className="text-lg font-semibold tabular-nums text-slate-800">
-                  {kurusuTLYazSembollu(cihaz.alisFiyatiKurus)}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCihaz(null)}
-                  className="mt-1 text-xs font-medium text-red-600 hover:underline"
-                >
-                  Başka cihaz okut
-                </button>
-              </div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-800">
+                Satılacak Cihazlar ({ozet.adet})
+              </h2>
+              <span className="text-xs text-slate-500">
+                Yukarıdaki kutudan okutarak bu listeye cihaz ekleyebilirsiniz.
+              </span>
             </div>
+
+            <ul data-test="satis-sepeti" className="space-y-2">
+              {sepet.map((c) => {
+                const kar = cihazKari(c);
+                return (
+                  <li
+                    key={c.id}
+                    data-test="sepet-satiri"
+                    className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-slate-900">
+                        {c.marka} {c.model}
+                      </div>
+                      <div className="truncate font-mono text-xs text-slate-500">
+                        {c.seriNo ?? c.barkod ?? "seri no yok"} · {c.magazaAdi}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        Alış {kurusuTLYazSembollu(c.alisFiyatiKurus)}
+                      </div>
+                    </div>
+
+                    <div className="sm:w-36">
+                      <label className={KUCUK_ETIKET} htmlFor={`fiyat-${c.id}`}>
+                        Satış Fiyatı (TL) *
+                      </label>
+                      <input
+                        id={`fiyat-${c.id}`}
+                        data-test="sepet-fiyat"
+                        value={c.satisFiyati}
+                        onChange={(e) => setSepet((o) => fiyatiYaz(o, c.id, e.target.value))}
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        className={`${GIRDI_SINIFI} text-right tabular-nums`}
+                      />
+                    </div>
+
+                    <div className="sm:w-28">
+                      <span className={KUCUK_ETIKET}>Kâr</span>
+                      <div
+                        className={`rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right text-sm font-semibold tabular-nums ${
+                          kar === null
+                            ? "text-slate-400"
+                            : kar < 0
+                              ? "text-red-600"
+                              : "text-emerald-700"
+                        }`}
+                      >
+                        {kar === null ? "—" : kurusuTLYaz(kar)}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      data-test="sepet-cikar"
+                      onClick={() => setSepet((o) => sepettenCikar(o, c.id))}
+                      title="Bu cihazı satıştan çıkar"
+                      className="justify-self-end rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-red-700"
+                    >
+                      Çıkar
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {ozet.adet > 1 ? (
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-100 pt-3 text-sm">
+                <span className="text-slate-600">
+                  Toplam satış:{" "}
+                  <span className="font-semibold tabular-nums text-slate-900">
+                    {kurusuTLYaz(ozet.satisKurus)} TL
+                  </span>
+                </span>
+                <span className="text-slate-600">
+                  Toplam kâr:{" "}
+                  <span
+                    className={`font-semibold tabular-nums ${
+                      ozet.karKurus < 0 ? "text-red-600" : "text-emerald-700"
+                    }`}
+                  >
+                    {kurusuTLYaz(ozet.karKurus)} TL
+                  </span>
+                </span>
+              </div>
+            ) : null}
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="mb-3 text-sm font-semibold text-slate-800">Satış Bilgileri</h2>
+            <p className="mb-3 text-xs text-slate-500">
+              Bu bilgiler listedeki {ozet.adet} cihazın hepsine uygulanır.
+            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <label htmlFor="satisFiyati" className={KUCUK_ETIKET}>
-                  Satış Fiyatı (TL) *
-                </label>
-                <input
-                  id="satisFiyati"
-                  value={satisFiyati}
-                  onChange={(e) => setSatisFiyati(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="0,00"
-                  className={`${GIRDI_SINIFI} text-right tabular-nums`}
-                />
-              </div>
               <div>
                 <label htmlFor="odemeTipi" className={KUCUK_ETIKET}>
                   Ödeme Tipi *
@@ -185,16 +264,6 @@ export function SatisFormu() {
                   onChange={(e) => setSatisTarihi(e.target.value)}
                   className={GIRDI_SINIFI}
                 />
-              </div>
-              <div>
-                <span className={KUCUK_ETIKET}>Kâr</span>
-                <div
-                  className={`rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right text-sm font-semibold tabular-nums ${
-                    kar === null ? "text-slate-400" : kar < 0 ? "text-red-600" : "text-emerald-700"
-                  }`}
-                >
-                  {kar === null ? "—" : `${kurusuTLYaz(kar)} TL`}
-                </div>
               </div>
               <div className="sm:col-span-2 lg:col-span-4">
                 <label htmlFor="satisNotu" className={KUCUK_ETIKET}>
@@ -339,25 +408,40 @@ export function SatisFormu() {
           </section>
 
           <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
+            {/* Toplam her zaman görünüyor: fiyatları girerken eksik bilgi
+                yüzünden tutarın kaybolması kullanıcıyı şaşırtıyordu. */}
             <div className="text-sm text-slate-600">
-              {satisKurus !== null ? (
-                <>
-                  Satış: <span className="font-semibold text-slate-900">{kurusuTLYaz(satisKurus)} TL</span>
-                  {kar !== null ? (
-                    <>
-                      {" · Kâr: "}
-                      <span className={kar < 0 ? "font-semibold text-red-600" : "font-semibold text-emerald-700"}>
-                        {kurusuTLYaz(kar)} TL
-                      </span>
-                    </>
-                  ) : null}
-                </>
-              ) : (
-                "Satış fiyatı girin"
-              )}
+              <div data-test="satis-toplami">
+                {ozet.adet} cihaz · Satış:{" "}
+                <span className="font-semibold text-slate-900">
+                  {kurusuTLYaz(ozet.satisKurus)} TL
+                </span>
+                {" · Kâr: "}
+                <span
+                  className={
+                    ozet.karKurus < 0
+                      ? "font-semibold text-red-600"
+                      : "font-semibold text-emerald-700"
+                  }
+                >
+                  {kurusuTLYaz(ozet.karKurus)} TL
+                </span>
+                {ozet.fiyatiEksik > 0 ? (
+                  <span className="text-slate-400">
+                    {" "}
+                    ({ozet.fiyatiEksik} cihazın fiyatı girilmedi)
+                  </span>
+                ) : null}
+              </div>
+              {sorunlar.length > 0 ? (
+                <div data-test="satis-sorunlari" className="mt-0.5 font-medium text-red-700">
+                  {sorunlar[0]}
+                  {sorunlar.length > 1 ? ` (+${sorunlar.length - 1} eksik daha)` : ""}
+                </div>
+              ) : null}
             </div>
             <GonderDugmesi tur="basari" bekleyenMetin="Kaydediliyor…" disabled={!kaydedebilir}>
-              Satışı Kaydet
+              {ozet.adet > 1 ? `${ozet.adet} Cihazı Sat` : "Satışı Kaydet"}
             </GonderDugmesi>
           </div>
         </form>

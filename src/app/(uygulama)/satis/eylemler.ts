@@ -126,14 +126,23 @@ export async function musteriAra(sorgu: string): Promise<MusteriOzeti[]> {
 
 // ------------------------------------------------------------------ Satış
 
+const satisSatiriSemasi = z.object({
+  cihazId: z.number().int().positive("Cihaz okutun."),
+  satisFiyatiKurus: z
+    .number()
+    .int("Satış fiyatı geçersiz.")
+    .min(0, "Satış fiyatı negatif olamaz.")
+    .max(1_000_000_00_00, "Satış fiyatı çok yüksek."),
+});
+
 const satisSemasi = z
   .object({
-    cihazId: z.number().int().positive("Cihaz okutun."),
-    satisFiyatiKurus: z
-      .number()
-      .int("Satış fiyatı geçersiz.")
-      .min(0, "Satış fiyatı negatif olamaz.")
-      .max(1_000_000_00_00, "Satış fiyatı çok yüksek."),
+    // Bir müşteri tek seferde birden çok cihaz alabiliyor; müşteri, ödeme tipi
+    // ve tarih ortak, satış fiyatı cihaz başına.
+    satirlar: z
+      .array(satisSatiriSemasi)
+      .min(1, "Satılacak cihaz okutun.")
+      .max(50, "Tek satışta en çok 50 cihaz olabilir."),
     odemeTipi: z.enum(
       Object.values(ODEME_TIPI) as [string, ...string[]],
       "Ödeme tipi seçin.",
@@ -154,7 +163,7 @@ const satisSemasi = z
 export type SatisDurumu = { hata?: string };
 
 export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise<SatisDurumu> {
-  let cihazId: number;
+  let gidilecekYol: string;
 
   try {
     const oturum = await oturumZorunlu();
@@ -170,15 +179,28 @@ export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise
     if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
     const veri = sonuc.data;
 
-    const cihaz = await prisma.stokKalemi.findUnique({
-      where: { id: veri.cihazId },
+    const idler = veri.satirlar.map((s) => s.cihazId);
+    if (new Set(idler).size !== idler.length) {
+      return { hata: "Aynı cihaz listede birden fazla var." };
+    }
+
+    const cihazlar = await prisma.stokKalemi.findMany({
+      where: { id: { in: idler } },
       include: { tedarikci: { select: { ad: true } } },
     });
-    if (!cihaz) return { hata: "Cihaz bulunamadı." };
-    if (cihaz.durum !== STOK_DURUM.STOKTA) {
-      return { hata: "Bu cihaz artık stokta değil. Listeyi yenileyin." };
+    if (cihazlar.length !== idler.length) return { hata: "Cihazlardan biri bulunamadı." };
+
+    for (const cihaz of cihazlar) {
+      if (cihaz.durum !== STOK_DURUM.STOKTA) {
+        return {
+          hata: `${cihaz.marka} ${cihaz.model} artık stokta değil. Listeyi yenileyin.`,
+        };
+      }
+      // Her cihaz için ayrı ayrı: satışta birden çok mağazanın cihazı olabilir.
+      magazaIslemiZorunlu(oturum, cihaz.magazaId);
     }
-    magazaIslemiZorunlu(oturum, cihaz.magazaId);
+
+    const fiyatHarita = new Map(veri.satirlar.map((s) => [s.cihazId, s.satisFiyatiKurus]));
 
     const satis = await prisma.$transaction(async (tx) => {
       let musteriId = veri.musteriId;
@@ -213,58 +235,71 @@ export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise
         select: { adSoyad: true, telefon: true },
       });
 
-      const guncel = await tx.stokKalemi.update({
-        where: { id: cihaz.id },
-        data: {
-          durum: STOK_DURUM.SATILDI,
-          satisTarihi: veri.satisTarihi,
-          satisFiyatiKurus: veri.satisFiyatiKurus,
-          satanKullaniciId: oturum.kullaniciId,
-          musteriId,
-          odemeTipi: veri.odemeTipi,
-          cikisTarihi: veri.satisTarihi,
-          not: veri.not ?? cihaz.not,
-          // Müşteri artık aranabilir alanların parçası.
-          aramaMetni: aramaMetniUret([
-            cihaz.marka,
-            cihaz.model,
-            cihaz.renk,
-            cihaz.kapasite,
-            cihaz.seriNo,
-            cihaz.barkod,
-            cihaz.tedarikci?.ad,
-            veri.not ?? cihaz.not,
-            musteri.adSoyad,
-            musteri.telefon,
-          ]),
-        },
-      });
+      for (const cihaz of cihazlar) {
+        const satisFiyatiKurus = fiyatHarita.get(cihaz.id) ?? 0;
 
-      await tx.stokHareketi.create({
-        data: {
-          stokKalemiId: cihaz.id,
-          tip: HAREKET_TIP.SATIS,
-          kaynakMagazaId: cihaz.magazaId,
-          kullaniciId: oturum.kullaniciId,
-          aciklama: `${musteri.adSoyad} müşterisine satıldı`,
-          tarih: veri.satisTarihi,
-        },
-      });
+        await tx.stokKalemi.update({
+          where: { id: cihaz.id },
+          data: {
+            durum: STOK_DURUM.SATILDI,
+            satisTarihi: veri.satisTarihi,
+            satisFiyatiKurus,
+            satanKullaniciId: oturum.kullaniciId,
+            musteriId,
+            odemeTipi: veri.odemeTipi,
+            cikisTarihi: veri.satisTarihi,
+            not: veri.not ?? cihaz.not,
+            // Müşteri artık aranabilir alanların parçası.
+            aramaMetni: aramaMetniUret([
+              cihaz.marka,
+              cihaz.model,
+              cihaz.renk,
+              cihaz.kapasite,
+              cihaz.seriNo,
+              cihaz.barkod,
+              cihaz.tedarikci?.ad,
+              veri.not ?? cihaz.not,
+              musteri.adSoyad,
+              musteri.telefon,
+            ]),
+          },
+        });
 
-      return { guncel, musteriAdi: musteri.adSoyad };
+        await tx.stokHareketi.create({
+          data: {
+            stokKalemiId: cihaz.id,
+            tip: HAREKET_TIP.SATIS,
+            kaynakMagazaId: cihaz.magazaId,
+            kullaniciId: oturum.kullaniciId,
+            aciklama: `${musteri.adSoyad} müşterisine satıldı`,
+            tarih: veri.satisTarihi,
+          },
+        });
+      }
+
+      return { musteriAdi: musteri.adSoyad, musteriId: musteriId! };
     });
 
+    const ozet = cihazlar
+      .map((c) => `${c.marka} ${c.model} (${c.seriNo ?? "seri no yok"})`)
+      .join(" · ");
     await logYaz(oturum, {
       islem: LOG_ISLEM.SATIS_YAP,
       hedefTip: "StokKalemi",
-      hedefId: cihaz.id,
-      detay: `${cihaz.marka} ${cihaz.model} (${cihaz.seriNo ?? "seri no yok"}) · ${satis.musteriAdi}`,
+      hedefId: cihazlar.length === 1 ? cihazlar[0].id : undefined,
+      detay: `${cihazlar.length} cihaz · ${satis.musteriAdi} · ${ozet}`.slice(0, 500),
     });
 
     revalidatePath("/cihazlar");
     revalidatePath("/panel");
     revalidatePath("/musteriler");
-    cihazId = cihaz.id;
+
+    // Tek cihazda cihaz detayına, birden çoğunda müşterinin sayfasına: orada
+    // satın aldığı cihazların tamamı birlikte görünüyor.
+    gidilecekYol =
+      cihazlar.length === 1
+        ? `/cihazlar/${cihazlar[0].id}`
+        : `/musteriler?ara=${encodeURIComponent(satis.musteriAdi)}`;
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     if (hata instanceof Error && hata.message) return { hata: hata.message };
@@ -272,5 +307,5 @@ export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise
     return { hata: "Satış kaydedilemedi. Lütfen tekrar deneyin." };
   }
 
-  redirect(`/cihazlar/${cihazId}`);
+  redirect(gidilecekYol);
 }
