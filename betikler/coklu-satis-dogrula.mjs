@@ -157,6 +157,15 @@ try {
   await sayfa.waitForTimeout(200);
   const secilenSatici = personelSecenegi.trim();
 
+  // ---- ödeme tipinde Temlik seçeneği
+  const odemeSecenekleri = await sayfa.locator("#odemeTipi option").allTextContents();
+  kontrol(
+    "ödeme tipinde Temlik var",
+    odemeSecenekleri.some((o) => o.trim() === "Temlik"),
+    odemeSecenekleri.join(" | "),
+  );
+  await sayfa.selectOption("#odemeTipi", { label: "Temlik" });
+
   // ------------------------------------------------ 5) müşteri ve kayıt
   await sayfa.fill("#yeniAd", MUSTERI);
   await sayfa.fill("#yeniTelefon", `555${damga}`);
@@ -236,6 +245,64 @@ try {
 
   const tekCihaz = (await sayfa.locator("main").textContent()) ?? "";
   kontrol("tek cihaz da aynı müşteriye bağlandı", tekCihaz.includes(MUSTERI));
+
+  // ------------------------------------------------ 7b) yönetici satışı düzeltebiliyor
+  await giris("admin");
+  await sayfa.goto(`${hedef}/cihazlar?ara=${imei(1)}`, { waitUntil: "networkidle" });
+
+  const temlikYazdi = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol("Temlik ödeme tipi kaydedildi", /Temlik/.test(temlikYazdi));
+
+  await sayfa.locator('[data-test="satis-duzenle-ac"]').click();
+  await sayfa.waitForTimeout(300);
+  kontrol(
+    "yöneticiye satış düzeltme formu açılıyor",
+    (await sayfa.locator('[data-test="satis-duzenleme"]').count()) === 1,
+  );
+
+  await sayfa.locator('[data-test="duzelt-satis-fiyati"]').fill("15.750,25");
+  await sayfa.locator('[data-test="duzelt-odeme-tipi"]').selectOption({ label: "Havale/EFT" });
+  await sayfa.click('button:has-text("Değişiklikleri Kaydet")');
+  await sayfa.waitForTimeout(2500);
+
+  const duzeltmeSonrasi = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol("düzeltilen satış fiyatı kaydedildi", /15\.750,25/.test(duzeltmeSonrasi));
+  kontrol("düzeltilen ödeme tipi kaydedildi", /Havale/.test(duzeltmeSonrasi));
+
+  // ---- satışı geri alma
+  await sayfa.locator('[data-test="satis-duzenle-ac"]').click().catch(() => {});
+  await sayfa.waitForTimeout(300);
+  await sayfa.locator('[data-test="satis-geri-al"]').click();
+  await sayfa.waitForTimeout(300);
+  await sayfa.click('button:has-text("Evet, satışı geri al")');
+  await sayfa.waitForTimeout(2500);
+
+  const geriSonrasi = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol("satış geri alınınca cihaz stokta", /Stokta/.test(geriSonrasi));
+  // Müşteri adı tarihçede kalır (ne olduğu kayıtlı kalmalı); kontrol edilen,
+  // satış kartının tamamen kalkmış olması.
+  kontrol(
+    "satış kartı kalktı, cihaz artık satılmamış sayılıyor",
+    !/Satış ve Müşteri Bilgileri/.test(geriSonrasi),
+  );
+  kontrol("geri alma tarihçeye yazıldı", /İade|Satış geri alındı/.test(geriSonrasi));
+
+  // Stoğa dönen cihaz tekrar satılabilmeli.
+  await sayfa.goto(`${hedef}/satis`, { waitUntil: "networkidle" });
+  await okut(imei(1));
+  kontrol(
+    "geri alınan cihaz tekrar satılabiliyor",
+    (await sayfa.locator('[data-test="sepet-satiri"]').count()) === 1,
+  );
+
+  // Personel satış düzeltme formunu görmemeli.
+  await giris("personel1");
+  await sayfa.goto(`${hedef}/cihazlar?ara=${imei(3)}`, { waitUntil: "networkidle" });
+  kontrol(
+    "personele satış düzeltme formu çıkmıyor",
+    (await sayfa.locator('[data-test="satis-duzenle-ac"]').count()) === 0,
+  );
+  await giris("admin");
 
   // ------------------------------------------------ 8) personel bazlı rapor
   await sayfa.goto(`${hedef}/rapor`, { waitUntil: "networkidle" });

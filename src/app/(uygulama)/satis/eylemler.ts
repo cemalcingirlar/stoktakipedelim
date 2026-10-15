@@ -7,7 +7,13 @@ import { logYaz } from "@/lib/log";
 import { aramaMetniUret, aramaNormalize, kodNormalize } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
 import { saticiSorunu, type SaticiAdayi } from "@/lib/satici";
-import { HAREKET_TIP, LOG_ISLEM, ODEME_TIPI, STOK_DURUM } from "@/lib/sabitler";
+import {
+  HAREKET_TIP,
+  LOG_ISLEM,
+  ODEME_TIPI,
+  STOK_DURUM,
+  TRANSFER_DURUM,
+} from "@/lib/sabitler";
 import {
   YetkiHatasi,
   magazaIslemiZorunlu,
@@ -54,7 +60,39 @@ export async function satisCihaziOkut(kod: string): Promise<SatisOkutmaSonucu> {
       return { durum: "HATA", mesaj: `${aranan} daha önce satılmış.` };
     }
     if (cihaz.durum === STOK_DURUM.TRANSFERDE) {
-      return { durum: "HATA", mesaj: `${aranan} sevkiyatta; önce kabul edilmeli.` };
+      // Hangi sevkiyatta olduğunu söylemezsek kullanıcı cihazı aramak zorunda
+      // kalıyor; açık sevkiyatın numarasını ve hedefini veriyoruz.
+      const kalem = await prisma.transferKalemi.findFirst({
+        where: {
+          stokKalemiId: cihaz.id,
+          transfer: {
+            durum: { in: [TRANSFER_DURUM.BEKLIYOR, TRANSFER_DURUM.KISMI_KABUL] },
+          },
+        },
+        orderBy: { id: "desc" },
+        select: {
+          transfer: {
+            select: { transferNo: true, hedefMagaza: { select: { ad: true } } },
+          },
+        },
+      });
+
+      if (!kalem) {
+        return {
+          durum: "HATA",
+          mesaj:
+            `${aranan} sevkiyatta görünüyor ama açık bir sevkiyatı yok. ` +
+            "Yöneticinize bildirin, cihaz elle düzeltilmeli.",
+        };
+      }
+
+      return {
+        durum: "HATA",
+        mesaj:
+          `${aranan} ${kalem.transfer.transferNo} numaralı sevkiyatta ` +
+          `(${kalem.transfer.hedefMagaza.ad}). Satmadan önce Mağazalar Arası Sevk ` +
+          "ekranından kabul edilmeli.",
+      };
     }
     if (cihaz.durum !== STOK_DURUM.STOKTA) {
       return { durum: "HATA", mesaj: `${aranan} satışa uygun değil (${cihaz.durum}).` };

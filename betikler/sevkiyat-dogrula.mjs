@@ -258,6 +258,41 @@ try {
     (await sayfa.locator("#okutmaKutusu").count()) === 0,
   );
 
+  // ------------------------------------------------ 9) kabul edilen cihaz satılabilmeli
+  // Bildirilen hata: kabul edildiği halde satışta "sevkiyatta" diyordu.
+  await giris("personel2");
+  await sayfa.goto(`${hedef}/satis`, { waitUntil: "networkidle" });
+  await okut(imei(1));
+  const satisMetni = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "kabul edilen cihaz satışta sevkiyatta görünmüyor",
+    !/sevkiyatta/.test(satisMetni),
+    satisMetni.includes("sevkiyatta") ? "hâlâ sevkiyatta diyor" : "sepete eklendi",
+  );
+  kontrol(
+    "kabul edilen cihaz sepete eklendi",
+    (await sayfa.locator('[data-test="sepet-satiri"]').count()) === 1,
+  );
+
+  // Hâlâ sevkiyatta olan bir cihaz okutulursa mesaj sevkiyatı adıyla söylemeli.
+  await giris("admin");
+  await cihazlariGir([7]);
+  await sevkEt([imei(7)], "2 Nolu Mağaza");
+  const acikNo = (await sayfa.locator("h1").first().textContent()) ?? "";
+
+  await sayfa.goto(`${hedef}/satis`, { waitUntil: "networkidle" });
+  await okut(imei(7));
+  const sevkUyarisi = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "sevkiyattaki cihazın uyarısı sevkiyat numarasını veriyor",
+    sevkUyarisi.includes(acikNo.trim()),
+    acikNo.trim(),
+  );
+  kontrol(
+    "uyarı hedef mağazayı da söylüyor",
+    /2 Nolu Mağaza/.test(sevkUyarisi),
+  );
+
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
 } catch (hata) {
   kontrol("betik tamamlandı", false, String(hata).slice(0, 300));

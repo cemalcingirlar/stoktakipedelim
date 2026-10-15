@@ -106,6 +106,8 @@ export const ODEME_TIPI = {
   KREDI_KARTI: "KREDI_KARTI",
   HAVALE: "HAVALE",
   TAKAS: "TAKAS",
+  /** Alacağın operatöre/finans kuruluşuna devri. */
+  TEMLIK: "TEMLIK",
   DIGER: "DIGER",
 } as const;
 export type OdemeTipi = (typeof ODEME_TIPI)[keyof typeof ODEME_TIPI];
@@ -115,6 +117,7 @@ export const ODEME_TIPI_ETIKET: Record<OdemeTipi, string> = {
   KREDI_KARTI: "Kredi Kartı",
   HAVALE: "Havale/EFT",
   TAKAS: "Takas",
+  TEMLIK: "Temlik",
   DIGER: "Diğer",
 };
 

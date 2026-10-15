@@ -3,6 +3,7 @@
 import { chromium } from "@playwright/test";
 
 const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
+const AKTARIM_NOTU = "vitrin degisimi";
 const cikti = process.env.CIKTI ?? "/tmp/aktarim";
 const SIFRE = "Stok2026!";
 const damga = String(Date.now()).slice(-7);
@@ -157,6 +158,12 @@ try {
   // --------------------------------------------- 5) Aktarım gerçekten taşıyor
   await sayfa.selectOption("#kaynak", { label: "1 Nolu Mağaza" });
   await sayfa.waitForTimeout(400);
+
+  // Not alanı: okutmadan önce yazılır, okutulan cihazların tarihçesine geçer.
+  const notAlani = sayfa.locator('[data-test="aktarim-notu"]');
+  kontrol("aktarım ekranında not alanı var", (await notAlani.count()) === 1);
+  await notAlani.fill(AKTARIM_NOTU);
+
   const mesaj1 = await aktar(imei(1));
   kontrol("cihaz aktarıldı", mesaj1.includes("aktarıldı"), mesaj1);
 
@@ -171,6 +178,11 @@ try {
   kontrol("cihaz artık 2 Nolu Mağaza deposunda", depo === "2 Nolu Mağaza", depo);
   const detay = (await sayfa.locator("main").textContent()) ?? "";
   kontrol("tarihçede mağaza içi aktarım yazıyor", detay.includes("Mağaza İçi Aktarım"));
+  kontrol(
+    "aktarım notu tarihçeye yazıldı",
+    detay.includes(AKTARIM_NOTU),
+    AKTARIM_NOTU,
+  );
   kontrol(
     "hareket açıklaması iki mağazayı da içeriyor",
     detay.includes("1 Nolu Mağaza → 2 Nolu Mağaza"),

@@ -36,9 +36,13 @@ export async function dukkanIciAktar(
   kod: string,
   kaynakMagazaId: number,
   hedefMagazaId: number,
+  not = "",
 ): Promise<AktarimSonucu> {
   try {
     const oturum = await oturumZorunlu();
+
+    // Not cihazın tarihçesine yazılıyor; neden taşındığı sonradan okunabilsin.
+    const temizNot = not.trim().slice(0, 200);
 
     if (!Number.isInteger(kaynakMagazaId) || !Number.isInteger(hedefMagazaId)) {
       return { durum: "HATA", mesaj: "Mağaza seçimi okunamadı. Sayfayı yenileyin." };
@@ -110,7 +114,9 @@ export async function dukkanIciAktar(
           kaynakMagazaId: kaynakMagazaId,
           hedefMagazaId: hedefMagazaId,
           kullaniciId: oturum.kullaniciId,
-          aciklama: `Dükkân içi aktarım: ${kaynak.ad} → ${hedef.ad}`,
+          aciklama:
+            `Dükkân içi aktarım: ${kaynak.ad} → ${hedef.ad}` +
+            (temizNot ? ` · ${temizNot}` : ""),
         },
       });
 
