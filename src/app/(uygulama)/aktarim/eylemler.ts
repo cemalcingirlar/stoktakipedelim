@@ -3,10 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { dukkanIciAktarabilirMi } from "@/lib/dukkan";
 import { logYaz } from "@/lib/log";
-import { kodNormalize } from "@/lib/metin";
+import { aramaMetniUret, kodNormalize } from "@/lib/metin";
+import { kurusuTLYaz } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { HAREKET_TIP, LOG_ISLEM, STOK_DURUM } from "@/lib/sabitler";
-import { YetkiHatasi, oturumZorunlu } from "@/lib/yetki";
+import {
+  YetkiHatasi,
+  adminZorunlu,
+  magazaIslemiZorunlu,
+  oturumZorunlu,
+} from "@/lib/yetki";
 
 export type AktarilanCihaz = {
   id: number;
@@ -14,6 +20,9 @@ export type AktarilanCihaz = {
   model: string;
   seriNo: string | null;
   barkod: string | null;
+  /** Aktarım anındaki alış fiyatı; ekranda revize edilebiliyor. */
+  alisFiyatiKurus: number;
+  not: string | null;
 };
 
 export type AktarimSonucu =
@@ -128,6 +137,8 @@ export async function dukkanIciAktar(
           model: cihaz.model,
           seriNo: cihaz.seriNo,
           barkod: cihaz.barkod,
+          alisFiyatiKurus: cihaz.alisFiyatiKurus,
+          not: cihaz.not,
         },
       };
     });
@@ -155,5 +166,132 @@ export async function dukkanIciAktar(
     if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
     console.error("Dükkân içi aktarım başarısız:", hata);
     return { durum: "HATA", mesaj: "Aktarım yapılamadı. Lütfen tekrar deneyin." };
+  }
+}
+
+
+// -------------------------------------------------- Fiyat / not düzeltme
+
+export type FiyatDuzeltmeSonucu =
+  | { durum: "TAMAM"; mesaj: string; alisFiyatiKurus: number; not: string | null }
+  | { durum: "HATA"; mesaj: string };
+
+/**
+ * Aktarılan cihazın alış fiyatını ve notunu düzeltir.
+ *
+ * Bazı ürünlerin fiyatı nakit depoya girerken revize oluyor; aktarımla birlikte
+ * tek ekranda düzeltilebilsin diye burada. Alış fiyatı kâr hesabının temeli
+ * olduğu için yalnız yöneticide — satış düzeltmesiyle aynı kural.
+ *
+ * Eski ve yeni fiyat tarihçeye DUZELTME hareketi olarak yazılıyor; sonradan
+ * neyin ne zaman değiştiği okunabiliyor.
+ */
+export async function aktarilanCihaziDuzelt(
+  cihazId: number,
+  alisFiyatiKurus: number,
+  not: string,
+): Promise<FiyatDuzeltmeSonucu> {
+  try {
+    const oturum = await adminZorunlu();
+
+    if (!Number.isInteger(cihazId) || cihazId <= 0) {
+      return { durum: "HATA", mesaj: "Cihaz bulunamadı." };
+    }
+    if (!Number.isInteger(alisFiyatiKurus) || alisFiyatiKurus < 0) {
+      return { durum: "HATA", mesaj: "Alış fiyatı okunamadı." };
+    }
+    if (alisFiyatiKurus > 1_000_000_00_00) {
+      return { durum: "HATA", mesaj: "Alış fiyatı çok yüksek." };
+    }
+
+    const cihaz = await prisma.stokKalemi.findUnique({
+      where: { id: cihazId },
+      include: { tedarikci: { select: { ad: true } } },
+    });
+    if (!cihaz) return { durum: "HATA", mesaj: "Cihaz bulunamadı." };
+    if (cihaz.durum !== STOK_DURUM.STOKTA) {
+      // Satılmış cihazın alış fiyatı kârı değiştirir; orası cihaz sayfasının işi.
+      return {
+        durum: "HATA",
+        mesaj: `Cihaz stokta değil (${cihaz.durum}); fiyat buradan düzeltilemez.`,
+      };
+    }
+    magazaIslemiZorunlu(oturum, cihaz.magazaId);
+
+    const temizNot = not.trim().slice(0, 500);
+    const yeniNot = temizNot || null;
+    const fiyatDegisti = cihaz.alisFiyatiKurus !== alisFiyatiKurus;
+    const notDegisti = (cihaz.not ?? null) !== yeniNot;
+
+    if (!fiyatDegisti && !notDegisti) {
+      return {
+        durum: "TAMAM",
+        mesaj: "Değişiklik yok.",
+        alisFiyatiKurus: cihaz.alisFiyatiKurus,
+        not: cihaz.not,
+      };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.stokKalemi.update({
+        where: { id: cihaz.id },
+        data: {
+          alisFiyatiKurus,
+          not: yeniNot,
+          aramaMetni: aramaMetniUret([
+            cihaz.marka,
+            cihaz.model,
+            cihaz.renk,
+            cihaz.kapasite,
+            cihaz.seriNo,
+            cihaz.barkod,
+            cihaz.tedarikci?.ad,
+            yeniNot,
+          ]),
+        },
+      });
+
+      const parcalar: string[] = [];
+      if (fiyatDegisti) {
+        parcalar.push(
+          `Alış fiyatı ${kurusuTLYaz(cihaz.alisFiyatiKurus)} → ${kurusuTLYaz(alisFiyatiKurus)} TL`,
+        );
+      }
+      if (notDegisti) parcalar.push(yeniNot ? `Not: ${yeniNot}` : "Not silindi");
+
+      await tx.stokHareketi.create({
+        data: {
+          stokKalemiId: cihaz.id,
+          tip: HAREKET_TIP.DUZELTME,
+          kaynakMagazaId: cihaz.magazaId,
+          kullaniciId: oturum.kullaniciId,
+          aciklama: parcalar.join(" · "),
+        },
+      });
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.STOK_DUZENLE,
+      hedefTip: "StokKalemi",
+      hedefId: cihaz.id,
+      detay:
+        `Aktarımda düzeltme: ${cihaz.marka} ${cihaz.model} ` +
+        `(${cihaz.seriNo ?? "seri no yok"}) · ` +
+        `${kurusuTLYaz(cihaz.alisFiyatiKurus)} → ${kurusuTLYaz(alisFiyatiKurus)} TL`,
+    });
+
+    revalidatePath("/cihazlar");
+    revalidatePath("/panel");
+
+    return {
+      durum: "TAMAM",
+      mesaj: fiyatDegisti ? "Fiyat güncellendi." : "Not güncellendi.",
+      alisFiyatiKurus,
+      not: yeniNot,
+    };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
+    console.error("Aktarılan cihaz düzeltilemedi:", hata);
+    return { durum: "HATA", mesaj: "Düzeltme kaydedilemedi. Tekrar deneyin." };
   }
 }

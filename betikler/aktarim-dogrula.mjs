@@ -4,6 +4,8 @@ import { chromium } from "@playwright/test";
 
 const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
 const AKTARIM_NOTU = "vitrin degisimi";
+const CIHAZ_NOTU = "nakit depo girisinde fiyat revize edildi";
+const YENI_FIYAT = "6.250,00";
 const cikti = process.env.CIKTI ?? "/tmp/aktarim";
 const SIFRE = "Stok2026!";
 const damga = String(Date.now()).slice(-7);
@@ -44,6 +46,22 @@ function magazaKarti(kod) {
 async function depoOku() {
   const satir = sayfa.locator("div").filter({ hasText: /^Bulunduğu Depo/ }).last();
   return (await satir.locator("dd").first().textContent())?.trim() ?? "";
+}
+
+/**
+ * Cihaz detayındaki künye satırının değerini okur.
+ *
+ * Sayfa metninde arama yapmak yetmiyor: düzeltme hareketinin açıklaması da
+ * "5.000,00 → 6.250,00" yazdığı için kaydedilmemiş bir fiyat bile metinde
+ * görünüyor. Değeri kendi alanından okumak gerekiyor.
+ */
+async function kunyeOku(etiket) {
+  const satir = sayfa
+    .locator("dt")
+    .filter({ hasText: new RegExp(`^${etiket}$`) })
+    .first();
+  const dd = satir.locator("xpath=following-sibling::dd[1]");
+  return ((await dd.first().textContent()) ?? "").replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -167,6 +185,51 @@ try {
   const mesaj1 = await aktar(imei(1));
   kontrol("cihaz aktarıldı", mesaj1.includes("aktarıldı"), mesaj1);
 
+  // ------------------- 5b) Aktarılan satırda fiyat/not düzeltme (yönetici)
+  const satir = sayfa.locator('[data-test="aktarilan-satir"]').first();
+  kontrol(
+    "aktarılan satırda alış fiyatı görünüyor",
+    ((await satir.textContent()) ?? "").includes("5.000,00"),
+    ((await satir.textContent()) ?? "").replace(/\s+/g, " ").trim().slice(0, 120),
+  );
+  kontrol(
+    "yöneticiye fiyat düzeltme bağlantısı çıkıyor",
+    (await satir.locator('[data-test="fiyat-duzelt-ac"]').count()) === 1,
+  );
+
+  await satir.locator('[data-test="fiyat-duzelt-ac"]').click();
+  await sayfa.waitForTimeout(300);
+  kontrol(
+    "düzeltme kutusu fiyatı hazır getiriyor",
+    (await satir.locator('[data-test="fiyat-girdisi"]').inputValue()) === "5.000,00",
+    await satir.locator('[data-test="fiyat-girdisi"]').inputValue(),
+  );
+
+  // Bozuk fiyat kaydedilmemeli.
+  await satir.locator('[data-test="fiyat-girdisi"]').fill("abc");
+  await satir.locator('[data-test="fiyat-kaydet"]').click();
+  await sayfa.waitForTimeout(600);
+  kontrol(
+    "geçersiz fiyat reddedildi",
+    (await satir.locator('[data-test="fiyat-hata"]').count()) === 1,
+    ((await satir.locator('[data-test="fiyat-hata"]').textContent()) ?? "").trim(),
+  );
+
+  await satir.locator('[data-test="fiyat-girdisi"]').fill(YENI_FIYAT);
+  await satir.locator('[data-test="fiyat-notu"]').fill(CIHAZ_NOTU);
+  await satir.locator('[data-test="fiyat-kaydet"]').click();
+  await sayfa.waitForTimeout(2000);
+  kontrol(
+    "fiyat kaydedildi bildirimi çıktı",
+    (await satir.locator('[data-test="fiyat-basari"]').count()) === 1,
+    ((await satir.locator('[data-test="fiyat-basari"]').textContent()) ?? "").trim(),
+  );
+  kontrol(
+    "satırda yeni fiyat görünüyor",
+    ((await satir.textContent()) ?? "").includes(YENI_FIYAT),
+    ((await satir.textContent()) ?? "").replace(/\s+/g, " ").trim().slice(0, 140),
+  );
+
   // Tam seri no girilince program doğrudan cihaz detayına yönlendiriyor.
   await sayfa.goto(`${hedef}/cihazlar?ara=${imei(1)}`, { waitUntil: "networkidle" });
   kontrol(
@@ -188,6 +251,18 @@ try {
     detay.includes("1 Nolu Mağaza → 2 Nolu Mağaza"),
   );
   kontrol("sevkiyat kaydı açılmadı", !detay.includes("SVK-"));
+  const kayitliFiyat = await kunyeOku("Alış Fiyatı");
+  kontrol(
+    "cihaz künyesinde revize edilen alış fiyatı duruyor",
+    kayitliFiyat.includes(YENI_FIYAT),
+    `${kayitliFiyat} (beklenen ${YENI_FIYAT})`,
+  );
+  kontrol("fiyat düzeltmesi tarihçeye Düzeltme olarak yazıldı", detay.includes("Düzeltme"));
+  kontrol(
+    "tarihçede eski → yeni fiyat yazıyor",
+    detay.includes("5.000,00 → 6.250,00"),
+  );
+  kontrol("cihaz notu kaydedildi", detay.includes(CIHAZ_NOTU), CIHAZ_NOTU);
 
   await sayfa.goto(`${hedef}/sevkiyat`, { waitUntil: "networkidle" });
   const sevkiyatMetni = (await sayfa.locator("main").textContent()) ?? "";
@@ -247,6 +322,39 @@ try {
   kontrol(
     "personele yöneticiye danış mesajı veriliyor",
     (await sayfa.getByText("Yöneticinizden").count()) === 1,
+  );
+
+  // ------------------ 10) Personele fiyat düzeltme bağlantısı çıkmamalı
+  // personel1 yalnız 1 Nolu Mağaza'da yetkili; aktarım iki mağazada da yetki
+  // istediği için önce M2 yetkisini verelim.
+  await giris("admin");
+  await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
+  const m2Kutusu = magazaKarti("M2").locator(
+    'label:has-text("1 Nolu Mağaza Personeli") input[name="yetkililer"]',
+  );
+  if (!(await m2Kutusu.isChecked())) await m2Kutusu.check();
+  await magazaKarti("M2").getByRole("button", { name: "Yetkileri Kaydet" }).click();
+  await sayfa.waitForTimeout(1500);
+
+  await giris("personel1");
+  await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
+  kontrol(
+    "personel aktarım ekranını görebiliyor",
+    (await sayfa.locator("#kaynak").count()) === 1,
+  );
+  await sayfa.selectOption("#kaynak", { label: "1 Nolu Mağaza" });
+  await sayfa.waitForTimeout(400);
+  const mesaj3 = await aktar(imei(2));
+  kontrol("personel aktarım yapabiliyor", mesaj3.includes("aktarıldı"), mesaj3);
+  kontrol(
+    "personele fiyat düzeltme bağlantısı çıkmıyor",
+    (await sayfa.locator('[data-test="fiyat-duzelt-ac"]').count()) === 0,
+  );
+  kontrol(
+    "personele alış fiyatı da gösterilmiyor",
+    !((await sayfa.locator('[data-test="aktarilan-satir"]').first().textContent()) ?? "").includes(
+      "Alış:",
+    ),
   );
 
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });

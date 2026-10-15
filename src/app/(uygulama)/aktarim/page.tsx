@@ -55,7 +55,11 @@ export default async function AktarimSayfasi() {
           )}
         </Kart>
       ) : (
-        <AktarimFormu magazalar={uygun} varsayilanKaynakId={oturum.magazaId} />
+        <AktarimFormu
+          magazalar={uygun}
+          varsayilanKaynakId={oturum.magazaId}
+          yonetici={adminMi(oturum)}
+        />
       )}
     </div>
   );
