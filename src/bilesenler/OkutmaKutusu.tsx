@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { GIRDI_SINIFI } from "./Alan";
 import { KameraDugmesi } from "./KameraOkuyucu";
 
@@ -26,6 +26,7 @@ export function OkutmaKutusu({
   okut,
   devreDisi = false,
   kameraSurekli = true,
+  odakTetik,
 }: {
   etiket: string;
   ipucu?: string;
@@ -34,11 +35,19 @@ export function OkutmaKutusu({
   devreDisi?: boolean;
   /** Kamera okumada: true ise açık kalır, false ise ilk okumada kapanır. */
   kameraSurekli?: boolean;
+  /** Değiştiğinde imleç okutma kutusuna geri alınır (ör. mağaza seçildikten sonra). */
+  odakTetik?: unknown;
 }) {
   const [deger, setDeger] = useState("");
   const [geriBildirim, setGeriBildirim] = useState<OkutmaGeriBildirimi>(null);
   const [bekliyor, basla] = useTransition();
   const girdiRef = useRef<HTMLInputElement>(null);
+
+  // Okutma bittiğinde, kutu etkinleştiğinde veya odakTetik değiştiğinde imleci geri al.
+  // Böylece okuyucu her zaman seri numarasını bu kutuya yazar.
+  useEffect(() => {
+    if (!bekliyor && !devreDisi) girdiRef.current?.focus();
+  }, [bekliyor, devreDisi, odakTetik]);
 
   const kodGonder = useCallback(
     (kod: string) => {
@@ -69,8 +78,10 @@ export function OkutmaKutusu({
           id="okutmaKutusu"
           ref={girdiRef}
           value={deger}
-          disabled={devreDisi || bekliyor}
+          disabled={devreDisi}
+          readOnly={bekliyor}
           autoFocus
+          autoComplete="off"
           onChange={(e) => setDeger(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {

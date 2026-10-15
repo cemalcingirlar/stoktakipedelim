@@ -6,7 +6,7 @@ import { Rozet } from "@/bilesenler/Rozet";
 import { TransferRozeti } from "@/bilesenler/TransferRozeti";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
-import { TRANSFER_DURUM, TRANSFER_KALEM_DURUM } from "@/lib/sabitler";
+import { STOK_DURUM, TRANSFER_DURUM, TRANSFER_KALEM_DURUM } from "@/lib/sabitler";
 import { tarihSaatYaz } from "@/lib/tarih";
 import { magazadaIslemYapabilirMi, oturumGerekli } from "@/lib/yetki";
 import { IptalDugmesi } from "./IptalDugmesi";
@@ -55,8 +55,14 @@ export default async function SevkiyatDetaySayfasi({ params }: PageProps<"/sevki
 
   const acikMi =
     transfer.durum === TRANSFER_DURUM.BEKLIYOR || transfer.durum === TRANSFER_DURUM.KISMI_KABUL;
+  // Okutulmuş ama "Kabulü Tamamla" ile henüz depoya alınmamış cihazlar.
+  const depoyaAlinmamis = kabulEdilen.filter(
+    (k) => k.stokKalemi.durum === STOK_DURUM.TRANSFERDE,
+  );
+  const hedefYetkili = magazadaIslemYapabilirMi(oturum, transfer.hedefMagazaId);
+  // Son cihaz okutulunca bekleyen 0 olur; panel yine de açık kalmalı ki kabul tamamlanabilsin.
   const kabulEdebilir =
-    acikMi && bekleyen.length > 0 && magazadaIslemYapabilirMi(oturum, transfer.hedefMagazaId);
+    acikMi && hedefYetkili && (bekleyen.length > 0 || depoyaAlinmamis.length > 0);
   const geriCekebilir =
     transfer.durum === TRANSFER_DURUM.BEKLIYOR &&
     kabulEdilen.length === 0 &&
@@ -123,9 +129,10 @@ export default async function SevkiyatDetaySayfasi({ params }: PageProps<"/sevki
           transferId={transfer.id}
           toplamAdet={transfer.kalemler.length}
           okutulanAdet={kabulEdilen.length}
+          tamamlanacakAdet={depoyaAlinmamis.length}
           bekleyenAdet={bekleyen.length}
         />
-      ) : acikMi ? (
+      ) : acikMi && !hedefYetkili ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Bu sevkiyatı yalnızca <strong>{transfer.hedefMagaza.ad}</strong> kullanıcıları kabul
           edebilir.
