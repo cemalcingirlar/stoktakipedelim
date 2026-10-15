@@ -53,15 +53,18 @@ export function pdfUret(satirlar) {
 
 /**
  * Gerçek e-Fatura düzeninde örnek satırlar üretir.
- * @param {{faturaNo: string, kalemler: {kod: string, ad: string, adet: number,
- *   birim: string, kdvTutari: string, tutar: string, seriler: string[]}[],
- *   araToplam: string, genelToplam: string}} veri
+ * `modelKodu` verilirse satıcı/alıcı ürün kodu sütunlarına o yazılır ve not
+ * kısmı EAN yerine onu kullanır — Apple ürünlü gerçek faturalardaki düzen.
+ *
+ * @param {{faturaNo: string, kalemler: {kod: string, modelKodu?: string,
+ *   ad: string, adet: number, birim: string, kdvTutari: string, tutar: string,
+ *   seriler: string[]}[], araToplam: string, genelToplam: string}} veri
  */
 export function efaturaSatirlari(veri) {
   const notlar = veri.kalemler
     .map((k, i) =>
       k.seriler.length
-        ? `${i === 0 ? "Not: " : ""}${i + 1} Numarali satirdaki; "${k.kod}/100000${i + 1}" kodlu urun icin seriler: ${k.seriler.join("; ")}`
+        ? `${i === 0 ? "Not: " : ""}${i + 1} Numarali satirdaki; "${k.modelKodu ?? k.kod}/100000${i + 1}" kodlu urun icin seriler: ${k.seriler.join("; ")}`
         : null,
     )
     .filter(Boolean);
@@ -69,8 +72,8 @@ export function efaturaSatirlari(veri) {
   const kalemSatirlari = veri.kalemler.flatMap((k, i) => [
     String(i + 1),
     k.kod,
-    k.kod,
-    k.kod,
+    k.modelKodu ?? k.kod,
+    k.modelKodu ?? k.kod,
     k.ad,
     `${k.adet},00`,
     `${k.birim} TL`,

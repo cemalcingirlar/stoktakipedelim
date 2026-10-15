@@ -1,6 +1,13 @@
 import Link from "next/link";
 import { DurumRozeti, Rozet } from "./Rozet";
+import { SutunFiltresi, type FiltreSecenekleri } from "./SutunFiltresi";
 import type { CihazSatiri } from "@/lib/cihazFiltre";
+import {
+  SIRALANABILIR,
+  siralamaIsareti,
+  sonrakiSiralama,
+  type Siralama,
+} from "@/lib/cihazSiralama";
 import { kurusuTLYaz } from "@/lib/para";
 import { vadeEtiketi } from "@/lib/vade";
 import { beklemeGunu, karKurus, SUTUNLAR, type SutunAnahtari } from "@/lib/sutunlar";
@@ -78,23 +85,62 @@ function Hucre({
   }
 }
 
+/** Sıralanabilen sütunun tıklanabilir başlığı. */
+function Baslik({
+  anahtar,
+  siralama,
+  sorguUret,
+}: {
+  anahtar: SutunAnahtari;
+  siralama: Siralama;
+  sorguUret: (degisiklikler: Record<string, string | null>) => string;
+}) {
+  const tanim = SUTUNLAR[anahtar];
+  const siraAnahtari = SIRALANABILIR[anahtar];
+
+  if (!siraAnahtari) return <>{tanim.baslik}</>;
+
+  const sonraki = sonrakiSiralama(siralama, siraAnahtari);
+  const isaret = siralamaIsareti(siralama, siraAnahtari);
+
+  return (
+    <Link
+      href={sorguUret({
+        sirala: sonraki.anahtar,
+        yon: sonraki.anahtar ? sonraki.yon : null,
+        sayfa: null,
+      })}
+      data-test={`sirala-${anahtar}`}
+      className="inline-flex items-center gap-1 hover:text-slate-900"
+      title="Sıralamak için tıklayın"
+    >
+      {tanim.baslik}
+      <span className={isaret ? "text-blue-600" : "text-slate-300"}>{isaret || "⇅"}</span>
+    </Link>
+  );
+}
+
 export function CihazTablosu({
   satirlar,
   sutunlar,
   bugun,
+  siralama,
+  sorguUret,
+  filtreDegerleri,
+  filtreSecenekleri,
 }: {
   satirlar: CihazSatiri[];
   sutunlar: SutunAnahtari[];
   bugun: Date;
+  siralama: Siralama;
+  /** Başlık bağlantılarının URL'si — sayfa mevcut parametreleri koruyor. */
+  sorguUret: (degisiklikler: Record<string, string | null>) => string;
+  /** Filtre kutularının mevcut değerleri (URL'den). */
+  filtreDegerleri: Record<string, string>;
+  filtreSecenekleri: FiltreSecenekleri;
 }) {
-  if (satirlar.length === 0) {
-    return (
-      <p className="px-4 py-10 text-center text-sm text-slate-500">
-        Bu filtrelere uyan cihaz bulunamadı.
-      </p>
-    );
-  }
-
+  // Sonuç boş olsa bile filtre satırı duruyor: kullanıcı daralttığı filtreyi
+  // gevşetebilmeli, yoksa tek çıkış yolu geri tuşu olurdu.
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -105,12 +151,31 @@ export function CihazTablosu({
                 key={a}
                 className={`whitespace-nowrap px-3 py-2.5 font-medium ${SUTUNLAR[a].sagaYasli ? "text-right" : ""}`}
               >
-                {SUTUNLAR[a].baslik}
+                <Baslik anahtar={a} siralama={siralama} sorguUret={sorguUret} />
+              </th>
+            ))}
+          </tr>
+          <tr className="border-b border-slate-200 bg-white" data-test="filtre-satiri">
+            {sutunlar.map((a) => (
+              <th key={a} className="px-2 py-1.5 font-normal">
+                <SutunFiltresi
+                  anahtar={a}
+                  degerler={filtreDegerleri}
+                  secenekler={filtreSecenekleri}
+                />
               </th>
             ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
+          {satirlar.length === 0 ? (
+            <tr>
+              <td colSpan={sutunlar.length} className="px-4 py-10 text-center text-sm text-slate-500">
+                Bu filtrelere uyan cihaz bulunamadı. Yukarıdaki filtre satırından
+                daraltmayı gevşetebilirsiniz.
+              </td>
+            </tr>
+          ) : null}
           {satirlar.map((satir) => {
             const vade = vadeDurumu(satir.alisFaturasi, bugun);
             return (
