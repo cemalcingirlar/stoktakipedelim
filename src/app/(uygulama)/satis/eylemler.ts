@@ -6,6 +6,7 @@ import { z } from "zod";
 import { logYaz } from "@/lib/log";
 import { aramaMetniUret, aramaNormalize, kodNormalize } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
+import { saticiSorunu, type SaticiAdayi } from "@/lib/satici";
 import { HAREKET_TIP, LOG_ISLEM, ODEME_TIPI, STOK_DURUM } from "@/lib/sabitler";
 import {
   YetkiHatasi,
@@ -148,6 +149,8 @@ const satisSemasi = z
       "Ödeme tipi seçin.",
     ),
     satisTarihi: z.coerce.date({ message: "Satış tarihi geçersiz." }),
+    /** Satışı fiilen yapan kişi; boşsa oturum sahibi kabul edilir. */
+    satanKullaniciId: z.number().int().positive().nullable(),
     musteriId: z.number().int().positive().nullable(),
     musteriAdSoyad: z.string().trim().max(80).nullable(),
     musteriTelefon: z.string().trim().max(30).nullable(),
@@ -202,6 +205,40 @@ export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise
 
     const fiyatHarita = new Map(veri.satirlar.map((s) => [s.cihazId, s.satisFiyatiKurus]));
 
+    // Satışı yapan: seçilmişse o, değilse oturum sahibi. Seçilen kişinin
+    // cihazların bulunduğu mağazalarda yetkili olması gerekiyor — başka
+    // şubenin satışı kimsenin üstüne yazılmasın.
+    const satanId = veri.satanKullaniciId ?? oturum.kullaniciId;
+    if (satanId !== oturum.kullaniciId) {
+      const aday = await prisma.kullanici.findUnique({
+        where: { id: satanId },
+        select: {
+          id: true,
+          adSoyad: true,
+          rol: true,
+          aktif: true,
+          magazaId: true,
+          ekMagazalar: { select: { id: true } },
+        },
+      });
+      const sorun = saticiSorunu(
+        aday
+          ? {
+              id: aday.id,
+              adSoyad: aday.adSoyad,
+              rol: aday.rol as SaticiAdayi["rol"],
+              aktif: aday.aktif,
+              magazaIdleri: [
+                ...(aday.magazaId === null ? [] : [aday.magazaId]),
+                ...aday.ekMagazalar.map((m) => m.id),
+              ],
+            }
+          : undefined,
+        [...new Set(cihazlar.map((c) => c.magazaId))],
+      );
+      if (sorun) return { hata: sorun };
+    }
+
     const satis = await prisma.$transaction(async (tx) => {
       let musteriId = veri.musteriId;
 
@@ -244,7 +281,7 @@ export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise
             durum: STOK_DURUM.SATILDI,
             satisTarihi: veri.satisTarihi,
             satisFiyatiKurus,
-            satanKullaniciId: oturum.kullaniciId,
+            satanKullaniciId: satanId,
             musteriId,
             odemeTipi: veri.odemeTipi,
             cikisTarihi: veri.satisTarihi,
@@ -270,7 +307,7 @@ export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise
             stokKalemiId: cihaz.id,
             tip: HAREKET_TIP.SATIS,
             kaynakMagazaId: cihaz.magazaId,
-            kullaniciId: oturum.kullaniciId,
+            kullaniciId: satanId,
             aciklama: `${musteri.adSoyad} müşterisine satıldı`,
             tarih: veri.satisTarihi,
           },

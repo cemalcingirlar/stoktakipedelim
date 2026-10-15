@@ -90,12 +90,23 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
             {cihaz.magaza.ad}
           </p>
         </div>
-        <Link
-          href="/cihazlar"
-          className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-        >
-          ← Cihazlar
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {/* Satış kaydından sonra bu sayfaya düşülüyor; sıradaki müşteriye
+              geçmek için satış ekranına dönüş burada duruyor. */}
+          <Link
+            href="/satis"
+            data-test="yeni-satis"
+            className="rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+          >
+            + Yeni Satış
+          </Link>
+          <Link
+            href="/cihazlar"
+            className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            ← Cihazlar
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">

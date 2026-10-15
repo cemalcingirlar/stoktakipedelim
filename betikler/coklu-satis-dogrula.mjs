@@ -135,7 +135,29 @@ try {
   await fiyatKutulari.nth(1).fill("11.500,50");
   await sayfa.waitForTimeout(300);
 
-  // ------------------------------------------------ 4) müşteri ve kayıt
+  // ------------------------------------------------ 4) satışı yapan seçimi
+  const saticiSecici = sayfa.locator("#satanKullaniciId");
+  kontrol("satışı yapan alanı var", (await saticiSecici.count()) === 1);
+
+  const saticiSecenekleri = await sayfa.locator("#satanKullaniciId option").allTextContents();
+  kontrol(
+    "oturum sahibi listede ve (siz) diye işaretli",
+    saticiSecenekleri.some((o) => o.includes("(siz)")),
+    saticiSecenekleri.join(" | "),
+  );
+  kontrol(
+    "mağaza personeli de seçilebiliyor",
+    saticiSecenekleri.length > 1,
+    `${saticiSecenekleri.length} seçenek`,
+  );
+
+  // Satışı başka bir personelin üstüne yaz.
+  const personelSecenegi = saticiSecenekleri.find((o) => !o.includes("(siz)")) ?? "";
+  await saticiSecici.selectOption({ label: personelSecenegi });
+  await sayfa.waitForTimeout(200);
+  const secilenSatici = personelSecenegi.trim();
+
+  // ------------------------------------------------ 5) müşteri ve kayıt
   await sayfa.fill("#yeniAd", MUSTERI);
   await sayfa.fill("#yeniTelefon", `555${damga}`);
   await Promise.all([
@@ -148,7 +170,7 @@ try {
   kontrol("müşteri sayfasında 2 cihaz görünüyor", /2 cihaz/.test(musteriMetni), (musteriMetni.match(/\d+ cihaz/) ?? [""])[0]);
   kontrol("müşteri adı doğru", musteriMetni.includes(MUSTERI));
 
-  // ------------------------------------------------ 5) iki cihaz da satıldı
+  // ------------------------------------------------ 6) iki cihaz da satıldı
   for (const i of [1, 2]) {
     await sayfa.goto(`${hedef}/cihazlar?ara=${imei(i)}`, { waitUntil: "networkidle" });
     const cihazMetni = (await sayfa.locator("main").textContent()) ?? "";
@@ -159,6 +181,28 @@ try {
   await sayfa.goto(`${hedef}/cihazlar?ara=${imei(1)}`, { waitUntil: "networkidle" });
   const ilkCihaz = (await sayfa.locator("main").textContent()) ?? "";
   kontrol("birinci cihazın kendi fiyatı kaydedildi", ilkCihaz.includes("13.000,00"), "");
+  kontrol(
+    "satışı yapan seçilen kişi olarak kaydedildi",
+    ilkCihaz.includes(secilenSatici),
+    secilenSatici,
+  );
+
+  // Satıştan sonra düşülen sayfalarda yeni satışa dönüş düğmesi olmalı.
+  kontrol(
+    "cihaz detayında '+ Yeni Satış' düğmesi var",
+    (await sayfa.locator('[data-test="yeni-satis"]').count()) === 1,
+  );
+  await Promise.all([
+    sayfa.waitForURL("**/satis", { timeout: 20000 }),
+    sayfa.locator('[data-test="yeni-satis"]').click(),
+  ]);
+  kontrol("düğme satış ekranına götürüyor", sayfa.url().endsWith("/satis"), sayfa.url());
+
+  await sayfa.goto(`${hedef}/musteriler`, { waitUntil: "networkidle" });
+  kontrol(
+    "müşteriler sayfasında da '+ Yeni Satış' var",
+    (await sayfa.locator('[data-test="yeni-satis"]').count()) === 1,
+  );
 
   await sayfa.goto(`${hedef}/cihazlar?ara=${imei(2)}`, { waitUntil: "networkidle" });
   const ikinciCihaz = (await sayfa.locator("main").textContent()) ?? "";
@@ -170,7 +214,7 @@ try {
   const satilmisUyari = (await sayfa.locator("main").textContent()) ?? "";
   kontrol("satılmış cihaz tekrar satışa eklenmiyor", /daha önce satılmış/.test(satilmisUyari));
 
-  // ------------------------------------------------ 6) tek cihaz eski akış
+  // ------------------------------------------------ 7) tek cihaz eski akış
   await sayfa.goto(`${hedef}/satis`, { waitUntil: "networkidle" });
   await okut(imei(3));
   await sayfa.locator('[data-test="sepet-fiyat"]').first().fill("12.000,00");
@@ -192,6 +236,15 @@ try {
 
   const tekCihaz = (await sayfa.locator("main").textContent()) ?? "";
   kontrol("tek cihaz da aynı müşteriye bağlandı", tekCihaz.includes(MUSTERI));
+
+  // ------------------------------------------------ 8) personel bazlı rapor
+  await sayfa.goto(`${hedef}/rapor`, { waitUntil: "networkidle" });
+  const raporMetni = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "kullanıcı bazlı satış raporunda seçilen satıcı görünüyor",
+    raporMetni.includes(secilenSatici),
+    secilenSatici,
+  );
 
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
 } catch (hata) {

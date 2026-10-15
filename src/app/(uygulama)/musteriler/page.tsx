@@ -47,11 +47,21 @@ export default async function MusterilerSayfasi({ searchParams }: PageProps<"/mu
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">Müşteriler</h1>
-        <p className="mt-0.5 text-sm text-slate-500">
-          Müşteri kayıtları satış ekranından oluşur. Aynı telefon numarası tek kayda bağlanır.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Müşteriler</h1>
+          <p className="mt-0.5 text-sm text-slate-500">
+            Müşteri kayıtları satış ekranından oluşur. Aynı telefon numarası tek kayda bağlanır.
+          </p>
+        </div>
+        {/* Birden çok cihazlı satıştan sonra bu sayfaya düşülüyor. */}
+        <Link
+          href="/satis"
+          data-test="yeni-satis"
+          className="rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+        >
+          + Yeni Satış
+        </Link>
       </div>
 
       <form method="get" action="/musteriler" className="flex flex-wrap gap-2">

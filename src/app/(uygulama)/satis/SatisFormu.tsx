@@ -27,7 +27,14 @@ import {
 
 const KUCUK_ETIKET = "mb-1 block text-xs font-medium text-slate-600";
 
-export function SatisFormu() {
+export function SatisFormu({
+  saticilar,
+  varsayilanSaticiId,
+}: {
+  /** Satışı yapan olarak seçilebilecek kişiler; ilk sıradaki oturum sahibi. */
+  saticilar: { id: number; adSoyad: string }[];
+  varsayilanSaticiId: number;
+}) {
   const [durum, eylem] = useActionState<SatisDurumu, FormData>(satisKaydet, {});
   // Bir müşteri birden çok cihaz alabiliyor; okutulan her cihaz listeye ekleniyor.
   const [sepet, setSepet] = useState<SepetCihazi[]>([]);
@@ -43,6 +50,7 @@ export function SatisFormu() {
   }, [sepet]);
   const [odemeTipi, setOdemeTipi] = useState<string>(ODEME_TIPI.NAKIT);
   const [satisTarihi, setSatisTarihi] = useState(inputTarih(new Date()));
+  const [satanKullaniciId, setSatanKullaniciId] = useState(varsayilanSaticiId);
   const [not, setNot] = useState("");
 
   const [musteriSorgu, setMusteriSorgu] = useState("");
@@ -94,6 +102,7 @@ export function SatisFormu() {
       satirlar: sepetSatirlari(sepet) ?? [],
       odemeTipi,
       satisTarihi,
+      satanKullaniciId,
       musteriId: seciliMusteri?.id ?? null,
       musteriAdSoyad: seciliMusteri ? null : yeniAd.trim() || null,
       musteriTelefon: seciliMusteri ? null : yeniTelefon.trim() || null,
@@ -265,6 +274,28 @@ export function SatisFormu() {
                   className={GIRDI_SINIFI}
                 />
               </div>
+              <div>
+                <label htmlFor="satanKullaniciId" className={KUCUK_ETIKET}>
+                  Satışı Yapan *
+                </label>
+                <select
+                  id="satanKullaniciId"
+                  value={satanKullaniciId}
+                  onChange={(e) => setSatanKullaniciId(Number(e.target.value))}
+                  className={GIRDI_SINIFI}
+                >
+                  {saticilar.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.id === varsayilanSaticiId ? `${k.adSoyad} (siz)` : k.adSoyad}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Satışı mağazadaki kim yaptıysa onu seçin; personel satış raporu buna göre
+                  çıkıyor.
+                </p>
+              </div>
+
               <div className="sm:col-span-2 lg:col-span-4">
                 <label htmlFor="satisNotu" className={KUCUK_ETIKET}>
                   Not
