@@ -17,15 +17,20 @@ import {
 } from "@/lib/satisSepeti";
 import { ODEME_TIPI, ODEME_TIPI_ETIKET, type OdemeTipi } from "@/lib/sabitler";
 import { inputTarih } from "@/lib/tarih";
+import { adayEtiketi, secimBasligi, type AdayCihaz } from "@/lib/cihazSecimi";
 import {
   musteriAra,
   satisCihaziOkut,
+  satisCihaziniSec,
   satisKaydet,
   type MusteriOzeti,
   type SatisDurumu,
 } from "./eylemler";
 
 const KUCUK_ETIKET = "mb-1 block text-xs font-medium text-slate-600";
+
+/** Okutma sonucundaki cihaz; sepeteEkle'nin beklediği alanları taşıyor. */
+type OkunanCihaz = Parameters<typeof sepeteEkle>[1];
 
 export function SatisFormu({
   saticilar,
@@ -63,23 +68,60 @@ export function SatisFormu({
   const [yeniTckn, setYeniTckn] = useState("");
   const [yeniAdres, setYeniAdres] = useState("");
 
-  async function okut(kod: string): Promise<OkutmaGeriBildirimi> {
-    const sonuc = await satisCihaziOkut(kod);
-    if (sonuc.durum === "HATA") return { tur: "hata", mesaj: sonuc.mesaj };
+  // Okutulan barkod birden çok cihaza denk geldiğinde seçim listesi.
+  const [secim, setSecim] = useState<{ aranan: string; adaylar: AdayCihaz[] } | null>(null);
+  const [secimHatasi, setSecimHatasi] = useState<string | null>(null);
+  const [secimBekliyor, secimBasla] = useTransition();
 
-    const eklenen = sepeteEkle(sepetRef.current, sonuc.cihaz);
+  /** Bulunan cihazı sepete ekler ve geri bildirimi üretir. */
+  function sepeteAl(cihaz: OkunanCihaz): OkutmaGeriBildirimi {
+    const eklenen = sepeteEkle(sepetRef.current, cihaz);
     if ("hata" in eklenen) return { tur: "hata", mesaj: eklenen.hata };
     sepetRef.current = eklenen.sepet;
     setSepet(eklenen.sepet);
+    setSecim(null);
 
     const adet = eklenen.sepet.length;
     return {
       tur: "basari",
       mesaj:
         adet === 1
-          ? `${sonuc.cihaz.marka} ${sonuc.cihaz.model} eklendi. Satış fiyatını girin.`
-          : `${sonuc.cihaz.marka} ${sonuc.cihaz.model} eklendi — listede ${adet} cihaz var.`,
+          ? `${cihaz.marka} ${cihaz.model} eklendi. Satış fiyatını girin.`
+          : `${cihaz.marka} ${cihaz.model} eklendi — listede ${adet} cihaz var.`,
     };
+  }
+
+  async function okut(kod: string): Promise<OkutmaGeriBildirimi> {
+    const sonuc = await satisCihaziOkut(kod, sepetRef.current.map((c) => c.id));
+    if (sonuc.durum === "HATA") {
+      setSecim(null);
+      return { tur: "hata", mesaj: sonuc.mesaj };
+    }
+
+    // Aynı barkodta birden çok uygun cihaz: hangisinin satılacağını kullanıcı
+    // seçmeli. Seri numarası olmayıp elle numara verilmiş ürünlerde bu
+    // normal bir durum.
+    if (sonuc.durum === "SECIM") {
+      setSecim({ aranan: sonuc.aranan, adaylar: sonuc.adaylar });
+      return {
+        tur: "uyari",
+        mesaj: secimBasligi(sonuc.aranan, sonuc.adaylar.length),
+      };
+    }
+
+    return sepeteAl(sonuc.cihaz);
+  }
+
+  /** Seçim listesinden bir cihaz seçildi. */
+  function adaySec(adayId: number) {
+    secimBasla(async () => {
+      const sonuc = await satisCihaziniSec(adayId, sepetRef.current.map((c) => c.id));
+      if (sonuc.durum === "BULUNDU") {
+        sepeteAl(sonuc.cihaz);
+        return;
+      }
+      setSecimHatasi(sonuc.durum === "HATA" ? sonuc.mesaj : "Cihaz seçilemedi.");
+    });
   }
 
   function musteriAramayiCalistir() {
@@ -135,6 +177,58 @@ export function SatisFormu({
         }
         okut={okut}
       />
+
+      {/* Barkod birden çok cihaza denk geldi: hangisi satılacak? */}
+      {secim ? (
+        <div
+          data-test="cihaz-secimi"
+          className="rounded-xl border border-amber-300 bg-amber-50 p-4"
+        >
+          <p className="mb-2 text-sm font-medium text-amber-900">
+            {secimBasligi(secim.aranan, secim.adaylar.length)}
+          </p>
+          <ul className="space-y-1.5">
+            {secim.adaylar.map((a) => (
+              <li key={a.id}>
+                <button
+                  type="button"
+                  data-test="secim-adayi"
+                  data-cihaz-id={a.id}
+                  disabled={secimBekliyor}
+                  onClick={() => adaySec(a.id)}
+                  className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-sm transition hover:border-amber-400 hover:bg-amber-50 disabled:opacity-50"
+                >
+                  <span className="font-mono text-xs font-medium text-slate-800">
+                    {adayEtiketi(a)}
+                  </span>
+                  <span className="text-slate-700">
+                    {a.marka} {a.model}
+                  </span>
+                  <span className="text-xs text-slate-500">{a.magazaAdi}</span>
+                  <span className="ml-auto text-xs tabular-nums text-slate-500">
+                    alış {kurusuTLYaz(a.alisFiyatiKurus)} TL
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {secimHatasi ? (
+            <p data-test="secim-hatasi" role="alert" className="mt-2 text-sm font-medium text-red-700">
+              {secimHatasi}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              setSecim(null);
+              setSecimHatasi(null);
+            }}
+            className="mt-2 text-xs font-medium text-amber-800 underline hover:text-amber-900"
+          >
+            Vazgeç
+          </button>
+        </div>
+      ) : null}
 
       {sepet.length === 0 ? (
         <p className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">

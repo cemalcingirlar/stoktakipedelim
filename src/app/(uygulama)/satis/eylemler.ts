@@ -6,6 +6,7 @@ import { z } from "zod";
 import { logYaz } from "@/lib/log";
 import { aramaMetniUret, aramaNormalize, kodNormalize } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
+import { cihazSec, type AdayCihaz } from "@/lib/cihazSecimi";
 import { saticiSorunu, type SaticiAdayi } from "@/lib/satici";
 import {
   HAREKET_TIP,
@@ -16,10 +17,37 @@ import {
 } from "@/lib/sabitler";
 import {
   YetkiHatasi,
+  adminMi,
   magazaIslemiZorunlu,
   magazadaIslemYapabilirMi,
   oturumZorunlu,
+  yetkiliMagazalar,
 } from "@/lib/yetki";
+
+/** Prisma kaydını seçim mantığının beklediği biçime çevirir. */
+function adayaCevir(c: {
+  id: number;
+  seriNo: string | null;
+  barkod: string | null;
+  durum: string;
+  magazaId: number;
+  marka: string;
+  model: string;
+  alisFiyatiKurus: number;
+  magaza: { ad: string };
+}): AdayCihaz {
+  return {
+    id: c.id,
+    seriNo: c.seriNo,
+    barkod: c.barkod,
+    durum: c.durum,
+    magazaId: c.magazaId,
+    magazaAdi: c.magaza.ad,
+    marka: c.marka,
+    model: c.model,
+    alisFiyatiKurus: c.alisFiyatiKurus,
+  };
+}
 
 // ------------------------------------------------------------- Cihaz okutma
 
@@ -40,22 +68,55 @@ export type SatisOkutmaSonucu =
         alisFiyatiKurus: number;
       };
     }
+  /** Aynı barkodta birden çok uygun cihaz var; kullanıcı seçmeli. */
+  | { durum: "SECIM"; aranan: string; adaylar: AdayCihaz[] }
   | { durum: "HATA"; mesaj: string };
 
-/** Satılacak cihazı seri no / barkod ile bulur ve satışa uygunluğunu denetler. */
-export async function satisCihaziOkut(kod: string): Promise<SatisOkutmaSonucu> {
+/**
+ * Satılacak cihazı seri no / barkod ile bulur ve satışa uygunluğunu denetler.
+ *
+ * `secilmisIdler` sepetteki cihazlar: aynı barkodtan ikinci kez okutulunca
+ * aynı cihaz tekrar eklenmesin, sıradaki uygun cihaz gelsin.
+ */
+export async function satisCihaziOkut(
+  kod: string,
+  secilmisIdler: number[] = [],
+): Promise<SatisOkutmaSonucu> {
   try {
     const oturum = await oturumZorunlu();
 
     const aranan = kodNormalize(kod);
     if (aranan.length < 3) return { durum: "HATA", mesaj: "Geçerli bir seri no veya barkod girin." };
 
-    const cihaz = await prisma.stokKalemi.findFirst({
+    // Barkod birden çok cihazda olabiliyor (seri numarası olmayan ürünler).
+    // Hepsi çekiliyor; hangisinin işleme alınacağına cihazSec karar veriyor.
+    const adaylar = await prisma.stokKalemi.findMany({
       where: { OR: [{ seriNo: aranan }, { barkod: aranan }] },
       include: { magaza: { select: { ad: true } }, kategori: { select: { ad: true } } },
+      orderBy: { id: "asc" },
     });
 
-    if (!cihaz) return { durum: "HATA", mesaj: `${aranan} sistemde kayıtlı değil.` };
+    const secim = cihazSec(adaylar.map(adayaCevir), {
+      aranan,
+      yetkiliMagazalar: adminMi(oturum) ? null : yetkiliMagazalar(oturum),
+      secilmisIdler,
+    });
+
+    if (secim.durum === "SECIM") {
+      return { durum: "SECIM", aranan, adaylar: secim.adaylar };
+    }
+
+    // Tek cihaza indi ya da hiç uygun cihaz yok. Uygunsuz durumlarda aşağıdaki
+    // ayrıntılı denetimler devreye giriyor (sevkiyat numarası gibi).
+    const cihaz =
+      secim.durum === "TEK"
+        ? adaylar.find((a) => a.id === secim.cihaz.id)!
+        : (adaylar.find((a) => a.seriNo === aranan) ?? adaylar[0]);
+
+    if (!cihaz) return { durum: "HATA", mesaj: secim.durum === "YOK" ? secim.mesaj : `${aranan} sistemde kayıtlı değil.` };
+    if (secim.durum === "YOK" && cihaz.durum !== STOK_DURUM.TRANSFERDE) {
+      return { durum: "HATA", mesaj: secim.mesaj };
+    }
     if (cihaz.durum === STOK_DURUM.SATILDI) {
       return { durum: "HATA", mesaj: `${aranan} daha önce satılmış.` };
     }
@@ -124,6 +185,54 @@ export async function satisCihaziOkut(kod: string): Promise<SatisOkutmaSonucu> {
     if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
     console.error("Satış cihazı okutulamadı:", hata);
     return { durum: "HATA", mesaj: "Cihaz aranamadı. Tekrar deneyin." };
+  }
+}
+
+/** Seçim listesinden bir cihaz seçildiğinde onu kimlikle getirir. */
+export async function satisCihaziniSec(
+  cihazId: number,
+  secilmisIdler: number[] = [],
+): Promise<SatisOkutmaSonucu> {
+  try {
+    const oturum = await oturumZorunlu();
+
+    const cihaz = await prisma.stokKalemi.findUnique({
+      where: { id: cihazId },
+      include: { magaza: { select: { ad: true } }, kategori: { select: { ad: true } } },
+    });
+    if (!cihaz) return { durum: "HATA", mesaj: "Cihaz bulunamadı." };
+
+    // Seçim ekranda yapılmış olsa da uygunluk sunucuda yeniden denetleniyor:
+    // arada başkası satmış olabilir.
+    const secim = cihazSec([adayaCevir(cihaz)], {
+      aranan: cihaz.seriNo ?? cihaz.barkod ?? String(cihaz.id),
+      yetkiliMagazalar: adminMi(oturum) ? null : yetkiliMagazalar(oturum),
+      secilmisIdler,
+    });
+    if (secim.durum !== "TEK") {
+      return { durum: "HATA", mesaj: secim.durum === "YOK" ? secim.mesaj : "Cihaz seçilemedi." };
+    }
+
+    return {
+      durum: "BULUNDU",
+      cihaz: {
+        id: cihaz.id,
+        marka: cihaz.marka,
+        model: cihaz.model,
+        renk: cihaz.renk,
+        kapasite: cihaz.kapasite,
+        seriNo: cihaz.seriNo,
+        barkod: cihaz.barkod,
+        kategori: cihaz.kategori.ad,
+        magazaId: cihaz.magazaId,
+        magazaAdi: cihaz.magaza.ad,
+        alisFiyatiKurus: cihaz.alisFiyatiKurus,
+      },
+    };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
+    console.error("Cihaz seçilemedi:", hata);
+    return { durum: "HATA", mesaj: "Cihaz seçilemedi. Tekrar deneyin." };
   }
 }
 
