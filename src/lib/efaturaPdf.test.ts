@@ -731,3 +731,143 @@ test("seri listesinden sonraki düzyazı seriye karışmıyor", () => {
   assert.ok(!hepsi.some((x) => /YAZI|TL|REFERANS/i.test(x)), hepsi.join(", "));
   assert.equal(hepsi.length, 6);
 });
+
+// =========================================================================
+// Seri eşleştirmesi — biçim matrisi
+//
+// Üç gerçek faturada üç ayrı seri biçimi çıktı ve her seferinde ayrıştırıcı
+// kırıldı. Aşağısı bilinen bütün biçimleri ve makul varyasyonları tek yerde
+// topluyor; yeni bir tedarikçi biçimi çıkarsa buraya bir satır eklenir.
+// =========================================================================
+
+/** Tek kalemlik fatura; seri notunu olduğu gibi yerleştirir. */
+function tekKalemliMetin(notSatirlari: string[], adet = 2): string {
+  return ornekMetin({
+    kalemler: [
+      ["1", "4000000000011", "GAMA1TU/A", "GAMA1TU/A", "GAMA FON 10 SIYAH", `${adet},00`, "1.000,00 TL", "%20", `${adet * 200},00 TL`, `${adet}.000,00 TL`].join("\n"),
+    ],
+    notlar: notSatirlari,
+    araToplam: `${adet}.000,00`,
+  });
+}
+
+const BASLIK_BICIMLERI: [string, string][] = [
+  ["düz tırnak", 'Not:\n1 Numaralı satırdaki; "GAMA1TU/A/1400001" kodlu ürün için seriler:'],
+  ["eğri tırnak", 'Not:\n1 Numaralı satırdaki; “GAMA1TU/A” kodlu ürün için seriler:'],
+  ["tek tırnak", "Not:\n1 Numaralı satırdaki; ‘GAMA1TU/A’ kodlu ürün için seriler:"],
+  ["tırnaksız", "Not:\n1 Numaralı satırdaki; GAMA1TU/A kodlu ürün için seriler:"],
+  ["iki noktalı", 'Not:\n1 Numaralı satırdaki: "GAMA1TU/A" kodlu ürün için seriler:'],
+  ["seri numaraları", 'Not:\n1 Numaralı satırdaki; "GAMA1TU/A" kodlu ürün için seri numaraları:'],
+  ["Türkçe karaktersiz", 'Not:\n1 Numarali satirdaki; "GAMA1TU/A" kodlu urun icin seriler:'],
+  ["Not öneki yok", '1 Numaralı satırdaki; "GAMA1TU/A" kodlu ürün için seriler:'],
+];
+
+for (const [ad, baslik] of BASLIK_BICIMLERI) {
+  test(`başlık biçimi okunuyor: ${ad}`, () => {
+    const s = efaturaCoz(tekKalemliMetin([`${baslik}\nAB123456; CD789012`]));
+    assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+    assert.deepEqual(s.kalemler[0].seriNolar, ["AB123456", "CD789012"], ad);
+  });
+}
+
+const SERI_BICIMLERI: [string, string, string[]][] = [
+  ["IMEI (salt rakam)", "350000000000011; 350000000000029", ["350000000000011", "350000000000029"]],
+  ["harf-rakam karışık", "SF16HWG06MLR0000SY5; SDCQ4CFHX5V", ["SF16HWG06MLR0000SY5", "SDCQ4CFHX5V"]],
+  ["saf harf + rakamlı", "SCVGYKRFWLJ; SH1F16C4F6Q", ["SCVGYKRFWLJ", "SH1F16C4F6Q"]],
+  ["tireli", "MM0249-DQ0096939; MM0245-EP0304822", ["MM0249-DQ0096939", "MM0245-EP0304822"]],
+  ["eğik çizgili", "AB/123456; CD/789012", ["AB/123456", "CD/789012"]],
+  ["noktalı", "AB.123456; CD.789012", ["AB.123456", "CD.789012"]],
+  ["alt tireli", "AB_123456; CD_789012", ["AB_123456", "CD_789012"]],
+  ["artılı", "AB+123456; CD+789012", ["AB+123456", "CD+789012"]],
+  ["diyezli", "AB#123456; CD#789012", ["AB#123456", "CD#789012"]],
+  ["iki noktalı", "AB:123456; CD:789012", ["AB:123456", "CD:789012"]],
+  ["virgülle ayrılmış", "AB123456, CD789012", ["AB123456", "CD789012"]],
+  ["dikey çizgiyle ayrılmış", "AB123456 | CD789012", ["AB123456", "CD789012"]],
+  ["yalnız boşlukla ayrılmış", "AB123456 CD789012", ["AB123456", "CD789012"]],
+  ["sonda ayraç artığı", "AB123456; CD789012;", ["AB123456", "CD789012"]],
+  ["araya fazladan boşluk", "  AB123456 ;   CD789012  ", ["AB123456", "CD789012"]],
+];
+
+for (const [ad, liste, beklenen] of SERI_BICIMLERI) {
+  test(`seri biçimi okunuyor: ${ad}`, () => {
+    const s = efaturaCoz(
+      tekKalemliMetin([`Not:\n1 Numaralı satırdaki; "GAMA1TU/A" kodlu ürün için seriler:\n${liste}`]),
+    );
+    assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+    assert.deepEqual(s.kalemler[0].seriNolar, beklenen, ad);
+  });
+}
+
+test("seriler başlıkla aynı satırda da olabilir", () => {
+  const s = efaturaCoz(
+    tekKalemliMetin(['Not:\n1 Numaralı satırdaki; "GAMA1TU/A" kodlu ürün için seriler: AB123456; CD789012']),
+  );
+  assert.deepEqual(s.kalemler[0].seriNolar, ["AB123456", "CD789012"]);
+});
+
+test("seriler üç satıra taşsa da toplanıyor", () => {
+  const s = efaturaCoz(
+    tekKalemliMetin(
+      ['Not:\n1 Numaralı satırdaki; "GAMA1TU/A" kodlu ürün için seriler:\nAB123456;\nCD789012;\nEF345678'],
+      3,
+    ),
+  );
+  assert.deepEqual(s.kalemler[0].seriNolar, ["AB123456", "CD789012", "EF345678"]);
+});
+
+test("adet dolunca fatura altındaki satırlar listeye girmiyor", () => {
+  // Beklenen adede ulaşıldığında blok kapanıyor: sonraki satır seri biçimine
+  // uysa bile alınmıyor.
+  const s = efaturaCoz(
+    tekKalemliMetin([
+      'Not:\n1 Numaralı satırdaki; "GAMA1TU/A" kodlu ürün için seriler:\nAB123456; CD789012\nTR020006200038100006201057',
+    ]),
+  );
+  assert.deepEqual(s.kalemler[0].seriNolar, ["AB123456", "CD789012"]);
+  assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+});
+
+test("düzyazı satırı listeyi bitiriyor", () => {
+  const s = efaturaCoz(
+    tekKalemliMetin([
+      'Not:\n1 Numaralı satırdaki; "GAMA1TU/A" kodlu ürün için seriler:\nAB123456; CD789012',
+      "YAZI İLE İKİBİN TL",
+      "Fatura referansı:1100-93535953",
+    ]),
+  );
+  assert.deepEqual(s.kalemler[0].seriNolar, ["AB123456", "CD789012"]);
+});
+
+test("sıra numarası tutmayan not koddan eşleşiyor", () => {
+  // Not bloğu yanlış numaralanmış: 7. satır diyor ama faturada tek kalem var.
+  const s = efaturaCoz(
+    tekKalemliMetin(['Not:\n7 Numaralı satırdaki; "GAMA1TU/A" kodlu ürün için seriler:\nAB123456; CD789012']),
+  );
+  assert.deepEqual(s.kalemler[0].seriNolar, ["AB123456", "CD789012"]);
+  assert.ok(
+    s.uyarilar.some((u) => /kod .* üzerinden bağlandı/.test(u)),
+    s.uyarilar.join(" | "),
+  );
+});
+
+test("koddan da eşleşmiyorsa seri bağlanmıyor ve uyarı çıkıyor", () => {
+  const s = efaturaCoz(
+    tekKalemliMetin(['Not:\n7 Numaralı satırdaki; "BASKA-KOD" kodlu ürün için seriler:\nAB123456; CD789012']),
+  );
+  assert.deepEqual(s.kalemler[0].seriNolar, []);
+  assert.ok(
+    s.uyarilar.some((u) => /seri numarası yok/.test(u)),
+    s.uyarilar.join(" | "),
+  );
+});
+
+test("adet ile seri sayısı tutmazsa hata veriliyor", () => {
+  // Sessizce yanlış eşleşmektense fatura reddedilmeli.
+  const s = efaturaCoz(
+    tekKalemliMetin(['Not:\n1 Numaralı satırdaki; "GAMA1TU/A" kodlu ürün için seriler:\nAB123456'], 2),
+  );
+  assert.ok(
+    s.hatalar.some((h) => /adet 2 ama 1 seri/.test(h)),
+    s.hatalar.join(" | "),
+  );
+});

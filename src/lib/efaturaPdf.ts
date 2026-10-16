@@ -111,8 +111,32 @@ function etiketDegeri(satirlar: string[], etiket: string): string {
  * Türkçe harfler kodlamaya göre ASCII karşılığına düşebildiği için her biri
  * iki seçenekli yazıldı.
  */
-const NOT_KALIBI =
-  /^(?:Not:\s*)?(\d+)\s*Numaral[ıi]\s*sat[ıi]rdaki;\s*"([^"]*)"\s*kodlu\s*[üu]r[üu]n\s*i[çc]in\s*seriler:\s*(.*)$/i;
+/**
+ * "N Numaralı satırdaki; "KOD" kodlu ürün için seriler: ..." başlığı.
+ *
+ * Kalıp bilerek gevşek: aynı cümleyi her tedarikçi biraz farklı yazıyor ve
+ * PDF'ten çıkan metinde tırnak işaretleri düz (") yerine eğri (“ ” ‘ ’) ya da
+ * tek tırnak gelebiliyor; bazı faturalarda tırnak hiç yok. Noktalı virgül
+ * yerine iki nokta ya da virgül, "seriler" yerine "seri numaraları" da
+ * görülüyor.
+ *
+ * Değişmeyen üç çapa var ve kalıp onlara dayanıyor: baştaki sıra numarası,
+ * "Numaralı satırdaki" ibaresi ve sonundaki iki nokta. Kod yakalanıyor ama
+ * zorunlu değil — eşleştirme sıra numarasıyla yapılıyor, kod yalnız teyit.
+ */
+const NOT_KALIBI = new RegExp(
+  [
+    "^(?:Not\\s*:\\s*)?",
+    "(\\d+)\\s*Numaral[\u0131i]\\s*sat[\u0131i]rdaki",
+    "\\s*[;:,]?\\s*",
+    // Kod: tırnak içinde (düz / eğri / tek) ya da tırnaksız tek kelime.
+    "(?:[\"\u201C\u201D\u2018\u2019'\u00AB]\\s*([^\"\u201C\u201D\u2018\u2019'\u00BB]*?)\\s*[\"\u201C\u201D\u2018\u2019'\u00BB]|([^\\s]+))?",
+    "\\s*(?:kodlu)?\\s*(?:[\u00FCu]r[\u00FCu]n)?\\s*(?:i[\u00E7c]in)?",
+    "\\s*(?:seri\\s*(?:numaralar[\u0131i]|nolar[\u0131i]|no)?|seriler)",
+    "\\s*:\\s*(.*)$",
+  ].join(""),
+  "i",
+);
 
 const TUTAR_KALIBI = /^\d{1,3}(?:\.\d{3})*,\d{2}$/;
 
@@ -211,6 +235,40 @@ function kodSutunuOku(
   return ekKodMu(parca) ? { kod: parca, sonraki: j + 1 } : null;
 }
 
+/** Seri numarası en az bu kadar karakter olmalı. */
+const SERI_EN_AZ_UZUNLUK = 6;
+
+/**
+ * Seri numaralarını ayıran işaretler.
+ *
+ * Noktalı virgül en yaygını ama virgül, dikey çizgi ve boşlukla ayıran
+ * tedarikçiler de var. Ayraçların hepsini tanımak, listeyi tek parça sanıp
+ * reddetmekten iyi.
+ */
+const SERI_AYRACLARI = /[;,|\s]+/;
+
+/**
+ * Bir seri numarasının taşıyabileceği karakterler.
+ *
+ * Gerçek faturalarda görülenler: salt rakam (IMEI), harf-rakam karışık
+ * (SF16HWG06MLR0000SY5), saf harf (SCVGYKRFWLJ), tireli (MM0249-DQ0096939).
+ * Buna karşılık eğik çizgi, nokta, alt tire, artı, diyez ve iki nokta da
+ * kullanılabiliyor; hepsi kabul ediliyor.
+ *
+ * KÜÇÜK HARF VE TÜRKÇE HARF BİLEREK DIŞARIDA. Bu kısıt, fatura altındaki
+ * düzyazıyı seri listesinden ayıran tek güvenilir işaret: "Fatura
+ * referansı:1100-93535953" ya da "YAZI İLE ... KURUŞ" satırları yalnız bu
+ * sayede eleniyor. Küçük harfli seri yazan bir tedarikçi çıkarsa seriler
+ * okunmaz ama sessizce yanlış eşleşmez: adet tutmayacağı için ekranda uyarı
+ * çıkar ve seriler elle girilebilir.
+ */
+const SERI_PARCA_KALIBI = /^[A-Z0-9][A-Z0-9/._+#:-]*$/;
+
+/** Satırı seri numarası adaylarına böler. */
+export function seriParcalariniAyir(satir: string): string[] {
+  return satir.split(SERI_AYRACLARI).filter(Boolean);
+}
+
 /**
  * Tek bir parça seri numarası olabilir mi?
  *
@@ -226,28 +284,36 @@ function kodSutunuOku(
  */
 export function seriParcasiMi(parca: string): boolean {
   const p = parca.trim();
-  if (p.length < 6) return false;
-  return /^[A-Z0-9][A-Z0-9/._-]*$/.test(p);
+  if (p.length < SERI_EN_AZ_UZUNLUK) return false;
+  return SERI_PARCA_KALIBI.test(p);
 }
 
 /**
  * Bu satır, bir önceki "N Numaralı satırdaki ... seriler:" başlığının devamı mı?
  *
- * Önceki sürüm "satırda ardışık altı rakam var mı" diye bakıyordu. Apple
- * aksesuarlarında seri numaraları harf ağırlıklı (en uzun rakam dizisi dört),
- * bu yüzden satırlar liste sayılmıyor ve ürünler "seri numarası yok" diye
- * kaydediliyordu.
- *
- * Yerine parça parça bakılıyor: satır noktalı virgül ve boşluklardan ayrılıyor,
- * her parça seri numarasına benzemeli. Ayrıca satırın tamamında en az bir
- * rakam aranıyor — tek tek parçalarda değil, çünkü "SCVGYKRFWLJ" gibi saf
- * harf seriler var ama rakamsız bir satırın tamamı seri listesi olmuyor.
+ * Satır ayraçlardan parçalanıyor ve her parça seri biçimine uymalı; ayrıca
+ * satırın tamamında en az bir rakam aranıyor. Rakam şartı parçada değil
+ * satırda: tek tek seriler saf harf olabiliyor ("SCVGYKRFWLJ") ama rakamsız
+ * bir satırın tamamı seri listesi olmaz.
  */
 export function seriSatiriMi(satir: string): boolean {
-  const parcalar = satir.split(/[;\s]+/).filter(Boolean);
+  const parcalar = seriParcalariniAyir(satir);
   if (parcalar.length === 0) return false;
   if (!parcalar.every(seriParcasiMi)) return false;
   return parcalar.some((p) => /\d/.test(p));
+}
+
+/** Toplanan satırlardan seri numaralarını çıkarır. */
+function serileriCikar(parcalar: string[]): string[] {
+  return parcalar
+    .flatMap((p) => seriParcalariniAyir(p))
+    .map((p) => kodNormalize(p))
+    .filter((p) => p.length >= SERI_EN_AZ_UZUNLUK);
+}
+
+/** Toplanan satırlarda kaç seri var? */
+function seriSayisi(parcalar: string[]): number {
+  return serileriCikar(parcalar).length;
 }
 
 /**
@@ -257,7 +323,10 @@ export function seriSatiriMi(satir: string): boolean {
  * seriler: 350000000000011; 350000000000029` — liste bir sonraki satıra
  * taşabiliyor, taşan satır yeni bir "N Numaralı" ile başlamıyor.
  */
-export function seriNolariTopla(metin: string): Map<number, { kod: string; seriler: string[] }> {
+export function seriNolariTopla(
+  metin: string,
+  beklenenAdet?: Map<number, number>,
+): Map<number, { kod: string; seriler: string[] }> {
   const sonuc = new Map<number, { kod: string; seriler: string[] }>();
   const satirlar = metin.split("\n");
 
@@ -265,12 +334,7 @@ export function seriNolariTopla(metin: string): Map<number, { kod: string; seril
 
   const bitir = () => {
     if (!aktif) return;
-    const seriler = aktif.parcalar
-      .join(";")
-      .split(";")
-      .map((s) => kodNormalize(s))
-      .filter((s) => s.length >= 6);
-    sonuc.set(aktif.siraNo, { kod: aktif.kod, seriler });
+    sonuc.set(aktif.siraNo, { kod: aktif.kod, seriler: serileriCikar(aktif.parcalar) });
     aktif = null;
   };
 
@@ -281,13 +345,26 @@ export function seriNolariTopla(metin: string): Map<number, { kod: string; seril
     const bas = satir.match(NOT_KALIBI);
     if (bas) {
       bitir();
-      aktif = { siraNo: Number(bas[1]), kod: bas[2], parcalar: [bas[3]] };
+      // Kod tırnaklı (2) ya da tırnaksız (3) yakalanmış olabilir.
+      aktif = {
+        siraNo: Number(bas[1]),
+        kod: (bas[2] ?? bas[3] ?? "").trim(),
+        parcalar: [bas[4] ?? ""],
+      };
       continue;
     }
 
     // Taşan seri listesi.
     if (aktif && seriSatiriMi(satir)) {
       aktif.parcalar.push(satir);
+
+      // Beklenen adede ulaşıldıysa blok burada kapanıyor. Fatura altındaki
+      // bir satır yanlışlıkla seri biçimine uysa bile listeye giremiyor:
+      // liste zaten dolmuş oluyor. Adet bilinmiyorsa eski davranış sürüyor.
+      const hedef = beklenenAdet?.get(aktif.siraNo);
+      if (hedef !== undefined && hedef > 0 && seriSayisi(aktif.parcalar) >= hedef) {
+        bitir();
+      }
       continue;
     }
 
@@ -471,11 +548,39 @@ export function efaturaCoz(metin: string): EFaturaOkumasi {
   if (!faturaNo) hatalar.push("Fatura numarası okunamadı.");
   if (!faturaTarihi) hatalar.push("Fatura tarihi okunamadı.");
 
-  const seriHarita = seriNolariTopla(metin);
+  // Adetler biliniyor: seri listesi beklenen sayıya ulaşınca kapanıyor, böylece
+  // fatura altındaki bir satır listeye sızamıyor.
+  const beklenenAdet = new Map(hamKalemler.map((k) => [k.siraNo, k.adet]));
+  const seriHarita = seriNolariTopla(metin, beklenenAdet);
+
+  // Sıra numarasıyla hiçbir kaleme denk gelmeyen notlar: kodlarıyla
+  // eşleştirilmek üzere ayrılıyor. Numaralandırma bozuksa (ör. not bloğu
+  // faturadaki sırayı izlemiyorsa) seriler yine de doğru kaleme bağlansın.
+  const kalemSiralari = new Set(hamKalemler.map((k) => k.siraNo));
+  const sahipsizNotlar = [...seriHarita.entries()].filter(([sira]) => !kalemSiralari.has(sira));
+  const kullanilanSahipsiz = new Set<number>();
+
   const gorulenSeriler = new Map<string, number>();
 
   const kalemler: EFaturaKalemi[] = hamKalemler.map((k) => {
-    const kayit = seriHarita.get(k.siraNo);
+    let kayit = seriHarita.get(k.siraNo);
+
+    // Sıra numarasıyla eşleşme yoksa koddan dene.
+    if (!kayit) {
+      const eslesen = sahipsizNotlar.find(
+        ([sira, n]) =>
+          !kullanilanSahipsiz.has(sira) && n.kod && kodTeyitEdildi(n.kod, k.urunKodlari),
+      );
+      if (eslesen) {
+        kullanilanSahipsiz.add(eslesen[0]);
+        kayit = eslesen[1];
+        uyarilar.push(
+          `${k.siraNo}. kalemin serileri sıra numarasıyla eşleşmedi; ` +
+            `nottaki kod (${eslesen[1].kod}) üzerinden bağlandı. Aşağıdan kontrol edin.`,
+        );
+      }
+    }
+
     const seriNolar = kayit?.seriler ?? [];
 
     // Seri notu kalemle SIRA NUMARASI üzerinden eşleşiyor: not zaten
