@@ -143,3 +143,21 @@ export type GrafikKovasi = {
   satis: number;
   ciroKurus: number;
 };
+
+/** Grafikteki en yüksek sütun değeri; ölçek bununla kuruluyor. */
+export function enYuksekDeger(kovalar: GrafikKovasi[]): number {
+  return Math.max(1, ...kovalar.map((k) => Math.max(k.giris, k.satis)));
+}
+
+/**
+ * Bir çubuğun yüzde yüksekliği.
+ *
+ * Sıfır gerçekten sıfır: olmayan hareket için çubuk çizilmiyor. Sıfırdan
+ * büyük her değere en az %2 veriliyor — 100 girişin yanında 1 giriş %1'de
+ * kalıp görünmez olurdu, oysa "az ama var" ile "hiç yok" ayırt edilmeli.
+ */
+export function cubukYuzdesi(deger: number, enYuksek: number): number {
+  if (deger <= 0) return 0;
+  if (enYuksek <= 0) return 0;
+  return Math.max(2, (deger / enYuksek) * 100);
+}
