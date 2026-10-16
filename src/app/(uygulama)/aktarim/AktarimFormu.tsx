@@ -240,8 +240,10 @@ export function AktarimFormu({
                 Alış Fiyatını Revize Et
               </span>
               <span className="block text-xs text-amber-800">
-                Okutulan her cihaz için satış fiyatı ve yeni alış fiyatı sorulur. Satış,
-                paneldeki mağaza ve personel satış raporlarına yansır; cihaz stokta kalır.
+                Okutulan her cihaz için yeni alış fiyatı sorulur. Müşteriye satıp geri
+                aldıysanız satış fiyatını da yazın — o zaman satış, paneldeki mağaza ve
+                personel satış raporlarına yansır. Satış fiyatı boş bırakılırsa yalnız alış
+                fiyatı güncellenir. Cihaz her durumda stokta kalır.
               </span>
             </span>
           </label>

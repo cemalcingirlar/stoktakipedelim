@@ -4,6 +4,7 @@ import {
   EN_YUKSEK_TUTAR_KURUS,
   aktarimKari,
   aktarimSatisAciklamasi,
+  alisRevizeSorunu,
   aktarimSatisSorunu,
   aktarimSatislariniTopla,
   dokumleriBirlestir,
@@ -189,4 +190,35 @@ test("fiyat değişmediyse açıklama tekrar etmiyor", () => {
     yeniAlisYazi: "10.000,00",
   });
   assert.ok(!metin.includes("→"), metin);
+});
+
+// ------------------------------------------- yalnız alış fiyatı revizesi
+
+test("geçerli alış revizesi sorun vermiyor", () => {
+  assert.equal(alisRevizeSorunu(1200000), null);
+});
+
+test("sıfır alış fiyatı kabul ediliyor", () => {
+  // Cihaz bedelsiz devralınmış olabilir.
+  assert.equal(alisRevizeSorunu(0), null);
+});
+
+test("okunamayan alış fiyatı yakalanıyor", () => {
+  assert.match(alisRevizeSorunu(null) ?? "", /Yeni alış fiyatını/);
+});
+
+test("negatif ve çok yüksek alış fiyatı reddediliyor", () => {
+  assert.ok(alisRevizeSorunu(-1));
+  assert.ok(alisRevizeSorunu(EN_YUKSEK_TUTAR_KURUS + 1));
+  assert.equal(alisRevizeSorunu(EN_YUKSEK_TUTAR_KURUS), null, "sınır değer kabul");
+});
+
+test("ondalıklı kuruş reddediliyor", () => {
+  assert.ok(alisRevizeSorunu(100.5));
+});
+
+test("satış fiyatı boşken satış denetimi devreye girmiyor", () => {
+  // Satış kaydı açılmayacağı için satış fiyatı aranmıyor; iki denetim ayrı.
+  assert.ok(aktarimSatisSorunu({ satisFiyatiKurus: null, yeniAlisFiyatiKurus: 1200000 }));
+  assert.equal(alisRevizeSorunu(1200000), null);
 });

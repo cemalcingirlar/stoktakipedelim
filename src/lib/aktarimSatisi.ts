@@ -45,6 +45,23 @@ export function aktarimSatisSorunu(girdi: AktarimSatisGirdisi): string | null {
 }
 
 /**
+ * Yalnız alış fiyatı revize edilirken geçerlilik denetimi.
+ *
+ * Satış fiyatı boş bırakılabiliyor: ekranın işi öncelikle alış fiyatını
+ * revize etmek, müşteriye satıp geri alma bunun üstüne gelen bir durum.
+ * Satış fiyatı yazılmadığında satış kaydı açılmıyor, yalnız cihazın maliyeti
+ * güncelleniyor.
+ */
+export function alisRevizeSorunu(yeniAlisFiyatiKurus: number | null): string | null {
+  if (yeniAlisFiyatiKurus === null) return "Yeni alış fiyatını 12.500,00 gibi yazın.";
+  if (!Number.isInteger(yeniAlisFiyatiKurus) || yeniAlisFiyatiKurus < 0) {
+    return "Yeni alış fiyatı negatif olamaz.";
+  }
+  if (yeniAlisFiyatiKurus > EN_YUKSEK_TUTAR_KURUS) return "Yeni alış fiyatı çok yüksek.";
+  return null;
+}
+
+/**
  * Satışın kârı: satış fiyatı eksi o andaki maliyet.
  *
  * Geri alış fiyatı buraya girmiyor. Girerse satıştan kazanılan tutar kaybolur:
