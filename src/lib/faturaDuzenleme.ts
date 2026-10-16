@@ -53,19 +53,50 @@ export type UrunAlanlari = {
   alisFiyatiKurus: number;
 };
 
-/** Dosyadan okunan değerlerin forma yansıyan hali (düzeltme öncesi). */
-export function varsayilanUrun(urun: OkunanUrun): UrunAlanlari {
+/**
+ * Bu barkodla daha önce girilmiş cihazın kartı.
+ *
+ * Aynı ürün her faturada biraz farklı yazılabiliyor ("SAMSUNG GALAXY S26 FE
+ * 8/256GB PISTAC DM" / "SAMSUNG S26 FE 8/256"). Barkod kayıtlıysa marka ve
+ * model mevcut karttan alınıyor; yoksa stokta aynı cihaz iki ayrı isimle
+ * birikir ve arama ile raporlar bölünür.
+ */
+export type KayitliUrunKarti = {
+  marka: string;
+  model: string;
+};
+
+/** Barkod kayıtlı mı, yoksa kaydedince yeni kart mı açılacak? */
+export type UrunKartiDurumu = "KAYITLI" | "YENI";
+
+export function urunKartiDurumu(kayit?: KayitliUrunKarti): UrunKartiDurumu {
+  return kayit ? "KAYITLI" : "YENI";
+}
+
+/**
+ * Dosyadan okunan değerlerin forma yansıyan hali (düzeltme öncesi).
+ *
+ * Barkod kayıtlıysa marka/model mevcut karttan; değilse faturadaki ürün
+ * adından türetiliyor. İkisi de kullanıcı tarafından düzeltilebiliyor.
+ */
+export function varsayilanUrun(urun: OkunanUrun, kayit?: KayitliUrunKarti): UrunAlanlari {
+  const marka = kayit?.marka?.trim() || urun.marka || "";
+  const model = kayit?.model?.trim() || modelAdi(urun.urunAdi, urun.marka);
   return {
-    marka: urun.marka || "",
-    model: modelAdi(urun.urunAdi, urun.marka),
+    marka,
+    model,
     barkod: urun.barkod,
     alisFiyatiKurus: urun.alisFiyatiKurus,
   };
 }
 
 /** Okunan değer + kullanıcının düzeltmesi. */
-export function duzenlenmisUrun(urun: OkunanUrun, ustYazim?: UrunUstYazim): UrunAlanlari {
-  const temel = varsayilanUrun(urun);
+export function duzenlenmisUrun(
+  urun: OkunanUrun,
+  ustYazim?: UrunUstYazim,
+  kayit?: KayitliUrunKarti,
+): UrunAlanlari {
+  const temel = varsayilanUrun(urun, kayit);
   if (!ustYazim) return temel;
   return {
     marka: ustYazim.marka ?? temel.marka,
@@ -73,6 +104,23 @@ export function duzenlenmisUrun(urun: OkunanUrun, ustYazim?: UrunUstYazim): Urun
     barkod: ustYazim.barkod ?? temel.barkod,
     alisFiyatiKurus: ustYazim.alisFiyatiKurus ?? temel.alisFiyatiKurus,
   };
+}
+
+/** Kaydedince kaç yeni ürün kartı açılacak? */
+export function yeniKartSayisi(
+  barkodlar: string[],
+  kayitliKartlar: Map<string, KayitliUrunKarti>,
+): number {
+  return new Set(barkodlar.filter((b) => !kayitliKartlar.has(b))).size;
+}
+
+/** Yeni kart açılacaksa kullanıcıya gösterilecek uyarı; yoksa null. */
+export function yeniKartUyarisi(sayi: number): string | null {
+  if (sayi <= 0) return null;
+  return (
+    `${sayi} ürünün barkodu sistemde kayıtlı değil; kaydedince yeni ürün kartı ` +
+    "açılacak. Marka ve model bilgisini aşağıdan düzeltebilirsiniz."
+  );
 }
 
 export type SeriAlani = { seriNo: string | null; cikarildi: boolean };
