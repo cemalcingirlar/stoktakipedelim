@@ -151,6 +151,20 @@ const EAN_KALIBI = /^\d{8,14}[A-ZÇĞİÖŞÜ]{0,4}$/;
 const URUN_KODU_KALIBI = /^(?=.*\d)(?=.*[A-ZÇĞİÖŞÜ])[A-ZÇĞİÖŞÜ0-9][A-ZÇĞİÖŞÜ0-9/\-_.]*[/\-_][A-ZÇĞİÖŞÜ0-9/\-_.]*$/;
 
 /**
+ * Ayraçsız ürün kodu: "JBJBLTFLEX2GWHT" gibi.
+ *
+ * Bazı tedarikçiler model kodunu ayraçsız yazıyor. Yalnız ayraçlı kalıba
+ * bakmak bu sütunları kod saymayıp ürün adının başına yapıştırıyordu:
+ * "JBJBLTFLEX2GWHT JBJBLTFLEX2GWHT JBL TUNE FLEX2 KULAKICI TWS KUL GH BE".
+ *
+ * Açıklamayı yutmaması için üç koşul: boşluk içeremez (açıklamalar çok
+ * kelimeli tek parça geliyor), küçük harf içeremez, hem rakam hem harf
+ * taşımalı ve en az sekiz karakter olmalı — "128GB", "FLEX2" gibi açıklama
+ * parçaları bu uzunluğa ulaşmıyor.
+ */
+const AYRACSIZ_KOD_KALIBI = /^(?=.*\d)(?=.*[A-ZÇĞİÖŞÜ])[A-ZÇĞİÖŞÜ0-9]{8,}$/;
+
+/**
  * EAN'den sonraki bir parça kod sütunu mu?
  *
  * EAN kalıbı da kabul ediliyor: bazı faturalarda üç kod sütununun üçü de aynı
@@ -158,7 +172,12 @@ const URUN_KODU_KALIBI = /^(?=.*\d)(?=.*[A-ZÇĞİÖŞÜ])[A-ZÇĞİÖŞÜ0-9][A
  * tekrarları kod saymayıp ürün adının başına yapıştırıyordu.
  */
 function ekKodMu(parca: string): boolean {
-  return EAN_KALIBI.test(parca) || KOD_KALIBI.test(parca) || URUN_KODU_KALIBI.test(parca);
+  return (
+    EAN_KALIBI.test(parca) ||
+    KOD_KALIBI.test(parca) ||
+    URUN_KODU_KALIBI.test(parca) ||
+    AYRACSIZ_KOD_KALIBI.test(parca)
+  );
 }
 
 /**
@@ -227,8 +246,16 @@ export function seriNolariTopla(metin: string): Map<number, { kod: string; seril
       continue;
     }
 
-    // Taşan seri listesi: yalnız numara ve ayraçtan oluşan satır.
-    if (aktif && /^[\dA-Za-z;\s]+$/.test(satir) && /\d{6,}/.test(satir)) {
+    // Taşan seri listesi.
+    //
+    // Seri numaraları her zaman salt rakam (IMEI) değil: aksesuarlarda
+    // "MM0249-DQ0096939" gibi tire içeren numaralar geliyor. Tire kabul
+    // edilmeyince bu satırlar seri listesi sayılmıyor ve ürünler "seri
+    // numarası yok" diye kaydediliyordu.
+    //
+    // Ayrıca "seriler:" ile biten başlık satırından sonra liste alt satıra
+    // geçebiliyor; bu dal onu yakalıyor.
+    if (aktif && /^[\dA-Za-z;\s/._-]+$/.test(satir) && /\d{6,}/.test(satir)) {
       aktif.parcalar.push(satir);
       continue;
     }

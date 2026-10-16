@@ -528,3 +528,94 @@ test("demo faturasının tutarları doğru okunuyor", () => {
   assert.equal(s.kalemler[1].tutarKurus, 2000000);
   assert.equal(s.araToplamKurus, 2600000);
 });
+
+// ---------------- aksesuar faturası: ayraçsız kod, tireli seri, alt satır
+
+/**
+ * Üçüncü bir gerçek fatura düzeni. İki ayrı sorun vardı:
+ *
+ *   - Ürün kodu ayraçsız geliyordu ("JBJBLTFLEX2GWHT"). Kod sayılmayınca
+ *     ürün adının başına yapışıyordu.
+ *   - Seri listesi "seriler:" satırının ALTINDA ve numaralar tireliydi
+ *     ("MM0249-DQ0096939"). Devam satırı kalıbı tire kabul etmediği için
+ *     liste hiç okunmuyor, ürünler "seri numarası yok" diye kaydediliyordu.
+ */
+function ayracsizKodluMetin(): string {
+  return ornekMetin({
+    kalemler: [
+      ["1", "1200130016271", "GAMAFLEX2GWHT", "GAMAFLEX2GWHT", "GAMA TUNE FLEX2 KULAKICI TWS", "KUL GH BE", "2,00", "4.000,00", "TL", "%20", "1.600,00", "TL", "8.000,00 TL"].join("\n"),
+      ["2", "1200130016233", "GAMAFLEX2BLK", "GAMAFLEX2BLK", "GAMA TUNE FLEX2 KULAKICI TWS", "KUL SIYAH", "2,00", "4.000,00", "TL", "%20", "1.600,00", "TL", "8.000,00 TL"].join("\n"),
+    ],
+    notlar: [
+      // Başlık satırı "seriler:" ile bitiyor, liste alt satırda.
+      'Not:\n1 Numaralı satırdaki; "GAMAFLEX2GWHT/1424090" kodlu ürün için seriler:\nMM0249-DQ0096939; MM0249-DQ0096955',
+      '2 Numaralı satırdaki; "GAMAFLEX2BLK/1424112" kodlu ürün için seriler:\nMM0245-EP0304818; MM0245-EP0304822',
+    ],
+    araToplam: "16.000,00",
+  });
+}
+
+test("ayraçsız ürün kodlu fatura okunuyor", () => {
+  const s = efaturaCoz(ayracsizKodluMetin());
+  assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+  assert.equal(s.kalemler.length, 2);
+});
+
+test("ayraçsız kod ürün adına karışmıyor", () => {
+  const s = efaturaCoz(ayracsizKodluMetin());
+  assert.equal(s.kalemler[0].urunAdi, "GAMA TUNE FLEX2 KULAKICI TWS KUL GH BE");
+  assert.deepEqual(s.kalemler[0].urunKodlari, [
+    "1200130016271",
+    "GAMAFLEX2GWHT",
+    "GAMAFLEX2GWHT",
+  ]);
+});
+
+test("alt satırdaki tireli seriler okunuyor", () => {
+  const s = efaturaCoz(ayracsizKodluMetin());
+  assert.deepEqual(s.kalemler[0].seriNolar, ["MM0249-DQ0096939", "MM0249-DQ0096955"]);
+  assert.deepEqual(s.kalemler[1].seriNolar, ["MM0245-EP0304818", "MM0245-EP0304822"]);
+});
+
+test("tireli serilerde adet uyuştuğu için uyarı çıkmıyor", () => {
+  const s = efaturaCoz(ayracsizKodluMetin());
+  assert.deepEqual(s.uyarilar, [], s.uyarilar.join(" | "));
+});
+
+test("ayraçsız kod notla eşleştiği için teyit uyarısı yok", () => {
+  // Not kodu "GAMAFLEX2GWHT/1424090", satır kodu "GAMAFLEX2GWHT" ile başlıyor.
+  assert.equal(kodTeyitEdildi("GAMAFLEX2GWHT/1424090", ["1200130016271", "GAMAFLEX2GWHT"]), true);
+});
+
+test("kısa açıklama parçaları ayraçsız kod sanılmıyor", () => {
+  // "FLEX2" ve "128GB" sekiz karakterden kısa; kod sütunu sayılmamalı.
+  const s = efaturaCoz(
+    ornekMetin({
+      kalemler: [
+        ["1", "4000000000011", "FLEX2", "128GB SIYAH", "2,00", "1.000,00 TL", "%20", "200,00 TL", "2.000,00 TL"].join("\n"),
+      ],
+      notlar: [
+        'Not:\n1 Numaralı satırdaki; "4000000000011" kodlu ürün için seriler: 350000000000011; 350000000000029',
+      ],
+      araToplam: "2.000,00",
+    }),
+  );
+  assert.equal(s.kalemler[0].urunAdi, "FLEX2 128GB SIYAH");
+  assert.deepEqual(s.kalemler[0].urunKodlari, ["4000000000011"]);
+});
+
+test("rakamsız uzun kelime kod sanılmıyor", () => {
+  // "KULAKICI" uzun ve büyük harfli ama rakamı yok.
+  const s = efaturaCoz(
+    ornekMetin({
+      kalemler: [
+        ["1", "4000000000011", "KULAKICI SIYAH", "2,00", "1.000,00 TL", "%20", "200,00 TL", "2.000,00 TL"].join("\n"),
+      ],
+      notlar: [
+        'Not:\n1 Numaralı satırdaki; "4000000000011" kodlu ürün için seriler: 350000000000011; 350000000000029',
+      ],
+      araToplam: "2.000,00",
+    }),
+  );
+  assert.equal(s.kalemler[0].urunAdi, "KULAKICI SIYAH");
+});
