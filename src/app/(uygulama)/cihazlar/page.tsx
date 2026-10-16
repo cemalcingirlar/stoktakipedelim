@@ -56,8 +56,11 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
   ] = await Promise.all([
       prisma.kategori.findMany({ where: { aktif: true }, orderBy: { sira: "asc" } }),
       prisma.magaza.findMany({ where: { aktif: true }, orderBy: { kod: "asc" } }),
+      // Filtre çubuğu seçili kategorinin altlarını gösteriyor ama künye
+      // düzeltmede her kategorinin altları gerekiyor; hepsi çekilip ekranda
+      // ayrıştırılıyor.
       prisma.altKategori.findMany({
-        where: { aktif: true, ...(filtre.kategoriId ? { kategoriId: filtre.kategoriId } : {}) },
+        where: { aktif: true },
         orderBy: [{ kategoriId: "asc" }, { sira: "asc" }],
       }),
       prisma.stokKalemi.aggregate({ where, _sum: { alisFiyatiKurus: true } }),
@@ -91,6 +94,21 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
         orderBy: { adSoyad: "asc" },
       }),
     ]);
+
+  // Künye düzeltmede "bu barkodtaki hepsine uygulansın mı" diye sorabilmek
+  // için sayfadaki her barkodun kaç cihaz taşıdığı gerekiyor. Yalnız görünen
+  // barkodlar sorgulanıyor; tüm tabloyu saymanın anlamı yok.
+  const sayfaBarkodlari = [...new Set(satirlar.map((s) => s.barkod).filter(Boolean))] as string[];
+  const barkodGruplari = sayfaBarkodlari.length
+    ? await prisma.stokKalemi.groupBy({
+        by: ["barkod"],
+        where: { barkod: { in: sayfaBarkodlari } },
+        _count: { _all: true },
+      })
+    : [];
+  const barkodAdetleri = Object.fromEntries(
+    barkodGruplari.map((g) => [g.barkod ?? "", g._count._all]),
+  );
 
   const sutunlar = sutunlariSirala(sutunTercihiniCoz(kullanici?.sutunTercihi));
   const toplamSayfa = Math.max(1, Math.ceil(toplam / SAYFA_BOYUTU));
@@ -163,7 +181,10 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
         filtre={filtre}
         params={params}
         kategoriler={kategoriler}
-        altKategoriler={altKategoriler}
+        // Filtre çubuğu yalnız seçili kategorinin altlarını göstermeli.
+        altKategoriler={altKategoriler.filter(
+          (a) => !filtre.kategoriId || a.kategoriId === filtre.kategoriId,
+        )}
         magazalar={magazalar}
       />
 
@@ -208,6 +229,15 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
           }
           filtreDegerleri={filtreDegerleri}
           filtreSecenekleri={filtreSecenekleri}
+          kunyeDuzenlenebilir={stokEkleyebilirMi(oturum)}
+          kategoriler={kategoriler.map((k) => ({
+            id: k.id,
+            ad: k.ad,
+            altKategoriler: altKategoriler
+              .filter((a) => a.kategoriId === k.id)
+              .map((a) => ({ id: a.id, ad: a.ad })),
+          }))}
+          barkodAdetleri={barkodAdetleri}
         />
         <Sayfalama sayfa={filtre.sayfa} toplamSayfa={toplamSayfa} params={params} />
       </div>

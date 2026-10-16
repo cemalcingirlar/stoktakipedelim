@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DurumRozeti, Rozet } from "./Rozet";
+import { KunyeDuzenleyici, type KategoriSecenegi } from "./KunyeDuzenleyici";
 import { SutunFiltresi, type FiltreSecenekleri } from "./SutunFiltresi";
 import type { CihazSatiri } from "@/lib/cihazFiltre";
 import {
@@ -23,11 +24,40 @@ function Hucre({
   anahtar,
   satir,
   bugun,
+  duzenleme,
 }: {
   anahtar: SutunAnahtari;
   satir: CihazSatiri;
   bugun: Date;
+  /** Künye düzeltme açıksa gereken bilgiler; kapalıysa undefined. */
+  duzenleme?: { kategoriler: KategoriSecenegi[]; ayniBarkodAdedi: number };
 }) {
+  // Marka ve kategori hücreleri yerinde düzeltilebiliyor: yanlış kategori en
+  // sık buradan fark ediliyor, cihaz sayfasına gidip dönmek zaman kaybı.
+  if (duzenleme && (anahtar === "marka" || anahtar === "kategori" || anahtar === "altKategori")) {
+    const etiket =
+      anahtar === "marka"
+        ? satir.marka
+        : anahtar === "kategori"
+          ? satir.kategori.ad
+          : (satir.altKategori?.ad ?? "");
+    return (
+      <KunyeDuzenleyici
+        cihaz={{
+          id: satir.id,
+          marka: satir.marka,
+          model: satir.model,
+          barkod: satir.barkod,
+          kategoriId: satir.kategoriId,
+          altKategoriId: satir.altKategoriId,
+          ayniBarkodAdedi: duzenleme.ayniBarkodAdedi,
+        }}
+        kategoriler={duzenleme.kategoriler}
+        etiket={etiket}
+      />
+    );
+  }
+
   switch (anahtar) {
     case "model":
       return (
@@ -128,6 +158,9 @@ export function CihazTablosu({
   sorguUret,
   filtreDegerleri,
   filtreSecenekleri,
+  kunyeDuzenlenebilir = false,
+  kategoriler = [],
+  barkodAdetleri = {},
 }: {
   satirlar: CihazSatiri[];
   sutunlar: SutunAnahtari[];
@@ -138,6 +171,11 @@ export function CihazTablosu({
   /** Filtre kutularının mevcut değerleri (URL'den). */
   filtreDegerleri: Record<string, string>;
   filtreSecenekleri: FiltreSecenekleri;
+  /** Künye düzeltme yalnız yöneticide açık. */
+  kunyeDuzenlenebilir?: boolean;
+  kategoriler?: KategoriSecenegi[];
+  /** Barkod -> o barkodu taşıyan toplam cihaz sayısı. */
+  barkodAdetleri?: Record<string, number>;
 }) {
   // Sonuç boş olsa bile filtre satırı duruyor: kullanıcı daralttığı filtreyi
   // gevşetebilmeli, yoksa tek çıkış yolu geri tuşu olurdu.
@@ -188,7 +226,21 @@ export function CihazTablosu({
                     key={a}
                     className={`px-3 py-2.5 align-top ${SUTUNLAR[a].sagaYasli ? "text-right tabular-nums" : ""}`}
                   >
-                    <Hucre anahtar={a} satir={satir} bugun={bugun} />
+                    <Hucre
+                      anahtar={a}
+                      satir={satir}
+                      bugun={bugun}
+                      duzenleme={
+                        kunyeDuzenlenebilir
+                          ? {
+                              kategoriler,
+                              ayniBarkodAdedi: satir.barkod
+                                ? (barkodAdetleri[satir.barkod] ?? 1)
+                                : 1,
+                            }
+                          : undefined
+                      }
+                    />
                   </td>
                 ))}
               </tr>
