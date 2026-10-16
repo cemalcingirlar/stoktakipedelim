@@ -293,6 +293,90 @@ try {
     /2 Nolu Mağaza/.test(sevkUyarisi),
   );
 
+  // ------------- Ek yetkili atanmış hedef "kullanıcı yok" dememeli
+  // Kullanıcı bildirdi: Ayarlar → Mağazalar'dan yetkili atadığı depo, sevkiyat
+  // ekranında hâlâ "Bu mağazada kullanıcı yok" diyordu. Sayım yalnız ana
+  // mağazası orası olanlara bakıyor, ek yetkilileri görmüyordu.
+  //
+  // Tohum veride her mağazanın kendi personeli var, bu yüzden hata görünmez.
+  // Kullanıcısı olmayan yeni bir depo açıp sınıyoruz.
+  await giris("admin");
+  const yeniKod = `D${damga}`.slice(0, 10);
+  await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
+  await sayfa.fill("#yeniKod", yeniKod);
+  await sayfa.fill("#yeniAd", `Test Depo ${damga}`);
+  await sayfa.locator('form:has(#yeniKod) button[type="submit"]').click();
+  await sayfa.waitForTimeout(2000);
+
+  const depoKarti = () =>
+    sayfa
+      .locator("div.rounded-xl.border.bg-white")
+      .filter({ has: sayfa.locator(`input[name="kod"][value="${yeniKod}"]`) })
+      .first();
+  kontrol("kullanıcısız test deposu açıldı", (await depoKarti().count()) === 1, yeniKod);
+
+  // 1) Kendi yetkilisi yokken: engelleyici kırmızı uyarı DEĞİL, yöneticiyi
+  //    işaret eden uyarı çıkmalı — yönetici her mağazada kabul edebiliyor.
+  await sayfa.goto(`${hedef}/sevkiyat/yeni`, { waitUntil: "networkidle" });
+  await sayfa.selectOption("#kaynak", { label: "1 Nolu Mağaza" });
+  await sayfa.selectOption("#hedef", { label: `Test Depo ${damga}` });
+  await sayfa.waitForTimeout(600);
+  const bosUyari = ((await sayfa.locator('[data-test="hedef-uyarisi"]').textContent()) ?? "").trim();
+  kontrol(
+    "yetkilisiz depoda yöneticiye yönlendiren uyarı çıkıyor",
+    bosUyari.includes("yalnız yönetici kabul edebilir"),
+    bosUyari || "uyarı yok",
+  );
+  kontrol(
+    "yetkilisiz depo 'kabul edecek kimse olmaz' demiyor",
+    !bosUyari.includes("kabul edecek kimse olmaz"),
+    bosUyari || "uyarı yok",
+  );
+
+  // 2) Ek yetkili atandıktan sonra uyarı tamamen kalkmalı.
+  await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
+  const depoKutusu = depoKarti().locator(
+    'label:has-text("1 Nolu Mağaza Personeli") input[name="yetkililer"]',
+  );
+  kontrol("depoda yetki kutusu listeleniyor", (await depoKutusu.count()) === 1);
+  await depoKutusu.check();
+  await depoKarti().getByRole("button", { name: "Yetkileri Kaydet" }).click();
+  await sayfa.waitForTimeout(2000);
+
+  await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
+  kontrol(
+    "ayarlar ekranı yetkiliyi görüyor",
+    (await depoKarti().getByText("yetkili kullanıcı yok").count()) === 0,
+  );
+
+  await sayfa.goto(`${hedef}/sevkiyat/yeni`, { waitUntil: "networkidle" });
+  await sayfa.selectOption("#kaynak", { label: "1 Nolu Mağaza" });
+  await sayfa.selectOption("#hedef", { label: `Test Depo ${damga}` });
+  await sayfa.waitForTimeout(600);
+  const yetkiliSonrasi = await sayfa.locator('[data-test="hedef-uyarisi"]').count();
+  kontrol(
+    "ek yetkili atanınca sevkiyat ekranında uyarı kalmıyor",
+    yetkiliSonrasi === 0,
+    yetkiliSonrasi > 0
+      ? ((await sayfa.locator('[data-test="hedef-uyarisi"]').textContent()) ?? "").trim()
+      : "uyarı yok",
+  );
+
+  // 3) Sevkiyat gerçekten açılabiliyor mu?
+  await cihazlariGir([9]);
+  await sayfa.goto(`${hedef}/sevkiyat/yeni`, { waitUntil: "networkidle" });
+  await sayfa.selectOption("#kaynak", { label: "1 Nolu Mağaza" });
+  await sayfa.selectOption("#hedef", { label: `Test Depo ${damga}` });
+  await sayfa.waitForTimeout(400);
+  await okut(imei(9));
+  await sayfa.locator('button:has-text("Sevkiyatı Gönder")').click();
+  await sayfa.waitForTimeout(2500);
+  kontrol(
+    "yetkili atanmış depoya sevkiyat açılabiliyor",
+    /\/sevkiyat\/\d+$/.test(sayfa.url()),
+    sayfa.url(),
+  );
+
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
 } catch (hata) {
   kontrol("betik tamamlandı", false, String(hata).slice(0, 300));

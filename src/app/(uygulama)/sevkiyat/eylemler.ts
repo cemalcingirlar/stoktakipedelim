@@ -7,8 +7,14 @@ import { logYaz } from "@/lib/log";
 import { kodNormalize } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
 import {
+  kabulDurumu,
+  kabulUyarisi,
+  sevkiyatAcilabilirMi,
+} from "@/lib/sevkiyatKabul";
+import {
   HAREKET_TIP,
   LOG_ISLEM,
+  ROLLER,
   STOK_DURUM,
   TRANSFER_DURUM,
   TRANSFER_KALEM_DURUM,
@@ -142,15 +148,30 @@ export async function sevkiyatGonder(
       return { hata: "Hedef mağaza kaynak mağaza ile aynı olamaz." };
     }
 
-    const hedef = await prisma.magaza.findUnique({
-      where: { id: veri.hedefMagazaId },
-      select: { ad: true, aktif: true, _count: { select: { kullanicilar: true } } },
-    });
+    // Hedefte sevkiyatı kabul edebilecek biri var mı? Mağazanın kendi
+    // yetkilisi (ana mağaza ya da ek yetkili) yoksa yönetici kabul edebilir;
+    // sevkiyat yalnız gerçekten kimse kalmadığında engelleniyor.
+    const [hedef, yoneticiSayisi] = await Promise.all([
+      prisma.magaza.findUnique({
+        where: { id: veri.hedefMagazaId },
+        select: {
+          ad: true,
+          aktif: true,
+          kullanicilar: { where: { aktif: true }, select: { id: true } },
+          ekYetkililer: { where: { aktif: true }, select: { id: true } },
+        },
+      }),
+      prisma.kullanici.count({ where: { aktif: true, rol: ROLLER.ADMIN } }),
+    ]);
     if (!hedef || !hedef.aktif) return { hata: "Hedef mağaza bulunamadı veya pasif." };
-    if (hedef._count.kullanicilar === 0) {
-      return {
-        hata: `${hedef.ad} mağazasında kullanıcı yok; sevkiyatı kabul edecek kimse olmaz.`,
-      };
+
+    const hedefYetkiliSayisi = new Set([
+      ...hedef.kullanicilar.map((k) => k.id),
+      ...hedef.ekYetkililer.map((k) => k.id),
+    ]).size;
+    const durum = kabulDurumu(hedefYetkiliSayisi, yoneticiSayisi);
+    if (!sevkiyatAcilabilirMi(durum)) {
+      return { hata: kabulUyarisi(durum, hedef.ad) ?? "Sevkiyat açılamaz." };
     }
 
     const benzersizIdler = [...new Set(veri.cihazIdleri)];

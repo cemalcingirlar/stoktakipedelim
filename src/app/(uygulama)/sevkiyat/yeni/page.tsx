@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { ROLLER } from "@/lib/sabitler";
+import { kabulDurumu } from "@/lib/sevkiyatKabul";
 import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
 import { SevkiyatFormu } from "./SevkiyatFormu";
 
@@ -9,11 +11,20 @@ export default async function YeniSevkiyatSayfasi() {
   const oturum = await oturumGerekli();
   const yonetici = adminMi(oturum);
 
-  const magazalar = await prisma.magaza.findMany({
-    where: { aktif: true },
-    orderBy: { kod: "asc" },
-    include: { _count: { select: { kullanicilar: { where: { aktif: true } } } } },
-  });
+  // Bir mağazanın yetkilisi iki yoldan oluşuyor: ana mağazası orası olanlar ve
+  // ek yetkili atananlar. Yalnız ilkini saymak, Ayarlar ekranından yetki
+  // verilmiş mağazayı "kullanıcısı yok" gösteriyordu.
+  const [magazalar, yoneticiSayisi] = await Promise.all([
+    prisma.magaza.findMany({
+      where: { aktif: true },
+      orderBy: { kod: "asc" },
+      include: {
+        kullanicilar: { where: { aktif: true }, select: { id: true } },
+        ekYetkililer: { where: { aktif: true }, select: { id: true } },
+      },
+    }),
+    prisma.kullanici.count({ where: { aktif: true, rol: ROLLER.ADMIN } }),
+  ]);
 
   // Yönetici her mağazadan sevk edebilir; diğer roller yetkili oldukları mağazalardan.
   const yetkili = yetkiliMagazalar(oturum);
@@ -51,11 +62,18 @@ export default async function YeniSevkiyatSayfasi() {
 
       <SevkiyatFormu
         kaynakMagazalar={kaynakMagazalar}
-        hedefMagazalar={magazalar.map((m) => ({
-          id: m.id,
-          ad: m.ad,
-          kullaniciSayisi: m._count.kullanicilar,
-        }))}
+        hedefMagazalar={magazalar.map((m) => {
+          // Aynı kişi hem ana mağaza hem ek yetkili olabilir; tekilleştir.
+          const yetkiliSayisi = new Set([
+            ...m.kullanicilar.map((k) => k.id),
+            ...m.ekYetkililer.map((k) => k.id),
+          ]).size;
+          return {
+            id: m.id,
+            ad: m.ad,
+            kabulDurumu: kabulDurumu(yetkiliSayisi, yoneticiSayisi),
+          };
+        })}
         varsayilanKaynakId={oturum.magazaId}
         // Birden çok mağazada yetkili olan personel de kaynağını seçebilmeli.
         kaynakSecilebilir={kaynakMagazalar.length > 1}

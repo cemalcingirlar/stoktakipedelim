@@ -5,6 +5,7 @@ import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { OkutmaKutusu, type OkutmaGeriBildirimi } from "@/bilesenler/OkutmaKutusu";
 import { kurusuTLYazSembollu } from "@/lib/para";
+import { kabulUyarisi, type KabulDurumu } from "@/lib/sevkiyatKabul";
 import { sevkiyatCihaziOkut, sevkiyatGonder, type SevkiyatDurumu } from "../eylemler";
 
 type Cihaz = {
@@ -24,7 +25,7 @@ export function SevkiyatFormu({
   kaynakSecilebilir,
 }: {
   kaynakMagazalar: { id: number; ad: string }[];
-  hedefMagazalar: { id: number; ad: string; kullaniciSayisi: number }[];
+  hedefMagazalar: { id: number; ad: string; kabulDurumu: KabulDurumu }[];
   varsayilanKaynakId: number | null;
   kaynakSecilebilir: boolean;
 }) {
@@ -58,6 +59,9 @@ export function SevkiyatFormu({
 
   const toplamKurus = cihazlar.reduce((t, c) => t + c.alisFiyatiKurus, 0);
   const secilenHedef = hedefMagazalar.find((m) => String(m.id) === hedefId);
+  const hedefUyarisi = secilenHedef
+    ? kabulUyarisi(secilenHedef.kabulDurumu, secilenHedef.ad)
+    : null;
 
   function veriyiHazirla(): FormData {
     const yuk = {
@@ -131,9 +135,18 @@ export function SevkiyatFormu({
                   </option>
                 ))}
             </select>
-            {secilenHedef && secilenHedef.kullaniciSayisi === 0 ? (
-              <p className="mt-1 text-xs font-medium text-red-600">
-                Bu mağazada kullanıcı yok; sevkiyatı kabul edecek kimse olmaz.
+            {/* Kendi yetkilisi olmayan mağaza engel değil: yönetici kabul
+                edebiliyor. Kırmızı hata yalnız gerçekten kimse kalmadığında. */}
+            {hedefUyarisi ? (
+              <p
+                data-test="hedef-uyarisi"
+                className={`mt-1 text-xs font-medium ${
+                  secilenHedef?.kabulDurumu === "KIMSE_YOK"
+                    ? "text-red-600"
+                    : "text-amber-700"
+                }`}
+              >
+                {hedefUyarisi}
               </p>
             ) : null}
           </div>
