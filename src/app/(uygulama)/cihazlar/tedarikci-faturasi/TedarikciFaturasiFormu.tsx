@@ -11,7 +11,12 @@ import {
   duzenlenmisSeri,
   duzenlenmisUrun,
   seriAnahtari,
+  urunKartiDurumu,
+  yeniKartSayisi,
+  yeniKartUyarisi,
+  type KayitliUrunKarti,
   type SeriUstYazim,
+  type UrunKartiDurumu,
   type UrunUstYazim,
 } from "@/lib/faturaDuzenleme";
 import {
@@ -102,6 +107,21 @@ export function TedarikciFaturasiFormu({
     [barkodlar, gecmisHarita],
   );
 
+  // Kayıtlı barkodda mevcut ürün kartı kullanılıyor; kayıtsızda kaydedince
+  // yeni kart açılacak. Kullanıcı bunu kaydetmeden önce görmeli.
+  const kartHaritasi = useMemo(() => {
+    const harita = new Map<string, KayitliUrunKarti>();
+    for (const g of onizleme.gecmis ?? []) {
+      harita.set(g.barkod, { marka: g.marka, model: g.model });
+    }
+    return harita;
+  }, [onizleme.gecmis]);
+
+  const yeniKart = useMemo(
+    () => yeniKartSayisi(barkodlar, kartHaritasi),
+    [barkodlar, kartHaritasi],
+  );
+
   /** Bir barkodun yürürlükteki kategori seçimi. Kurallar: src/lib/kategoriSecim.ts */
   function secimiOku(barkod: string): Secim {
     return urunSecimi(barkod, {
@@ -142,9 +162,15 @@ export function TedarikciFaturasiFormu({
     if (kayit.faturaId) yonlendirici.push(`/faturalar/${kayit.faturaId}`);
   }, [kayit.faturaId, yonlendirici]);
 
+  /** Barkod sistemde kayıtlıysa o ürünün mevcut kartı; değilse undefined. */
+  function kartiOku(barkod: string): KayitliUrunKarti | undefined {
+    const g = gecmisHarita.get(barkod);
+    return g ? { marka: g.marka, model: g.model } : undefined;
+  }
+
   /** Bir ürünün düzeltmeler uygulanmış hali. */
   function urunuOku(grup: TedarikciUrunGrubu) {
-    return duzenlenmisUrun(grup, urunUstYazim[grup.barkod]);
+    return duzenlenmisUrun(grup, urunUstYazim[grup.barkod], kartiOku(grup.barkod));
   }
 
   /** Bir cihazın düzeltmeler uygulanmış seri numarası ve çıkarılma durumu. */
@@ -440,11 +466,21 @@ export function TedarikciFaturasiFormu({
               </div>
             </div>
 
+            {yeniKartUyarisi(yeniKart) ? (
+              <p
+                data-test="yeni-kart-uyarisi"
+                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+              >
+                {yeniKartUyarisi(yeniKart)}
+              </p>
+            ) : null}
+
             <div className="space-y-2">
               {fatura.gruplar.map((grup) => (
                 <UrunSatiri
                   key={grup.barkod}
                   grup={grup}
+                  kartDurumu={urunKartiDurumu(kartiOku(grup.barkod))}
                   kategoriler={kategoriler}
                   varsayilanKategoriId={varsayilanKategoriId}
                   secim={secimiOku(grup.barkod)}
@@ -615,8 +651,11 @@ function UrunSatiri({
   seriyiOku,
   seriDegistir,
   kayitliSeriNolar,
+  kartDurumu,
 }: {
   grup: TedarikciUrunGrubu;
+  /** Barkod sistemde kayıtlı mı, yoksa yeni kart mı açılacak? */
+  kartDurumu: UrunKartiDurumu;
   kategoriler: KategoriSecimi[];
   varsayilanKategoriId: number;
   secim: { kat: string; alt: string };
@@ -661,6 +700,23 @@ function UrunSatiri({
         <span className="text-slate-500">
           {alinacak.length} adet × {kurusuTLYaz(alanlar.alisFiyatiKurus)} TL
         </span>
+        {/* Barkod kayıtlıysa mevcut ürün kartı kullanılıyor; değilse
+            kaydedince yeni kart açılacak. */}
+        {kartDurumu === "YENI" ? (
+          <span
+            data-test="kart-yeni"
+            className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+          >
+            yeni ürün kartı
+          </span>
+        ) : (
+          <span
+            data-test="kart-kayitli"
+            className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800"
+          >
+            kayıtlı ürün
+          </span>
+        )}
         {degistirilmis ? (
           <span className="rounded bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">
             elle düzeltildi

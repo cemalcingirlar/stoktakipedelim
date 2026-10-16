@@ -8,6 +8,9 @@ import {
   seriAnahtari,
   varsayilanUrun,
   type OkunanUrun,
+  urunKartiDurumu,
+  yeniKartSayisi,
+  yeniKartUyarisi,
 } from "./faturaDuzenleme";
 
 const URUN: OkunanUrun = {
@@ -175,4 +178,86 @@ test("seri numarası olmayan cihazlar tekrar sayılmaz", () => {
 test("tüm cihazlar çıkarılırsa uyarı verilir", () => {
   const sorunlar = duzenlemeSorunlari(SAGLAM, []);
   assert.ok(sorunlar.some((s) => /cihaz kalmadı/.test(s)), sorunlar.join(" | "));
+});
+
+// ------------------------------------------------- kayıtlı / yeni ürün kartı
+
+const ORNEK_URUN: OkunanUrun = {
+  barkod: "4000000000011",
+  urunAdi: "SAMSUNG GALAXY S26 FE 8/256GB PISTAC DM",
+  marka: "SAMSUNG",
+  alisFiyatiKurus: 2000000,
+};
+
+test("kayıt yoksa durum YENI", () => {
+  assert.equal(urunKartiDurumu(undefined), "YENI");
+});
+
+test("kayıt varsa durum KAYITLI", () => {
+  assert.equal(urunKartiDurumu({ marka: "SAMSUNG", model: "GALAXY S26 FE" }), "KAYITLI");
+});
+
+test("yeni barkodda marka ve model faturadan türetiliyor", () => {
+  const u = varsayilanUrun(ORNEK_URUN);
+  assert.equal(u.marka, "SAMSUNG");
+  assert.equal(u.model, "GALAXY S26 FE 8/256GB PISTAC DM");
+});
+
+test("kayıtlı barkodda marka ve model mevcut karttan geliyor", () => {
+  // Aynı ürün her faturada farklı yazılabiliyor; stokta tek isimle dursun.
+  const u = varsayilanUrun(ORNEK_URUN, { marka: "Samsung", model: "Galaxy S26 FE 8/256" });
+  assert.equal(u.marka, "Samsung");
+  assert.equal(u.model, "Galaxy S26 FE 8/256");
+});
+
+test("kayıtlı kartta barkod ve fiyat yine faturadan geliyor", () => {
+  // Fiyat her faturada değişir; kart yalnız isimlendirmeyi sabitliyor.
+  const u = varsayilanUrun(ORNEK_URUN, { marka: "Samsung", model: "Galaxy S26 FE" });
+  assert.equal(u.barkod, "4000000000011");
+  assert.equal(u.alisFiyatiKurus, 2000000);
+});
+
+test("boş alanlı kayıt faturaya düşüyor", () => {
+  const u = varsayilanUrun(ORNEK_URUN, { marka: "   ", model: "" });
+  assert.equal(u.marka, "SAMSUNG");
+  assert.equal(u.model, "GALAXY S26 FE 8/256GB PISTAC DM");
+});
+
+test("kullanıcının düzeltmesi kayıtlı kartı da geçiyor", () => {
+  const u = duzenlenmisUrun(
+    ORNEK_URUN,
+    { model: "ELLE YAZILAN" },
+    { marka: "Samsung", model: "Galaxy S26 FE" },
+  );
+  assert.equal(u.model, "ELLE YAZILAN", "düzeltme her şeyin üstünde");
+  assert.equal(u.marka, "Samsung", "dokunulmayan alan karttan");
+});
+
+// ------------------------------------------------------- yeni kart sayımı
+
+test("hepsi kayıtlıysa yeni kart yok", () => {
+  const kayitli = new Map([
+    ["A", { marka: "X", model: "1" }],
+    ["B", { marka: "X", model: "2" }],
+  ]);
+  assert.equal(yeniKartSayisi(["A", "B"], kayitli), 0);
+});
+
+test("kayıtsız barkodlar sayılıyor", () => {
+  const kayitli = new Map([["A", { marka: "X", model: "1" }]]);
+  assert.equal(yeniKartSayisi(["A", "B", "C"], kayitli), 2);
+});
+
+test("aynı barkod iki kez geçerse tek sayılıyor", () => {
+  assert.equal(yeniKartSayisi(["B", "B"], new Map()), 1);
+});
+
+test("boş faturada yeni kart yok", () => {
+  assert.equal(yeniKartSayisi([], new Map()), 0);
+});
+
+test("uyarı yalnız yeni kart varken çıkıyor", () => {
+  assert.equal(yeniKartUyarisi(0), null);
+  assert.match(yeniKartUyarisi(2) ?? "", /2 ürünün barkodu sistemde kayıtlı değil/);
+  assert.match(yeniKartUyarisi(1) ?? "", /düzeltebilirsiniz/);
 });

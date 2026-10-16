@@ -18,11 +18,19 @@ import { faturaSemasi } from "../../faturalar/dogrulama";
 
 const EN_BUYUK_DOSYA = 5 * 1024 * 1024;
 
-/** Barkoddan daha önce girilmiş ürünün kategori bilgisi. */
+/**
+ * Barkoddan daha önce girilmiş ürünün bilgileri.
+ *
+ * Kategori her faturada yeniden seçilmesin diye; marka/model ise aynı cihaz
+ * stokta iki ayrı isimle birikmesin diye taşınıyor. Bu kaydın bulunmaması
+ * barkodun yeni olduğu, kaydedince yeni ürün kartı açılacağı anlamına geliyor.
+ */
 export type BarkodGecmisi = {
   barkod: string;
   kategoriId: number;
   altKategoriId: number | null;
+  marka: string;
+  model: string;
 };
 
 export type OnizlemeDurumu = {
@@ -86,10 +94,18 @@ export async function tedarikciDosyasiniOnizle(
       const son = await prisma.stokKalemi.findFirst({
         where: { barkod },
         orderBy: [{ girisTarihi: "desc" }, { id: "desc" }],
-        select: { kategoriId: true, altKategoriId: true },
+        // Marka ve model de alınıyor: barkod kayıtlıysa ürün adı faturadan
+        // yeniden türetilmesin, aynı cihaz stokta tek isimle dursun.
+        select: { kategoriId: true, altKategoriId: true, marka: true, model: true },
       });
       if (son) {
-        gecmis.push({ barkod, kategoriId: son.kategoriId, altKategoriId: son.altKategoriId });
+        gecmis.push({
+          barkod,
+          kategoriId: son.kategoriId,
+          altKategoriId: son.altKategoriId,
+          marka: son.marka,
+          model: son.model,
+        });
       }
     }
 

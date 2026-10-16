@@ -16,6 +16,8 @@ const SIFRE = "Stok2026!";
 
 const damga = Date.now().toString().slice(-8);
 const imei = (i) => `88${damga}${String(i).padStart(5, "0")}`.slice(0, 15);
+const KART_MARKASI = "Beta Mobile";
+const KART_MODELI = "Fon 70 Pro Kart";
 const FATURA_NO = `DG${damga}`;
 
 const tarayici = await chromium.launch(
@@ -111,12 +113,39 @@ try {
   const pdfYolu = join(klasor, "efatura.pdf");
   await writeFile(pdfYolu, pdfUret(satirlar));
 
+  // ---------------- 3b) Yeni barkodlar için "yeni ürün kartı" uyarısı
+  // Kullanıcı istedi: barkod kayıtlıysa aynı karttan devam, değilse yeni kart
+  // açılacağı söylensin ve yine düzeltilebilsin.
+
   // ------------------------------------------------ 4) önizleme
   await sayfa.setInputFiles("#dosya", pdfYolu);
   await sayfa.click('button:has-text("Dosyayı Oku")');
   await sayfa.waitForSelector(`text=${FATURA_NO}`, { timeout: 30000 });
 
   const onizleme = (await sayfa.locator("main").textContent()) ?? "";
+
+  // Bu fatura ilk kez yükleniyor: tüm barkodlar yeni olmalı.
+  const yeniRozet = await sayfa.locator('[data-test="kart-yeni"]').count();
+  const kayitliRozet = await sayfa.locator('[data-test="kart-kayitli"]').count();
+  kontrol(
+    "ilk yüklemede tüm ürünler yeni kart olarak işaretli",
+    yeniRozet === 2 && kayitliRozet === 0,
+    `yeni=${yeniRozet} kayıtlı=${kayitliRozet}`,
+  );
+  const kartUyarisi =
+    (await sayfa.locator('[data-test="yeni-kart-uyarisi"]').count()) > 0
+      ? ((await sayfa.locator('[data-test="yeni-kart-uyarisi"]').textContent()) ?? "").trim()
+      : "";
+  kontrol(
+    "yeni kart uyarısı sayıyı söylüyor",
+    kartUyarisi.includes("2 ürünün barkodu sistemde kayıtlı değil"),
+    kartUyarisi || "uyarı yok",
+  );
+  kontrol(
+    "uyarı düzeltilebileceğini söylüyor",
+    kartUyarisi.includes("düzeltebilirsiniz"),
+    kartUyarisi || "uyarı yok",
+  );
   kontrol("fatura numarası PDF'ten okundu", onizleme.includes(FATURA_NO), FATURA_NO);
   kontrol(
     "5 cihaz bulundu",
@@ -289,6 +318,15 @@ try {
   await ilkUrun.locator('[data-test="duzelt-marka"]').fill("Alfa Mobile");
   await sayfa.waitForTimeout(300);
 
+  // İkinci ürünün yalnız adını değiştir, barkodunu bırak: ikinci yüklemede bu
+  // barkod kayıtlı çıkacak ve marka/model faturadan değil karttan gelmeli.
+  const ikinciUrun = sayfa.locator('[data-test="urun-satiri"]').nth(1);
+  await ikinciUrun.locator('button:has-text("Bilgileri düzelt")').click();
+  await sayfa.waitForTimeout(200);
+  await ikinciUrun.locator('[data-test="duzelt-marka"]').fill(KART_MARKASI);
+  await ikinciUrun.locator('[data-test="duzelt-model"]').fill(KART_MODELI);
+  await sayfa.waitForTimeout(300);
+
   // Vade tarihi faturadan gelmeli: "Özel tarih" hazır seçili ve alan dolu.
   const vadeSecimi = await sayfa.locator("#vadeGun").inputValue();
   kontrol("vade seçimi 'özel tarih' olarak geldi", vadeSecimi === "ozel", vadeSecimi);
@@ -319,7 +357,8 @@ try {
   // ------------------------------------------------ 6) cihazlar doğru mu
   await sayfa.goto(`${hedef}/cihazlar?ara=${imei(3)}`, { waitUntil: "networkidle" });
   const cihaz = (await sayfa.locator("main").textContent()) ?? "";
-  kontrol("seri numarası ile cihaz bulunuyor", cihaz.includes("BETA"), imei(3));
+  // Marka, kaydetmeden önce elle KART_MARKASI yapılmıştı; cihaz o adla durmalı.
+  kontrol("seri numarası ile cihaz bulunuyor", cihaz.includes(KART_MARKASI), imei(3));
 
   // Elle düzeltilen ürün, düzeltilmiş haliyle kaydedilmiş olmalı.
   await sayfa.goto(`${hedef}/cihazlar?ara=${duzeltilmisSeri}`, { waitUntil: "networkidle" });
@@ -345,6 +384,45 @@ try {
     "tekrar yüklemede kayıtlı seri numaraları uyarılıyor",
     /zaten kayıtlı|sistemde/i.test(ikinci),
     "",
+  );
+
+  // 2. ürünün barkodu değişmedi, o yüzden artık kayıtlı. 1. ürünün barkodu
+  // elle 9990000000011 yapılmıştı, faturadaki 4000000000011 hâlâ kayıtsız.
+  const ikinciYeni = await sayfa.locator('[data-test="kart-yeni"]').count();
+  const ikinciKayitli = await sayfa.locator('[data-test="kart-kayitli"]').count();
+  kontrol(
+    "ikinci yüklemede kayıtlı ve yeni ürünler ayrışıyor",
+    ikinciKayitli === 1 && ikinciYeni === 1,
+    `yeni=${ikinciYeni} kayıtlı=${ikinciKayitli}`,
+  );
+
+  const ikinciUyari =
+    (await sayfa.locator('[data-test="yeni-kart-uyarisi"]').count()) > 0
+      ? ((await sayfa.locator('[data-test="yeni-kart-uyarisi"]').textContent()) ?? "").trim()
+      : "";
+  kontrol(
+    "uyarı yalnız kalan yeni ürünü sayıyor",
+    ikinciUyari.includes("1 ürünün barkodu sistemde kayıtlı değil"),
+    ikinciUyari || "uyarı yok",
+  );
+
+  // Asıl kontrol: kayıtlı barkodda marka/model faturadan DEĞİL karttan
+  // gelmeli. Fatura metni değişmedi ama kart "Beta Mobile / Fon 70 Pro Kart"
+  // olarak kaydedilmişti; ekranda o yazmazsa aynı cihaz stokta iki ayrı
+  // isimle birikir.
+  const kayitliSatir = sayfa
+    .locator('[data-test="urun-satiri"]')
+    .filter({ has: sayfa.locator('[data-test="kart-kayitli"]') })
+    .first();
+  const kayitliBaslik = ((await kayitliSatir.textContent()) ?? "").replace(/\s+/g, " ");
+  kontrol(
+    "kayıtlı barkodun marka/modeli karttan geliyor",
+    kayitliBaslik.includes(`${KART_MARKASI} ${KART_MODELI}`),
+    `"${KART_MARKASI} ${KART_MODELI}" bekleniyor · ${kayitliBaslik.slice(0, 110)}`,
+  );
+  kontrol(
+    "kayıtlı üründe de düzeltme düğmesi duruyor",
+    (await kayitliSatir.locator('button:has-text("Bilgileri düzelt")').count()) === 1,
   );
 
   // ------------------------------------------------ 8) bozuk fatura reddediliyor
