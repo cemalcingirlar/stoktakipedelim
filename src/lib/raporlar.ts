@@ -3,7 +3,7 @@ import {
   aktarimSatislariniTopla,
   dokumleriBirlestir,
 } from "./aktarimSatisi";
-import { gorunurMagazalar, magazaKosulu, transferKosulu } from "./gorunurluk";
+import { gorebilirMi, gorunurMagazalar, magazaKosulu, transferKosulu } from "./gorunurluk";
 import { prisma } from "./prisma";
 import { SAYIM_DURUM, STOK_DURUM, TRANSFER_DURUM } from "./sabitler";
 import {
@@ -251,16 +251,21 @@ export async function kullaniciSatisRaporu(aralik: RaporAraligi, gorunur: number
 
   const kullanicilar = await prisma.kullanici.findMany({
     where: { id: { in: birlesik.map((b) => b.anahtar) } },
-    select: { id: true, adSoyad: true, magaza: { select: { ad: true } } },
+    select: { id: true, adSoyad: true, magazaId: true, magaza: { select: { ad: true } } },
   });
   const harita = new Map(kullanicilar.map((k) => [k.id, k]));
 
   return birlesik
     .map((b) => {
       const k = harita.get(b.anahtar);
+      // Satırdaki mağaza, satıcının kendi ana mağazası. Ek yetkiyle başka
+      // mağazada satış yapmış biri listeye girdiğinde bu, kullanıcının
+      // göremediği bir mağazanın adı olabiliyordu; görünmüyorsa yazılmıyor.
+      const magazaGorunur =
+        k?.magazaId !== null && k?.magazaId !== undefined && gorebilirMi(gorunur, k.magazaId);
       return {
         adSoyad: k?.adSoyad ?? "Bilinmiyor",
-        magaza: k?.magaza?.ad ?? "—",
+        magaza: magazaGorunur ? (k?.magaza?.ad ?? "—") : "—",
         adet: b.satir.adet,
         satisKurus: b.satir.satisKurus,
         karKurus: b.satir.karKurus,
