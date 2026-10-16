@@ -126,8 +126,18 @@ function tutarParcasi(parca: string): number | null {
   return tlyiKurusaCevir(temiz);
 }
 const ADET_KALIBI = /^\d{1,6},\d{2}$/;
-/** EAN / barkod: ilk kod sütunu her zaman bu biçimde. */
+/** Yalnız rakamdan oluşan kod (klasik EAN). */
 const KOD_KALIBI = /^\d{8,14}$/;
+
+/**
+ * İlk kod sütunu (EAN / barkod).
+ *
+ * Her zaman salt rakam değil: bazı tedarikçiler demo cihazları "...132D" gibi
+ * sonuna harf ekleyerek ayırıyor. Satırın başlangıcı bu kalıpla tanındığı için
+ * salt rakam beklemek faturanın tamamını okunamaz yapıyordu ("Faturada ürün
+ * satırı bulunamadı").
+ */
+const EAN_KALIBI = /^\d{8,14}[A-ZÇĞİÖŞÜ]{0,4}$/;
 
 /**
  * Satıcı / alıcı ürün kodu sütunu — EAN'den sonra gelen 1-2 sütun.
@@ -140,9 +150,46 @@ const KOD_KALIBI = /^\d{8,14}$/;
  */
 const URUN_KODU_KALIBI = /^(?=.*\d)(?=.*[A-ZÇĞİÖŞÜ])[A-ZÇĞİÖŞÜ0-9][A-ZÇĞİÖŞÜ0-9/\-_.]*[/\-_][A-ZÇĞİÖŞÜ0-9/\-_.]*$/;
 
-/** EAN'den sonraki bir parça kod sütunu mu? */
+/**
+ * EAN'den sonraki bir parça kod sütunu mu?
+ *
+ * EAN kalıbı da kabul ediliyor: bazı faturalarda üç kod sütununun üçü de aynı
+ * EAN'i taşıyor. Yalnız rakamlı kalıba bakmak, sonu harfli EAN'lerde (…132D)
+ * tekrarları kod saymayıp ürün adının başına yapıştırıyordu.
+ */
 function ekKodMu(parca: string): boolean {
-  return KOD_KALIBI.test(parca) || URUN_KODU_KALIBI.test(parca);
+  return EAN_KALIBI.test(parca) || KOD_KALIBI.test(parca) || URUN_KODU_KALIBI.test(parca);
+}
+
+/**
+ * Bölünmüş kod parçası: "SM-" gibi ayraçla biten kısa bir baş.
+ *
+ * Uzun model kodları PDF'te iki parçaya bölünüyor ("SM-" + "S741BLGGTUR_DM").
+ * Bunlar birleştirilmezse kod sütunu tanınmıyor ve parçalar ürün adının başına
+ * yapışıyor: "SM- S741BLGGTUR_DM SM- S741BLGGTUR_DM SAMSUNG GALAXY ...".
+ */
+const KOD_BASI_KALIBI = /^[A-ZÇĞİÖŞÜ0-9]{1,8}[-_]$/;
+
+/**
+ * `j` konumundan bir kod sütunu okur; bölünmüşse iki parçayı birleştirir.
+ * Kod yoksa null döner.
+ */
+function kodSutunuOku(
+  parcalar: string[],
+  j: number,
+): { kod: string; sonraki: number } | null {
+  const parca = parcalar[j];
+  if (parca === undefined) return null;
+
+  if (KOD_BASI_KALIBI.test(parca)) {
+    const devam = parcalar[j + 1];
+    if (devam !== undefined && ekKodMu(`${parca}${devam}`)) {
+      return { kod: `${parca}${devam}`, sonraki: j + 2 };
+    }
+    return null;
+  }
+
+  return ekKodMu(parca) ? { kod: parca, sonraki: j + 1 } : null;
 }
 
 /**
@@ -237,7 +284,7 @@ function kalemleriOku(parcalar: string[]): { kalemler: Omit<EFaturaKalemi, "seri
 
   while (i < parcalar.length) {
     // Satır başlangıcı: beklenen sıra numarası + hemen ardından bir ürün kodu.
-    if (parcalar[i] !== String(beklenenSira) || !KOD_KALIBI.test(parcalar[i + 1] ?? "")) {
+    if (parcalar[i] !== String(beklenenSira) || !EAN_KALIBI.test(parcalar[i + 1] ?? "")) {
       i += 1;
       continue;
     }
@@ -250,9 +297,11 @@ function kalemleriOku(parcalar: string[]): { kalemler: Omit<EFaturaKalemi, "seri
     // EAN; sonraki en çok iki sütun model kodu da olabiliyor.
     const kodlar: string[] = [parcalar[j]];
     j += 1;
-    while (j < parcalar.length && kodlar.length < 3 && ekKodMu(parcalar[j])) {
-      kodlar.push(parcalar[j]);
-      j += 1;
+    while (j < parcalar.length && kodlar.length < 3) {
+      const sutun = kodSutunuOku(parcalar, j);
+      if (!sutun) break;
+      kodlar.push(sutun.kod);
+      j = sutun.sonraki;
     }
 
     // Açıklama: adet parçasına kadar olan her şey.

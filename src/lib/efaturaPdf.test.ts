@@ -454,3 +454,77 @@ test("satırın kodu okunamadıysa teyit aranmıyor", () => {
   assert.equal(kodTeyitEdildi("GAMA11TU/A", []), true);
   assert.equal(kodTeyitEdildi("", ["GAMA11TU/A"]), true);
 });
+
+// ------------------ demo cihazlı fatura: harfle biten EAN, bölünmüş kod
+
+/**
+ * Gerçek bir faturada iki ayrı düzen sorunu çıktı ve "Faturada ürün satırı
+ * bulunamadı" hatasıyla fatura hiç okunamadı:
+ *
+ *   - EAN sonunda harf vardı ("...132D"); demo cihazlar böyle işaretleniyor.
+ *     Satır başlangıcı salt rakamlı kod beklediği için hiçbir satır tanınmadı.
+ *   - Satıcı/alıcı ürün kodu PDF'te iki parçaya bölünüyordu ("SM-" +
+ *     "S741BLGGTUR_DM"); birleştirilmeyince ürün adının başına yapışıyordu.
+ *
+ * Ayrıca ilk satırda üç kod sütununun üçü de aynı EAN'i taşıyordu.
+ */
+function demoKodluMetin(): string {
+  return ornekMetin({
+    kalemler: [
+      // Üç kod sütunu da aynı, sonu harfli EAN.
+      ["1", "4000000000011D", "4000000000011D", "4000000000011D", "ALFA FON A7 PRO 4/128GB", "SIYAH DM", "1,00", "6.000,00 TL", "%20", "1.200,00 TL", "6.000,00 TL"].join("\n"),
+      // Satıcı ve alıcı ürün kodu ikiye bölünmüş.
+      ["2", "4000000000028D", "SM-", "S741BLGGTUR_DM", "SM-", "S741BLGGTUR_DM", "BETA FON S26 FE", "8/256GB PISTAC DM", "1,00", "20.000,00", "TL", "%20", "4.000,00", "TL", "20.000,00 TL"].join("\n"),
+    ],
+    notlar: [
+      'Not:\n1 Numaralı satırdaki; "4000000000011D" kodlu ürün için seriler: 359900000000017',
+      '2 Numaralı satırdaki; "SM-S741BLGGTUR_DM" kodlu ürün için seriler: 359900000000025',
+    ],
+    araToplam: "26.000,00",
+  });
+}
+
+test("sonu harfli EAN'li fatura okunuyor", () => {
+  const s = efaturaCoz(demoKodluMetin());
+  assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+  assert.equal(s.kalemler.length, 2, "iki kalem bulunmalı");
+});
+
+test("sonu harfli EAN barkod olarak alınıyor", () => {
+  const s = efaturaCoz(demoKodluMetin());
+  assert.equal(s.kalemler[0].barkod, "4000000000011D");
+  assert.equal(s.kalemler[1].barkod, "4000000000028D");
+});
+
+test("tekrarlanan EAN sütunları ürün adına karışmıyor", () => {
+  const s = efaturaCoz(demoKodluMetin());
+  assert.equal(s.kalemler[0].urunAdi, "ALFA FON A7 PRO 4/128GB SIYAH DM");
+  assert.deepEqual(s.kalemler[0].urunKodlari, [
+    "4000000000011D",
+    "4000000000011D",
+    "4000000000011D",
+  ]);
+});
+
+test("ikiye bölünmüş ürün kodu birleştiriliyor", () => {
+  const s = efaturaCoz(demoKodluMetin());
+  assert.equal(s.kalemler[1].urunAdi, "BETA FON S26 FE 8/256GB PISTAC DM");
+  assert.deepEqual(s.kalemler[1].urunKodlari, [
+    "4000000000028D",
+    "SM-S741BLGGTUR_DM",
+    "SM-S741BLGGTUR_DM",
+  ]);
+});
+
+test("bölünmüş kodla yazılan seri notu da eşleşiyor", () => {
+  const s = efaturaCoz(demoKodluMetin());
+  assert.deepEqual(s.uyarilar, [], s.uyarilar.join(" | "));
+  assert.deepEqual(s.kalemler[1].seriNolar, ["359900000000025"]);
+});
+
+test("demo faturasının tutarları doğru okunuyor", () => {
+  const s = efaturaCoz(demoKodluMetin());
+  assert.equal(s.kalemler[0].tutarKurus, 600000);
+  assert.equal(s.kalemler[1].tutarKurus, 2000000);
+  assert.equal(s.araToplamKurus, 2600000);
+});
