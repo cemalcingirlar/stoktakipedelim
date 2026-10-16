@@ -14,6 +14,7 @@ import {
   filtreyiSorguyaCevir,
 } from "@/lib/cihazFiltre";
 import { siralamaOrderBy } from "@/lib/cihazSiralama";
+import { gorunurMagazaIdleri, magazaKosulu } from "@/lib/gorunurluk";
 import { kodNormalize } from "@/lib/metin";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
@@ -27,20 +28,27 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
   const params = await searchParams;
   const filtre = filtreyiCoz(params);
   const bugun = new Date();
+  // Kullanıcı yalnız yetkili olduğu mağazaların cihazlarını görür; yönetici
+  // için kısıt yok. Bu sayfadaki her sorgu aynı kısıttan geçmek zorunda —
+  // listeyi kısıtlayıp özetleri kısıtlamamak, görünmeyen stoku toplamda
+  // sızdırırdı.
+  const gorunur = gorunurMagazaIdleri(oturum);
 
   // Arama kutusuna tam bir seri no / barkod girildiyse doğrudan cihaz detayına git.
   if (filtre.ara) {
     const kod = kodNormalize(filtre.ara);
     if (kod.length >= 6) {
       const tamEslesme = await prisma.stokKalemi.findFirst({
-        where: { OR: [{ seriNo: kod }, { barkod: kod }] },
+        // Görünmeyen mağazadaki cihaza atlamak, detay sayfası onu 404'leyecek
+        // olsa bile "bu kod sistemde var" bilgisini sızdırırdı.
+        where: { OR: [{ seriNo: kod }, { barkod: kod }], ...magazaKosulu(gorunur) },
         select: { id: true },
       });
       if (tamEslesme) redirect(`/cihazlar/${tamEslesme.id}`);
     }
   }
 
-  const where = filtredenWhere(filtre, bugun);
+  const where = filtredenWhere(filtre, gorunur, bugun);
 
   const [
     kategoriler,
@@ -55,7 +63,15 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
     saticilar,
   ] = await Promise.all([
       prisma.kategori.findMany({ where: { aktif: true }, orderBy: { sira: "asc" } }),
-      prisma.magaza.findMany({ where: { aktif: true }, orderBy: { kod: "asc" } }),
+      prisma.magaza.findMany({
+        where: {
+          aktif: true,
+          // Filtre çubuğundaki mağaza seçenekleri de kısıtlı: seçilemeyen bir
+          // mağazayı listelemenin anlamı yok.
+          ...(gorunur === null ? {} : { id: { in: gorunur } }),
+        },
+        orderBy: { kod: "asc" },
+      }),
       // Filtre çubuğu seçili kategorinin altlarını gösteriyor ama künye
       // düzeltmede her kategorinin altları gerekiyor; hepsi çekilip ekranda
       // ayrıştırılıyor.
@@ -79,6 +95,7 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
       // Marka listesi filtre açılırından geliyor; stokta hangi markalar varsa
       // yalnız onlar gösteriliyor, boş seçenek bırakmanın anlamı yok.
       prisma.stokKalemi.findMany({
+        where: magazaKosulu(gorunur),
         distinct: ["marka"],
         select: { marka: true },
         orderBy: { marka: "asc" },
@@ -102,7 +119,7 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
   const barkodGruplari = sayfaBarkodlari.length
     ? await prisma.stokKalemi.groupBy({
         by: ["barkod"],
-        where: { barkod: { in: sayfaBarkodlari } },
+        where: { barkod: { in: sayfaBarkodlari }, ...magazaKosulu(gorunur) },
         _count: { _all: true },
       })
     : [];

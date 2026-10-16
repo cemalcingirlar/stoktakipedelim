@@ -31,6 +31,7 @@ function Cipler({
         {secenekler.map((s) => (
           <Link
             key={s.deger || "tumu"}
+            data-test={`cip-${parametre}`}
             href={`/cihazlar${filtreyiSorguyaCevir(params, { [parametre]: s.deger || null, sayfa: null })}`}
             className={`${CIP_TEMEL} ${aktifDeger === s.deger ? CIP_AKTIF : CIP_PASIF}`}
           >

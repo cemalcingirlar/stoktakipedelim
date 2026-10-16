@@ -1,4 +1,5 @@
 import { excelBasliklari, excelUret, kurusuExcelSayisi, type ExcelSayfasi } from "@/lib/excel";
+import { gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { logYaz } from "@/lib/log";
 import { oturumuTazeOku } from "@/lib/oturumTaze";
 import {
@@ -27,6 +28,10 @@ export async function GET(istek: Request) {
   const oturum = await oturumuTazeOku();
   if (!oturum) return new Response("Oturum gerekli.", { status: 401 });
 
+  // Dosya ekrandakinin aynısı olmalı: aynı mağaza kısıtı burada da geçerli,
+  // yoksa Excel ekranda görünmeyen mağazaları sızdırırdı.
+  const gorunur = gorunurMagazaIdleri(oturum);
+
   const url = new URL(istek.url);
   const aralik: RaporAraligi = {
     baslangic: tarihCoz(url.searchParams.get("bas")),
@@ -36,14 +41,14 @@ export async function GET(istek: Request) {
 
   const [stok, kategori, vade, girisCikis, magazaSatis, kullaniciSatis, transfer, sayim] =
     await Promise.all([
-      magazaStokRaporu(),
-      kategoriStokRaporu(),
-      vadeRaporu(bugun),
-      girisCikisRaporu(aralik),
-      magazaSatisRaporu(aralik),
-      kullaniciSatisRaporu(aralik),
-      transferRaporu(aralik),
-      sayimRaporu(),
+      magazaStokRaporu(gorunur),
+      kategoriStokRaporu(gorunur),
+      vadeRaporu(gorunur, bugun),
+      girisCikisRaporu(aralik, gorunur),
+      magazaSatisRaporu(aralik, gorunur),
+      kullaniciSatisRaporu(aralik, gorunur),
+      transferRaporu(aralik, gorunur),
+      sayimRaporu(gorunur),
     ]);
 
   const aralikMetni =

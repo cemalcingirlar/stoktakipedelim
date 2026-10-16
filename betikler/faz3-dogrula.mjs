@@ -83,10 +83,15 @@ await sayfa.goto(`${hedef}/cihazlar?durum=TRANSFERDE`, { waitUntil: "networkidle
 console.log("3) transferdeki cihaz sayısı:", await sayfa.locator("tbody tr").count(), "(beklenen 3) ✓");
 
 // ------------------------------------------- 2) Yanlış mağaza kabul edemez
+// Mağaza bazlı görünürlükten sonra ilgisiz mağaza bu sevkiyatı hiç görmüyor:
+// eskiden sayfayı açıp "yalnızca ... kabul edebilir" uyarısını alıyordu, artık
+// sayfa 404. Kabul edemediğinin daha güçlü kanıtı bu.
 await giris("sorumlu3");
-await sayfa.goto(sevkUrl, { waitUntil: "networkidle" });
-const uyari = await sayfa.locator("text=yalnızca").first().textContent().catch(() => null);
-console.log("4) 3 Nolu Mağaza kabul edemez:", uyari?.replace(/\s+/g, " ").trim() ?? "✗ uyarı yok");
+const ilgisizYanit = await sayfa.goto(sevkUrl, { waitUntil: "networkidle" });
+console.log(
+  "4) 3 Nolu Mağaza sevkiyatı hiç göremiyor:",
+  ilgisizYanit?.status() === 404 ? "✓ 404" : `✗ HTTP ${ilgisizYanit?.status()}`,
+);
 console.log("   okutma kutusu var mı:", (await sayfa.locator("#okutmaKutusu").count()) === 0 ? "✓ yok" : "✗ var");
 
 // ------------------------------------------------- 3) Kısmi kabul
@@ -113,7 +118,10 @@ const redBildirimi = sayfa.locator("text=Kısmi kabul:").first();
 await redBildirimi.waitFor({ timeout: 15000 });
 console.log("7) red:", (await redBildirimi.textContent())?.replace(/\s+/g, " ").trim(), "✓");
 
-// Dağılımı doğrula: 1 cihaz 2 Nolu'da, 2 cihaz 1 Nolu'da, hiçbiri transferde değil
+// Dağılımı doğrula: 1 cihaz 2 Nolu'da, 2 cihaz 1 Nolu'da, hiçbiri transferde değil.
+// Reddedilenler 1 Nolu'ya döndüğü için sorumlu2 onları artık göremiyor; dağılımı
+// her mağazayı gören yönetici sayıyor.
+await giris("admin");
 await sayfa.goto(`${hedef}/cihazlar?durum=TRANSFERDE`, { waitUntil: "networkidle" });
 console.log("8) transferde kalan:", await sayfa.locator("tbody tr").count(), "(beklenen 0) ✓");
 for (const kod of imei) {

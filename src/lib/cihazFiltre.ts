@@ -1,6 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { siralamaCoz, type Siralama } from "./cihazSiralama";
+import { magazaKosulu } from "./gorunurluk";
 import { aramaNormalize, kodNormalize } from "./metin";
 import { tlyiKurusaCevir } from "./para";
 import { gunSonu } from "./tarih";
@@ -142,12 +143,22 @@ export function etkinSutunFiltresiSayisi(filtre: CihazFiltresi): number {
   return degerler.filter((d) => d !== null && d !== "").length;
 }
 
-/** Filtreyi Prisma `where` koşuluna dönüştürür. */
+/**
+ * Filtreyi Prisma `where` koşuluna dönüştürür.
+ *
+ * `gorunur` zorunlu ve ikinci sırada: cihaz listesi, Excel aktarımı ve özet
+ * rakamların hepsi buradan geçiyor, dolayısıyla mağaza kısıtını atlayan bir
+ * çağrı derlenmemeli. Kısıt diğer filtrelerle VE'leniyor; kullanıcı URL'ye
+ * elle `?magaza=` yazsa bile göremediği mağaza boş liste döner.
+ */
 export function filtredenWhere(
   filtre: CihazFiltresi,
+  gorunur: number[] | null,
   bugun: Date = new Date(),
 ): Prisma.StokKalemiWhereInput {
   const kosullar: Prisma.StokKalemiWhereInput[] = [];
+
+  if (gorunur !== null) kosullar.push(magazaKosulu(gorunur));
 
   if (filtre.durum) kosullar.push({ durum: filtre.durum });
   if (filtre.magazaId) kosullar.push({ magazaId: filtre.magazaId });

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Kart } from "@/bilesenler/Kart";
 import { TransferRozeti } from "@/bilesenler/TransferRozeti";
+import { gorunurMagazaIdleri, transferKosulu } from "@/lib/gorunurluk";
 import { prisma } from "@/lib/prisma";
 import { TRANSFER_DURUM, TRANSFER_KALEM_DURUM } from "@/lib/sabitler";
 import { tarihSaatYaz } from "@/lib/tarih";
@@ -13,7 +14,11 @@ export default async function SevkiyatlarSayfasi() {
   const yonetici = adminMi(oturum);
   const yetkili = yetkiliMagazalar(oturum);
 
+  // Kullanıcı yalnız kendi mağazalarına giren ya da onlardan çıkan
+  // sevkiyatları görür; iki taraftan biri yetmezdi, çünkü hem gönderdiğini
+  // hem kendisine geleni takip etmesi gerekiyor.
   const transferler = await prisma.transfer.findMany({
+    where: transferKosulu(gorunurMagazaIdleri(oturum)),
     orderBy: [{ gonderimTarihi: "desc" }, { id: "desc" }],
     take: 100,
     include: {

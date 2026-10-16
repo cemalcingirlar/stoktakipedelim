@@ -5,6 +5,7 @@ import {
   filtreyiCoz,
 } from "@/lib/cihazFiltre";
 import { excelBasliklari, excelUret, kurusuExcelSayisi } from "@/lib/excel";
+import { gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { oturumuTazeOku } from "@/lib/oturumTaze";
 import { prisma } from "@/lib/prisma";
 import { LOG_ISLEM } from "@/lib/sabitler";
@@ -29,7 +30,8 @@ export async function GET(istek: Request) {
   const params = Object.fromEntries(url.searchParams.entries());
   const filtre = filtreyiCoz(params);
   const bugun = new Date();
-  const where = filtredenWhere(filtre, bugun);
+  // Dosya ekrandaki listenin aynısı: aynı mağaza kısıtı burada da geçerli.
+  const where = filtredenWhere(filtre, gorunurMagazaIdleri(oturum), bugun);
 
   const [kullanici, satirlar] = await Promise.all([
     prisma.kullanici.findUnique({

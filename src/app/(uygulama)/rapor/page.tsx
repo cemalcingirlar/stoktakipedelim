@@ -17,6 +17,7 @@ import {
 } from "@/lib/raporlar";
 import { vadeEtiketi } from "@/lib/vade";
 import { inputTarih, tarihYaz } from "@/lib/tarih";
+import { gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { oturumGerekli } from "@/lib/yetki";
 
 export const metadata = { title: "Raporlar — Stok Takip" };
@@ -71,7 +72,10 @@ function Tablo({
 }
 
 export default async function RaporSayfasi({ searchParams }: PageProps<"/rapor">) {
-  await oturumGerekli();
+  const oturum = await oturumGerekli();
+  // Raporların tamamı kullanıcının görebildiği mağazalarla sınırlı; yönetici
+  // için kısıt yok.
+  const gorunur = gorunurMagazaIdleri(oturum);
   const params = await searchParams;
 
   const aralik: RaporAraligi = {
@@ -82,14 +86,14 @@ export default async function RaporSayfasi({ searchParams }: PageProps<"/rapor">
 
   const [stok, kategori, vade, girisCikis, magazaSatis, kullaniciSatis, transfer, sayim] =
     await Promise.all([
-      magazaStokRaporu(),
-      kategoriStokRaporu(),
-      vadeRaporu(bugun),
-      girisCikisRaporu(aralik),
-      magazaSatisRaporu(aralik),
-      kullaniciSatisRaporu(aralik),
-      transferRaporu(aralik),
-      sayimRaporu(),
+      magazaStokRaporu(gorunur),
+      kategoriStokRaporu(gorunur),
+      vadeRaporu(gorunur, bugun),
+      girisCikisRaporu(aralik, gorunur),
+      magazaSatisRaporu(aralik, gorunur),
+      kullaniciSatisRaporu(aralik, gorunur),
+      transferRaporu(aralik, gorunur),
+      sayimRaporu(gorunur),
     ]);
 
   const toplamAdet = stok.reduce((t, s) => t + s.adet, 0);

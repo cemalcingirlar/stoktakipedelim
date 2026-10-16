@@ -13,6 +13,7 @@ import {
   type HareketTip,
   type OdemeTipi,
 } from "@/lib/sabitler";
+import { gorebilirMi, gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { beklemeGunu, karKurus } from "@/lib/sutunlar";
 import { tarihSaatYaz, tarihYaz } from "@/lib/tarih";
 import { vadeDurumu, vadeEtiketi } from "@/lib/vade";
@@ -64,6 +65,10 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
   ]);
 
   if (!cihaz) notFound();
+  // Göremediği mağazanın cihazına kimliğiyle doğrudan girilmesin. "Yetkiniz
+  // yok" demek yerine 404: var olduğunu bile söylememek doğru, çünkü sıralı
+  // kimliklerle rakip mağazanın stoğu taranabilir.
+  if (!gorebilirMi(gorunurMagazaIdleri(oturum), cihaz.magazaId)) notFound();
 
   // Satış düzeltme formu yalnız yöneticide; listeleri de yalnız o zaman çek.
   const yonetici = adminMi(oturum);
