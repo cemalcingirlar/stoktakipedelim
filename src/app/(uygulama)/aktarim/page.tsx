@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Kart } from "@/bilesenler/Kart";
 import { aktarimaUygunKaynaklar } from "@/lib/dukkan";
 import { prisma } from "@/lib/prisma";
-import { adminMi, oturumGerekli } from "@/lib/yetki";
+import { saticiAdaylari, type SaticiAdayi } from "@/lib/satici";
+import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
 import { AktarimFormu } from "./AktarimFormu";
 
 export const metadata = { title: "Mağaza İçi Aktarım — Stok Takip" };
@@ -17,6 +18,35 @@ export default async function AktarimSayfasi() {
   });
 
   const uygun = aktarimaUygunKaynaklar(oturum, magazalar);
+
+  // Sat-geri al işleminde satışı fiilen yapan kişi seçilebiliyor; personel
+  // bazlı satış raporu doğru çıksın. Satış ekranıyla aynı kurallar.
+  const kullanicilar = await prisma.kullanici.findMany({
+    where: { aktif: true },
+    orderBy: { adSoyad: "asc" },
+    select: {
+      id: true,
+      adSoyad: true,
+      rol: true,
+      aktif: true,
+      magazaId: true,
+      ekMagazalar: { select: { id: true } },
+    },
+  });
+
+  const saticilar = saticiAdaylari(
+    { kullaniciId: oturum.kullaniciId, rol: oturum.rol, magazaIdleri: yetkiliMagazalar(oturum) },
+    kullanicilar.map((k) => ({
+      id: k.id,
+      adSoyad: k.adSoyad,
+      rol: k.rol as SaticiAdayi["rol"],
+      aktif: k.aktif,
+      magazaIdleri: [
+        ...(k.magazaId === null ? [] : [k.magazaId]),
+        ...k.ekMagazalar.map((m) => m.id),
+      ],
+    })),
+  );
 
   return (
     <div className="space-y-5">
@@ -58,7 +88,8 @@ export default async function AktarimSayfasi() {
         <AktarimFormu
           magazalar={uygun}
           varsayilanKaynakId={oturum.magazaId}
-          yonetici={adminMi(oturum)}
+          saticilar={saticilar.map((s) => ({ id: s.id, adSoyad: s.adSoyad }))}
+          varsayilanSaticiId={oturum.kullaniciId}
         />
       )}
     </div>

@@ -1,6 +1,8 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
-import { aramaNormalize } from "./metin";
+import { siralamaCoz, type Siralama } from "./cihazSiralama";
+import { aramaNormalize, kodNormalize } from "./metin";
+import { tlyiKurusaCevir } from "./para";
 import { gunSonu } from "./tarih";
 
 export type CihazFiltresi = {
@@ -14,8 +16,45 @@ export type CihazFiltresi = {
   alisBit: Date | null;
   satisBas: Date | null;
   satisBit: Date | null;
+
+  // ----------------------------------------------- sütun bazlı filtreler
+  // Excel'in sütun filtresi gibi: her sütun kendi başına daraltılabiliyor.
+  // Metin alanları "içerir" araması yapıyor; SQLite'ın LIKE'ı ASCII için
+  // büyük/küçük harf duyarsız, bu yüzden "iphone" da "iPhone"u buluyor.
+  marka: string;
+  model: string;
+  seriNo: string;
+  barkod: string;
+  tedarikciId: number | null;
+  satanKullaniciId: number | null;
+  musteri: string;
+  not: string;
+  /** Alış fiyatı aralığı (kuruş). */
+  alisMin: number | null;
+  alisMax: number | null;
+  /** Satış fiyatı aralığı (kuruş). */
+  satisMin: number | null;
+  satisMax: number | null;
+
+  siralama: Siralama;
   sayfa: number;
 };
+
+/** Sütun filtrelerinin URL parametre adları — temizleme ve sayım için. */
+export const SUTUN_FILTRE_PARAMETRELERI = [
+  "marka",
+  "model",
+  "seriNo",
+  "barkod",
+  "tedarikci",
+  "satan",
+  "musteri",
+  "not",
+  "alisMin",
+  "alisMax",
+  "satisMin",
+  "satisMax",
+] as const;
 
 export const SAYFA_BOYUTU = 50;
 
@@ -33,6 +72,13 @@ function tarihVeyaNull(deger: unknown): Date | null {
 
 function metin(deger: unknown): string {
   return typeof deger === "string" ? deger.trim() : "";
+}
+
+/** "12.500,00" ya da "12500" → kuruş. Boşsa null. */
+function tutarVeyaNull(deger: unknown): number | null {
+  const ham = metin(deger);
+  if (!ham) return null;
+  return tlyiKurusaCevir(ham);
 }
 
 /** URL arama parametrelerini tiplenmiş filtreye çevirir. */
@@ -58,8 +104,42 @@ export function filtreyiCoz(params: Record<string, string | string[] | undefined
     alisBit: tarihVeyaNull(tek("alisBit")),
     satisBas: tarihVeyaNull(tek("satisBas")),
     satisBit: tarihVeyaNull(tek("satisBit")),
+
+    marka: metin(tek("marka")),
+    model: metin(tek("model")),
+    seriNo: metin(tek("seriNo")),
+    barkod: metin(tek("barkod")),
+    tedarikciId: sayiVeyaNull(tek("tedarikci")),
+    satanKullaniciId: sayiVeyaNull(tek("satan")),
+    musteri: metin(tek("musteri")),
+    not: metin(tek("not")),
+    alisMin: tutarVeyaNull(tek("alisMin")),
+    alisMax: tutarVeyaNull(tek("alisMax")),
+    satisMin: tutarVeyaNull(tek("satisMin")),
+    satisMax: tutarVeyaNull(tek("satisMax")),
+
+    siralama: siralamaCoz(tek("sirala"), tek("yon")),
     sayfa: Math.max(1, sayiVeyaNull(tek("sayfa")) ?? 1),
   };
+}
+
+/** Kaç sütun filtresi etkin? Ekranda "temizle" düğmesi için. */
+export function etkinSutunFiltresiSayisi(filtre: CihazFiltresi): number {
+  const degerler = [
+    filtre.marka,
+    filtre.model,
+    filtre.seriNo,
+    filtre.barkod,
+    filtre.musteri,
+    filtre.not,
+    filtre.tedarikciId,
+    filtre.satanKullaniciId,
+    filtre.alisMin,
+    filtre.alisMax,
+    filtre.satisMin,
+    filtre.satisMax,
+  ];
+  return degerler.filter((d) => d !== null && d !== "").length;
 }
 
 /** Filtreyi Prisma `where` koşuluna dönüştürür. */
@@ -78,6 +158,26 @@ export function filtredenWhere(
   if (filtre.alisBit) kosullar.push({ girisTarihi: { lte: gunSonu(filtre.alisBit) } });
   if (filtre.satisBas) kosullar.push({ satisTarihi: { gte: filtre.satisBas } });
   if (filtre.satisBit) kosullar.push({ satisTarihi: { lte: gunSonu(filtre.satisBit) } });
+
+  // Marka tam eşleşme: değer listeden seçiliyor, "içerir" araması burada
+  // yanıltıcı olurdu (ör. "Samsung" seçildiğinde başka marka gelmemeli).
+  if (filtre.marka) kosullar.push({ marka: filtre.marka });
+  if (filtre.model) kosullar.push({ model: { contains: filtre.model } });
+  if (filtre.seriNo) kosullar.push({ seriNo: { contains: kodNormalize(filtre.seriNo) } });
+  if (filtre.barkod) kosullar.push({ barkod: { contains: kodNormalize(filtre.barkod) } });
+  if (filtre.tedarikciId) kosullar.push({ tedarikciId: filtre.tedarikciId });
+  if (filtre.satanKullaniciId) {
+    kosullar.push({ satanKullaniciId: filtre.satanKullaniciId });
+  }
+  if (filtre.musteri) {
+    kosullar.push({ musteri: { is: { adSoyad: { contains: filtre.musteri } } } });
+  }
+  if (filtre.not) kosullar.push({ not: { contains: filtre.not } });
+
+  if (filtre.alisMin !== null) kosullar.push({ alisFiyatiKurus: { gte: filtre.alisMin } });
+  if (filtre.alisMax !== null) kosullar.push({ alisFiyatiKurus: { lte: filtre.alisMax } });
+  if (filtre.satisMin !== null) kosullar.push({ satisFiyatiKurus: { gte: filtre.satisMin } });
+  if (filtre.satisMax !== null) kosullar.push({ satisFiyatiKurus: { lte: filtre.satisMax } });
 
   if (filtre.ara) {
     // Arama normalleştirilmiş metin üzerinde yapılır (Türkçe karakter duyarsız).

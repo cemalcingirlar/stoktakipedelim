@@ -5,6 +5,7 @@ import {
   efaturaMi,
   efaturaTarihiCoz,
   efaturadanTedarikciFaturasi,
+  kodTeyitEdildi,
   seriNolariTopla,
 } from "./efaturaPdf";
 
@@ -257,7 +258,11 @@ test("aynı seri numarası iki kalemde geçerse hata verir", () => {
   );
 });
 
-test("seri notu başka ürüne aitse hata verir", () => {
+test("seri notundaki kod tutmuyorsa uyarı verir, fatura reddedilmez", () => {
+  // Eskiden bu bir hataydı ve faturayı tümden reddediyordu. Gerçek bir
+  // Datagate faturasında not kısmı EAN yerine satıcı ürün kodunu yazınca
+  // fatura yüklenemedi. Seriler kalemle sıra numarasından eşleşiyor; koddaki
+  // fark yalnızca dikkat çekilecek bir durum.
   const metin = ornekMetin({
     notlar: [
       'Not:\n1 Numaralı satırdaki; "9999999999999/1000001" kodlu ürün için seriler: 350000000000011; 350000000000029',
@@ -265,10 +270,44 @@ test("seri notu başka ürüne aitse hata verir", () => {
     ],
   });
   const s = efaturaCoz(metin);
+  assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
   assert.ok(
-    s.hatalar.some((h) => /başka ürüne ait/.test(h)),
-    s.hatalar.join(" | "),
+    s.uyarilar.some((u) => /eşleşmiyor/.test(u)),
+    s.uyarilar.join(" | "),
   );
+  // Seriler yine sıra numarasına göre bağlanmış olmalı.
+  assert.deepEqual(s.kalemler[0].seriNolar, ["350000000000011", "350000000000029"]);
+});
+
+test("model kodlu sütunlar ürün adına karışmıyor", () => {
+  // KOD_KALIBI yalnız rakam kabul ederken "MYE73TU/A" ürün adının başına
+  // yapışıyordu: "MYE73TU/A MYE73TU/A iPhone 16 128GB Black".
+  const s = efaturaCoz(modelKoduNotluMetin());
+  assert.equal(s.kalemler[0].urunAdi, "iPhone 16 128GB Black");
+  assert.equal(s.kalemler[1].urunAdi, "iPhone 18 Pro Max 256GB Glacier");
+});
+
+test("model kodu satırın kodları arasında tutuluyor", () => {
+  const s = efaturaCoz(modelKoduNotluMetin());
+  assert.deepEqual(s.kalemler[0].urunKodlari, ["195949821943", "MYE73TU/A", "MYE73TU/A"]);
+  assert.equal(s.kalemler[0].barkod, "195949821943", "barkod yine EAN olmalı");
+});
+
+test("açıklama parçası kod sanılmıyor", () => {
+  // "128GB" rakam ve harf taşıyor ama ayracı yok; kod sütunu sayılmamalı.
+  const s = efaturaCoz(
+    ornekMetin({
+      kalemler: [
+        ["1", "4000000000011", "128GB", "SIYAH", "2,00", "1.000,00 TL", "%20", "200,00 TL", "2.000,00 TL"].join("\n"),
+      ],
+      notlar: [
+        'Not:\n1 Numaralı satırdaki; "4000000000011/1000001" kodlu ürün için seriler: 350000000000011; 350000000000029',
+      ],
+      araToplam: "2.000,00",
+    }),
+  );
+  assert.equal(s.kalemler[0].urunAdi, "128GB SIYAH");
+  assert.deepEqual(s.kalemler[0].urunKodlari, ["4000000000011"]);
 });
 
 test("seri numarası olmayan kalem uyarı üretir, hata değil", () => {
@@ -340,4 +379,78 @@ test("tanınmayan PDF de okuma başarısız sayılır", () => {
   const sonuc = efaturadanTedarikciFaturasi(efaturaCoz("Kira sözleşmesi"));
   assert.equal(sonuc.basliklarTamam, false);
   assert.equal(sonuc.faturalar.length, 0);
+});
+
+// ------------------------------- notta satıcı ürün kodu yazan fatura
+
+/**
+ * Gerçek bir Datagate faturasında not kısmı EAN yerine satıcı ürün kodunu
+ * yazmıştı ("MYE73TU/A/1411633"), program da kalemi reddetmişti. Seriler
+ * kalemle sıra numarasından eşleşiyor; koddaki fark hatayı değil uyarıyı
+ * gerektiriyor.
+ */
+function modelKoduNotluMetin(): string {
+  return ornekMetin({
+    kalemler: [
+      ["1", "195949821943", "MYE73TU/A", "MYE73TU/A", "iPhone 16 128GB Black", "1,00", "69.030,00 TL", "%20", "13.806,00 TL", "69.030,00 TL"].join("\n"),
+      ["2", "195951411491", "MJXR4TU/A", "MJXR4TU/A", "iPhone 18 Pro Max 256GB Glacier", "1,00", "119.782,50", "TL", "%20", "23.956,50", "TL", "119.782,50 TL"].join("\n"),
+    ],
+    notlar: [
+      'Not:\n1 Numaralı satırdaki; "MYE73TU/A/1411633" kodlu ürün için seriler: 356773813343722',
+      '2 Numaralı satırdaki; "MJXR4TU/A/1435773" kodlu ürün için seriler: 357565519134958',
+    ],
+    araToplam: "188.812,50",
+  });
+}
+
+test("notta satıcı ürün kodu yazsa bile fatura okunuyor", () => {
+  const s = efaturaCoz(modelKoduNotluMetin());
+  assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+  assert.equal(s.kalemler.length, 2);
+});
+
+test("seriler sıra numarasına göre doğru kaleme bağlanıyor", () => {
+  const s = efaturaCoz(modelKoduNotluMetin());
+  assert.deepEqual(s.kalemler[0].seriNolar, ["356773813343722"]);
+  assert.deepEqual(s.kalemler[1].seriNolar, ["357565519134958"]);
+});
+
+test("satıcı ürün kodlu notta uyarı da çıkmıyor", () => {
+  // Kod satırın kodlarından biriyle (satıcı ürün kodu) başlıyor: teyit tamam.
+  const s = efaturaCoz(modelKoduNotluMetin());
+  assert.deepEqual(s.uyarilar, [], s.uyarilar.join(" | "));
+});
+
+test("EAN yazan not da çalışmaya devam ediyor", () => {
+  const s = efaturaCoz(ornekMetin());
+  assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+  assert.deepEqual(s.uyarilar, [], s.uyarilar.join(" | "));
+});
+
+test("hiçbir kodla tutmayan not uyarı veriyor ama faturayı reddetmiyor", () => {
+  const s = efaturaCoz(
+    ornekMetin({
+      notlar: [
+        'Not:\n1 Numaralı satırdaki; "BASKA-URUN-KODU" kodlu ürün için seriler: 350000000000011; 350000000000029',
+        '2 Numaralı satırdaki; "4000000000028/1000002" kodlu ürün için seriler: 350000000000037; 350000000000045;',
+        "350000000000052",
+      ],
+    }),
+  );
+  assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+  assert.equal(s.uyarilar.length, 1, s.uyarilar.join(" | "));
+  assert.match(s.uyarilar[0], /sıra numarasına göre eşleştirildi/);
+  // Seriler yine de sıra numarasına göre bağlanmış olmalı.
+  assert.deepEqual(s.kalemler[0].seriNolar, ["350000000000011", "350000000000029"]);
+});
+
+test("kod teyidi her iki yönde de önek kabul ediyor", () => {
+  assert.equal(kodTeyitEdildi("MYE73TU/A/1411633", ["195949821943", "MYE73TU/A"]), true);
+  assert.equal(kodTeyitEdildi("MYE73TU", ["MYE73TU/A"]), true, "notta kısa kod");
+  assert.equal(kodTeyitEdildi("BASKA", ["MYE73TU/A"]), false);
+});
+
+test("satırın kodu okunamadıysa teyit aranmıyor", () => {
+  assert.equal(kodTeyitEdildi("MYE73TU/A", []), true);
+  assert.equal(kodTeyitEdildi("", ["MYE73TU/A"]), true);
 });

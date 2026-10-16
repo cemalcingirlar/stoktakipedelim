@@ -94,7 +94,11 @@ try {
         seriler: [imei(1), imei(2)],
       },
       {
+        // Satıcı ürün kodlu kalem: not kısmı EAN yerine model kodunu yazıyor,
+        // tıpkı gerçek Apple faturalarındaki gibi. Program kalemi sıra
+        // numarasından eşleştirmeli; eskiden bu faturayı reddediyordu.
         kod: "4000000000028",
+        modelKodu: "MYE73TU/A",
         ad: "BETA FON 70 PRO 5G 8/128GB",
         adet: 3,
         birim: "20.000,00",

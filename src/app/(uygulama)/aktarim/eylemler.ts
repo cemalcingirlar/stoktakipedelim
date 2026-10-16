@@ -1,18 +1,20 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import {
+  EN_YUKSEK_TUTAR_KURUS,
+  aktarimSatisAciklamasi,
+  aktarimSatisSorunu,
+} from "@/lib/aktarimSatisi";
 import { dukkanIciAktarabilirMi } from "@/lib/dukkan";
 import { logYaz } from "@/lib/log";
 import { aramaMetniUret, kodNormalize } from "@/lib/metin";
 import { kurusuTLYaz } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
-import { HAREKET_TIP, LOG_ISLEM, STOK_DURUM } from "@/lib/sabitler";
-import {
-  YetkiHatasi,
-  adminZorunlu,
-  magazaIslemiZorunlu,
-  oturumZorunlu,
-} from "@/lib/yetki";
+import { saticiSorunu, type SaticiAdayi } from "@/lib/satici";
+import { HAREKET_TIP, LOG_ISLEM, ODEME_TIPI, STOK_DURUM } from "@/lib/sabitler";
+import { YetkiHatasi, magazaIslemiZorunlu, oturumZorunlu } from "@/lib/yetki";
 
 export type AktarilanCihaz = {
   id: number;
@@ -180,8 +182,9 @@ export type FiyatDuzeltmeSonucu =
  * Aktarılan cihazın alış fiyatını ve notunu düzeltir.
  *
  * Bazı ürünlerin fiyatı nakit depoya girerken revize oluyor; aktarımla birlikte
- * tek ekranda düzeltilebilsin diye burada. Alış fiyatı kâr hesabının temeli
- * olduğu için yalnız yöneticide — satış düzeltmesiyle aynı kural.
+ * tek ekranda düzeltilebilsin diye burada. Aktarımı fiilen yapan mağaza
+ * personeli fiyatı da kendi giriyor, bu yüzden yetki mağaza bazlı: kişi
+ * cihazın bulunduğu mağazada işlem yapabiliyorsa düzeltebiliyor.
  *
  * Eski ve yeni fiyat tarihçeye DUZELTME hareketi olarak yazılıyor; sonradan
  * neyin ne zaman değiştiği okunabiliyor.
@@ -192,7 +195,7 @@ export async function aktarilanCihaziDuzelt(
   not: string,
 ): Promise<FiyatDuzeltmeSonucu> {
   try {
-    const oturum = await adminZorunlu();
+    const oturum = await oturumZorunlu();
 
     if (!Number.isInteger(cihazId) || cihazId <= 0) {
       return { durum: "HATA", mesaj: "Cihaz bulunamadı." };
@@ -293,5 +296,263 @@ export async function aktarilanCihaziDuzelt(
     if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
     console.error("Aktarılan cihaz düzeltilemedi:", hata);
     return { durum: "HATA", mesaj: "Düzeltme kaydedilemedi. Tekrar deneyin." };
+  }
+}
+
+
+// ------------------------------------------- Müşteriye satıp geri alma
+
+export type AktarimSatisKaydi = {
+  cihazId: number;
+  /**
+   * Satışın yapıldığı mağaza: aktarımın kaynağı.
+   *
+   * Cihaz okutulduğu anda hedefe taşınıyor, ama satış kaynakta (ör. kasada)
+   * yapılıyor; geri alınan mal depoya giriyor. Cihazın o anki mağazası
+   * kullanılırsa satış depoya yazılır ve mağaza bazlı rapor yanlış çıkar.
+   */
+  kaynakMagazaId: number;
+  satisFiyatiKurus: number;
+  yeniAlisFiyatiKurus: number;
+  odemeTipi: string;
+  satanKullaniciId: number | null;
+  musteriId: number | null;
+  musteriAdSoyad: string | null;
+  musteriTelefon: string | null;
+  not: string | null;
+};
+
+export type AktarimSatisSonucu =
+  | {
+      durum: "TAMAM";
+      mesaj: string;
+      /** Satış sonrası cihazın yeni maliyeti — ekranda satır bununla güncelleniyor. */
+      alisFiyatiKurus: number;
+      musteriAdi: string;
+    }
+  | { durum: "HATA"; mesaj: string };
+
+const aktarimSatisSemasi = z
+  .object({
+    cihazId: z.number().int().positive(),
+    kaynakMagazaId: z.number().int().positive(),
+    satisFiyatiKurus: z.number().int().min(0).max(EN_YUKSEK_TUTAR_KURUS),
+    yeniAlisFiyatiKurus: z.number().int().min(0).max(EN_YUKSEK_TUTAR_KURUS),
+    odemeTipi: z.enum(Object.values(ODEME_TIPI) as [string, ...string[]], "Ödeme tipi seçin."),
+    satanKullaniciId: z.number().int().positive().nullable(),
+    musteriId: z.number().int().positive().nullable(),
+    musteriAdSoyad: z.string().trim().max(80).nullable(),
+    musteriTelefon: z.string().trim().max(30).nullable(),
+    not: z.string().trim().max(300).nullable(),
+  })
+  .refine((v) => v.musteriId !== null || (v.musteriAdSoyad ?? "").length > 0, {
+    message: "Müşteri seçin veya ad soyad girin.",
+    path: ["musteriAdSoyad"],
+  });
+
+/**
+ * Mağaza içi aktarımda cihazı müşteriye satıp geri alır.
+ *
+ * Cihaz stokta kalıyor, satış ayrı bir AktarimSatisi kaydına yazılıyor —
+ * gerekçesi src/lib/aktarimSatisi.ts başında. Satışın kârı o andaki alış
+ * fiyatına göre; geri alış fiyatı cihazın yeni maliyeti oluyor.
+ *
+ * Tüm kullanıcılarda açık: işi fiilen yapan mağaza personeli, hem satışı hem
+ * geri alış fiyatını kendi girebilmeli.
+ */
+export async function aktarimSatisiKaydet(
+  kayit: AktarimSatisKaydi,
+): Promise<AktarimSatisSonucu> {
+  try {
+    const oturum = await oturumZorunlu();
+
+    const cozum = aktarimSatisSemasi.safeParse(kayit);
+    if (!cozum.success) return { durum: "HATA", mesaj: cozum.error.issues[0].message };
+    const veri = cozum.data;
+
+    const sorun = aktarimSatisSorunu({
+      satisFiyatiKurus: veri.satisFiyatiKurus,
+      yeniAlisFiyatiKurus: veri.yeniAlisFiyatiKurus,
+    });
+    if (sorun) return { durum: "HATA", mesaj: sorun };
+
+    const cihaz = await prisma.stokKalemi.findUnique({
+      where: { id: veri.cihazId },
+      include: { tedarikci: { select: { ad: true } } },
+    });
+    if (!cihaz) return { durum: "HATA", mesaj: "Cihaz bulunamadı." };
+    if (cihaz.durum !== STOK_DURUM.STOKTA) {
+      return {
+        durum: "HATA",
+        mesaj: `Cihaz stokta değil (${cihaz.durum}); satış kaydedilemez.`,
+      };
+    }
+    magazaIslemiZorunlu(oturum, cihaz.magazaId);
+
+    // Satış kaynak mağazaya yazılıyor. Kaynağın cihazın bulunduğu mağazayla
+    // aynı dükkânda olması ve kullanıcının ikisinde de yetkili olması şart —
+    // yoksa başka bir dükkânın satışı buraya yazılabilirdi.
+    const [kaynak, mevcut] = await Promise.all([
+      prisma.magaza.findUnique({
+        where: { id: veri.kaynakMagazaId },
+        select: { id: true, ad: true, dukkanKodu: true },
+      }),
+      prisma.magaza.findUnique({
+        where: { id: cihaz.magazaId },
+        select: { id: true, ad: true, dukkanKodu: true },
+      }),
+    ]);
+    if (!kaynak || !mevcut) return { durum: "HATA", mesaj: "Mağaza bulunamadı." };
+    if (kaynak.id !== mevcut.id && !dukkanIciAktarabilirMi(oturum, kaynak, mevcut)) {
+      return {
+        durum: "HATA",
+        mesaj: `${kaynak.ad} ile ${mevcut.ad} aynı dükkân değil ya da ikisinde de yetkiniz yok.`,
+      };
+    }
+
+    // Satışı yapan: seçilmişse o, değilse oturum sahibi. Seçilen kişi satışın
+    // mağazasında yetkili olmalı — başka şubenin satışı kimseye yazılmasın.
+    const satanId = veri.satanKullaniciId ?? oturum.kullaniciId;
+    if (satanId !== oturum.kullaniciId) {
+      const aday = await prisma.kullanici.findUnique({
+        where: { id: satanId },
+        select: {
+          id: true,
+          adSoyad: true,
+          rol: true,
+          aktif: true,
+          magazaId: true,
+          ekMagazalar: { select: { id: true } },
+        },
+      });
+      const saticiHatasi = saticiSorunu(
+        aday
+          ? {
+              id: aday.id,
+              adSoyad: aday.adSoyad,
+              rol: aday.rol as SaticiAdayi["rol"],
+              aktif: aday.aktif,
+              magazaIdleri: [
+                ...(aday.magazaId === null ? [] : [aday.magazaId]),
+                ...aday.ekMagazalar.map((m) => m.id),
+              ],
+            }
+          : undefined,
+        [kaynak.id],
+      );
+      if (saticiHatasi) return { durum: "HATA", mesaj: saticiHatasi };
+    }
+
+    const sonuc = await prisma.$transaction(async (tx) => {
+      let musteriId = veri.musteriId;
+
+      if (musteriId) {
+        const varMi = await tx.musteri.findUnique({
+          where: { id: musteriId },
+          select: { id: true },
+        });
+        if (!varMi) throw new Error("Seçilen müşteri bulunamadı.");
+      } else {
+        // Aynı telefonla kayıtlı müşteri varsa tekrar oluşturma.
+        const telefon = veri.musteriTelefon?.replace(/\s/g, "") || null;
+        const mevcut = telefon
+          ? await tx.musteri.findFirst({ where: { telefon }, select: { id: true } })
+          : null;
+        musteriId = mevcut
+          ? mevcut.id
+          : (
+              await tx.musteri.create({
+                data: { adSoyad: veri.musteriAdSoyad ?? "İsimsiz Müşteri", telefon },
+              })
+            ).id;
+      }
+
+      const musteri = await tx.musteri.findUniqueOrThrow({
+        where: { id: musteriId },
+        select: { adSoyad: true, telefon: true },
+      });
+
+      await tx.aktarimSatisi.create({
+        data: {
+          stokKalemiId: cihaz.id,
+          magazaId: kaynak.id,
+          musteriId,
+          satanKullaniciId: satanId,
+          satisFiyatiKurus: veri.satisFiyatiKurus,
+          maliyetKurus: cihaz.alisFiyatiKurus,
+          yeniAlisFiyatiKurus: veri.yeniAlisFiyatiKurus,
+          odemeTipi: veri.odemeTipi,
+          not: veri.not,
+        },
+      });
+
+      // Geri alış fiyatı cihazın yeni maliyeti; stok değeri ve bir sonraki
+      // satışın kârı bundan sonra buna göre hesaplanıyor.
+      await tx.stokKalemi.update({
+        where: { id: cihaz.id },
+        data: {
+          alisFiyatiKurus: veri.yeniAlisFiyatiKurus,
+          not: veri.not ?? cihaz.not,
+          aramaMetni: aramaMetniUret([
+            cihaz.marka,
+            cihaz.model,
+            cihaz.renk,
+            cihaz.kapasite,
+            cihaz.seriNo,
+            cihaz.barkod,
+            cihaz.tedarikci?.ad,
+            veri.not ?? cihaz.not,
+            musteri.adSoyad,
+            musteri.telefon,
+          ]),
+        },
+      });
+
+      await tx.stokHareketi.create({
+        data: {
+          stokKalemiId: cihaz.id,
+          tip: HAREKET_TIP.SATIS,
+          kaynakMagazaId: kaynak.id,
+          kullaniciId: satanId,
+          aciklama: aktarimSatisAciklamasi({
+            musteriAdi: musteri.adSoyad,
+            satisFiyatiYazi: kurusuTLYaz(veri.satisFiyatiKurus),
+            eskiAlisYazi: kurusuTLYaz(cihaz.alisFiyatiKurus),
+            yeniAlisYazi: kurusuTLYaz(veri.yeniAlisFiyatiKurus),
+          }),
+        },
+      });
+
+      return { musteriAdi: musteri.adSoyad };
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.SATIS_YAP,
+      hedefTip: "StokKalemi",
+      hedefId: cihaz.id,
+      detay:
+        `Aktarımda sat-geri al: ${cihaz.marka} ${cihaz.model} ` +
+        `(${cihaz.seriNo ?? "seri no yok"}) · ${sonuc.musteriAdi} · ` +
+        `${kurusuTLYaz(veri.satisFiyatiKurus)} TL satış · ` +
+        `yeni alış ${kurusuTLYaz(veri.yeniAlisFiyatiKurus)} TL`,
+    });
+
+    revalidatePath("/aktarim");
+    revalidatePath("/cihazlar");
+    revalidatePath("/panel");
+    revalidatePath("/rapor");
+    revalidatePath("/musteriler");
+
+    return {
+      durum: "TAMAM",
+      mesaj: `${sonuc.musteriAdi} müşterisine satılıp geri alındı.`,
+      alisFiyatiKurus: veri.yeniAlisFiyatiKurus,
+      musteriAdi: sonuc.musteriAdi,
+    };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
+    if (hata instanceof Error && hata.message) return { durum: "HATA", mesaj: hata.message };
+    console.error("Aktarım satışı kaydedilemedi:", hata);
+    return { durum: "HATA", mesaj: "Satış kaydedilemedi. Tekrar deneyin." };
   }
 }

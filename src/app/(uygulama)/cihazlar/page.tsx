@@ -7,10 +7,13 @@ import { SutunSecici } from "@/bilesenler/SutunSecici";
 import {
   CIHAZ_ICERIK,
   SAYFA_BOYUTU,
+  SUTUN_FILTRE_PARAMETRELERI,
+  etkinSutunFiltresiSayisi,
   filtredenWhere,
   filtreyiCoz,
   filtreyiSorguyaCevir,
 } from "@/lib/cihazFiltre";
+import { siralamaOrderBy } from "@/lib/cihazSiralama";
 import { kodNormalize } from "@/lib/metin";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
@@ -39,8 +42,18 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
 
   const where = filtredenWhere(filtre, bugun);
 
-  const [kategoriler, magazalar, altKategoriler, ozet, toplam, satirlar, kullanici] =
-    await Promise.all([
+  const [
+    kategoriler,
+    magazalar,
+    altKategoriler,
+    ozet,
+    toplam,
+    satirlar,
+    kullanici,
+    markaSatirlari,
+    tedarikciler,
+    saticilar,
+  ] = await Promise.all([
       prisma.kategori.findMany({ where: { aktif: true }, orderBy: { sira: "asc" } }),
       prisma.magaza.findMany({ where: { aktif: true }, orderBy: { kod: "asc" } }),
       prisma.altKategori.findMany({
@@ -52,7 +65,7 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
       prisma.stokKalemi.findMany({
         where,
         include: CIHAZ_ICERIK,
-        orderBy: [{ girisTarihi: "desc" }, { id: "desc" }],
+        orderBy: siralamaOrderBy(filtre.siralama),
         skip: (filtre.sayfa - 1) * SAYFA_BOYUTU,
         take: SAYFA_BOYUTU,
       }),
@@ -60,10 +73,43 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
         where: { id: oturum.kullaniciId },
         select: { sutunTercihi: true },
       }),
+      // Marka listesi filtre açılırından geliyor; stokta hangi markalar varsa
+      // yalnız onlar gösteriliyor, boş seçenek bırakmanın anlamı yok.
+      prisma.stokKalemi.findMany({
+        distinct: ["marka"],
+        select: { marka: true },
+        orderBy: { marka: "asc" },
+      }),
+      prisma.tedarikci.findMany({
+        where: { aktif: true },
+        select: { id: true, ad: true },
+        orderBy: { ad: "asc" },
+      }),
+      prisma.kullanici.findMany({
+        where: { aktif: true },
+        select: { id: true, adSoyad: true },
+        orderBy: { adSoyad: "asc" },
+      }),
     ]);
 
   const sutunlar = sutunlariSirala(sutunTercihiniCoz(kullanici?.sutunTercihi));
   const toplamSayfa = Math.max(1, Math.ceil(toplam / SAYFA_BOYUTU));
+
+  // Filtre kutularının değerleri URL'den okunuyor; sunucuda çözülen filtre
+  // nesnesi değil ham metin lazım, kullanıcı ne yazdıysa onu görmeli.
+  const tekDeger = (ad: string) => {
+    const v = params[ad];
+    return (Array.isArray(v) ? v[0] : v) ?? "";
+  };
+  const filtreDegerleri = Object.fromEntries(
+    SUTUN_FILTRE_PARAMETRELERI.map((ad) => [ad, tekDeger(ad)]),
+  );
+  const etkinFiltre = etkinSutunFiltresiSayisi(filtre);
+  const filtreSecenekleri = {
+    markalar: markaSatirlari.map((m) => m.marka).filter(Boolean),
+    tedarikciler,
+    saticilar,
+  };
 
   return (
     <div className="space-y-5">
@@ -123,7 +169,27 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5 text-sm">
-          <span className="font-medium text-slate-700">{toplam} cihaz</span>
+          <span className="font-medium text-slate-700">
+            {toplam} cihaz
+            {etkinFiltre > 0 ? (
+              <>
+                {" "}
+                <Link
+                  href={`/cihazlar${filtreyiSorguyaCevir(
+                    params,
+                    Object.fromEntries([
+                      ...SUTUN_FILTRE_PARAMETRELERI.map((ad) => [ad, null]),
+                      ["sayfa", null],
+                    ]),
+                  )}`}
+                  data-test="sutun-filtrelerini-temizle"
+                  className="ml-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-normal text-slate-600 hover:bg-slate-50"
+                >
+                  {etkinFiltre} sütun filtresi · temizle
+                </Link>
+              </>
+            ) : null}
+          </span>
           <span className="text-slate-500">
             Toplam alış değeri:{" "}
             <span className="font-medium text-slate-800">
@@ -132,7 +198,17 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
           </span>
         </div>
 
-        <CihazTablosu satirlar={satirlar} sutunlar={sutunlar} bugun={bugun} />
+        <CihazTablosu
+          satirlar={satirlar}
+          sutunlar={sutunlar}
+          bugun={bugun}
+          siralama={filtre.siralama}
+          sorguUret={(degisiklikler) =>
+            `/cihazlar${filtreyiSorguyaCevir(params, degisiklikler)}`
+          }
+          filtreDegerleri={filtreDegerleri}
+          filtreSecenekleri={filtreSecenekleri}
+        />
         <Sayfalama sayfa={filtre.sayfa} toplamSayfa={toplamSayfa} params={params} />
       </div>
     </div>

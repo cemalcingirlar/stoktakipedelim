@@ -85,7 +85,13 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
         <SayiKarti
           etiket="Bugün Satılan"
           deger={`${bugun.adet}`}
-          altBilgi={bugun.adet > 0 ? `${kurusuTLYazSembollu(bugun.ciroKurus)} ciro` : "bugün satış yok"}
+          altBilgi={
+            bugun.adet > 0
+              ? `${kurusuTLYazSembollu(bugun.ciroKurus)} ciro${
+                  bugun.aktarimAdedi > 0 ? ` · ${bugun.aktarimAdedi} sat-geri al` : ""
+                }`
+              : "bugün satış yok"
+          }
           vurgu={bugun.adet > 0 ? "basari" : "normal"}
           yol={bugun.adet > 0 ? bugunCikanlarYolu : "/satis"}
         />
@@ -152,24 +158,35 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
           ) : (
             <ul className="divide-y divide-slate-100">
               {bugun.kalemler.slice(0, 10).map((k) => (
-                <li key={k.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <li
+                  key={k.anahtar}
+                  data-test={k.aktarimMi ? "bugun-aktarim-satisi" : "bugun-cihaz-satisi"}
+                  className="flex items-center justify-between gap-3 py-2 text-sm"
+                >
                   <div className="min-w-0">
                     <Link
-                      href={`/cihazlar/${k.id}`}
+                      href={`/cihazlar/${k.cihazId}`}
                       className="truncate font-medium text-slate-800 underline-offset-2 hover:underline"
                     >
                       {k.marka} {k.model}
                     </Link>
+                    {/* Aktarım satışında cihaz stokta kalıyor; cihaz
+                        listesinde "satıldı" görünmediği için işaretleniyor. */}
+                    {k.aktarimMi ? (
+                      <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-800">
+                        sat-geri al
+                      </span>
+                    ) : null}
                     <div className="text-xs text-slate-500">
                       {k.seriNo ? `${k.seriNo} · ` : ""}
-                      {k.magaza.ad}
-                      {k.musteri ? ` · ${k.musteri.adSoyad}` : ""}
-                      {k.satanKullanici ? ` · ${k.satanKullanici.adSoyad}` : ""}
+                      {k.magazaAdi}
+                      {k.musteriAdSoyad ? ` · ${k.musteriAdSoyad}` : ""}
+                      {k.satanAdSoyad ? ` · ${k.satanAdSoyad}` : ""}
                     </div>
                   </div>
                   <span className="shrink-0 text-right">
                     <span className="block font-medium text-slate-800 tabular-nums">
-                      {kurusuTLYazSembollu(k.satisFiyatiKurus ?? 0)}
+                      {kurusuTLYazSembollu(k.satisFiyatiKurus)}
                     </span>
                     <span className="block text-xs text-slate-500">{saatYaz(k.satisTarihi)}</span>
                   </span>
@@ -184,9 +201,10 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
                 href={bugunCikanlarYolu}
                 className="text-sky-700 underline-offset-2 hover:underline"
               >
-                tamamını görün ({bugun.adet} cihaz)
+                stoktan çıkanların tamamını görün
               </Link>
-              .
+              . Sat-geri al işlemlerinde cihaz stokta kaldığı için o liste onları
+              içermiyor.
             </p>
           ) : null}
         </Kart>

@@ -68,38 +68,119 @@ export async function vadesiGecenCihazSayisi(bugun: Date = new Date()) {
   return { toplam, stokta };
 }
 
+/** Panelde "Bugün Satılan" listesinin bir satırı. */
+export type BugunSatisSatiri = {
+  /** React anahtarı; cihaz satışı ile aktarım satışı aynı cihazı gösterebilir. */
+  anahtar: string;
+  /** Bağlantının gittiği cihaz. */
+  cihazId: number;
+  marka: string;
+  model: string;
+  seriNo: string | null;
+  satisTarihi: Date | null;
+  satisFiyatiKurus: number;
+  karKurus: number;
+  magazaAdi: string;
+  satanAdSoyad: string | null;
+  musteriAdSoyad: string | null;
+  /** Mağaza içi aktarımda sat-geri al işlemi mi? */
+  aktarimMi: boolean;
+};
+
 /**
  * Bugün satılan cihazlar. Personel için yalnız yetkili olduğu mağazalar;
  * yönetici için (magazaIdleri null) tümü.
+ *
+ * Mağaza içi aktarımdaki sat-geri al işlemleri de listede: kasaya giren tutar
+ * açısından bunlar da bugünün satışı. Cihaz stokta kaldığı için cihaz
+ * listesinde "satıldı" olarak görünmüyorlar, bu yüzden burada ayrıca
+ * işaretleniyorlar.
  */
 export async function bugunSatilanlar(magazaIdleri: number[] | null, bugun: Date = new Date()) {
-  const kalemler = await prisma.stokKalemi.findMany({
-    where: {
-      durum: STOK_DURUM.SATILDI,
-      satisTarihi: { gte: gunBasi(bugun), lte: gunSonu(bugun) },
-      ...(magazaIdleri ? { magazaId: { in: magazaIdleri } } : {}),
-    },
-    orderBy: { satisTarihi: "desc" },
-    select: {
-      id: true,
-      marka: true,
-      model: true,
-      seriNo: true,
-      satisTarihi: true,
-      satisFiyatiKurus: true,
-      alisFiyatiKurus: true,
-      magaza: { select: { ad: true } },
-      satanKullanici: { select: { adSoyad: true } },
-      musteri: { select: { adSoyad: true } },
-    },
-  });
+  const aralik = { gte: gunBasi(bugun), lte: gunSonu(bugun) };
 
-  const ciroKurus = kalemler.reduce((t, k) => t + (k.satisFiyatiKurus ?? 0), 0);
-  const karKurus = kalemler.reduce(
-    (t, k) => t + ((k.satisFiyatiKurus ?? 0) - k.alisFiyatiKurus),
-    0,
-  );
-  return { kalemler, adet: kalemler.length, ciroKurus, karKurus };
+  const [kalemler, aktarimlar] = await Promise.all([
+    prisma.stokKalemi.findMany({
+      where: {
+        durum: STOK_DURUM.SATILDI,
+        satisTarihi: aralik,
+        ...(magazaIdleri ? { magazaId: { in: magazaIdleri } } : {}),
+      },
+      orderBy: { satisTarihi: "desc" },
+      select: {
+        id: true,
+        marka: true,
+        model: true,
+        seriNo: true,
+        satisTarihi: true,
+        satisFiyatiKurus: true,
+        alisFiyatiKurus: true,
+        magaza: { select: { ad: true } },
+        satanKullanici: { select: { adSoyad: true } },
+        musteri: { select: { adSoyad: true } },
+      },
+    }),
+    prisma.aktarimSatisi.findMany({
+      where: {
+        satisTarihi: aralik,
+        ...(magazaIdleri ? { magazaId: { in: magazaIdleri } } : {}),
+      },
+      orderBy: { satisTarihi: "desc" },
+      select: {
+        id: true,
+        satisTarihi: true,
+        satisFiyatiKurus: true,
+        maliyetKurus: true,
+        magaza: { select: { ad: true } },
+        satanKullanici: { select: { adSoyad: true } },
+        musteri: { select: { adSoyad: true } },
+        stokKalemi: { select: { id: true, marka: true, model: true, seriNo: true } },
+      },
+    }),
+  ]);
+
+  const satirlar: BugunSatisSatiri[] = [
+    ...kalemler.map((k) => ({
+      anahtar: `cihaz-${k.id}`,
+      cihazId: k.id,
+      marka: k.marka,
+      model: k.model,
+      seriNo: k.seriNo,
+      satisTarihi: k.satisTarihi,
+      satisFiyatiKurus: k.satisFiyatiKurus ?? 0,
+      karKurus: (k.satisFiyatiKurus ?? 0) - k.alisFiyatiKurus,
+      magazaAdi: k.magaza.ad,
+      satanAdSoyad: k.satanKullanici?.adSoyad ?? null,
+      musteriAdSoyad: k.musteri?.adSoyad ?? null,
+      aktarimMi: false,
+    })),
+    ...aktarimlar.map((a) => ({
+      anahtar: `aktarim-${a.id}`,
+      cihazId: a.stokKalemi.id,
+      marka: a.stokKalemi.marka,
+      model: a.stokKalemi.model,
+      seriNo: a.stokKalemi.seriNo,
+      satisTarihi: a.satisTarihi,
+      satisFiyatiKurus: a.satisFiyatiKurus,
+      karKurus: a.satisFiyatiKurus - a.maliyetKurus,
+      magazaAdi: a.magaza.ad,
+      satanAdSoyad: a.satanKullanici.adSoyad,
+      musteriAdSoyad: a.musteri?.adSoyad ?? null,
+      aktarimMi: true,
+    })),
+  ].sort((a, b) => (b.satisTarihi?.getTime() ?? 0) - (a.satisTarihi?.getTime() ?? 0));
+
+  const ciroKurus = satirlar.reduce((t, s) => t + s.satisFiyatiKurus, 0);
+  const karKurus = satirlar.reduce((t, s) => t + s.karKurus, 0);
+
+  return {
+    kalemler: satirlar,
+    adet: satirlar.length,
+    ciroKurus,
+    karKurus,
+    /** Bunların kaçı aktarımdaki sat-geri al işlemi. */
+    aktarimAdedi: satirlar.filter((s) => s.aktarimMi).length,
+  };
 }
 
 /** Hedef mağazada onay bekleyen sevkiyatlar. magazaId verilmezse tümü. */

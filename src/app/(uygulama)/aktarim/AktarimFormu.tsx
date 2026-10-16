@@ -5,8 +5,12 @@ import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { OkutmaKutusu, type OkutmaGeriBildirimi } from "@/bilesenler/OkutmaKutusu";
 import { Rozet } from "@/bilesenler/Rozet";
 import { ayniDukkandakiler, type DukkanMagazasi } from "@/lib/dukkan";
+import { ODEME_TIPI, ODEME_TIPI_ETIKET, type OdemeTipi } from "@/lib/sabitler";
+import type { MusteriOzeti } from "../satis/eylemler";
 import { dukkanIciAktar } from "./eylemler";
 import { FiyatDuzeltme } from "./FiyatDuzeltme";
+import { MusteriBlogu } from "./MusteriBlogu";
+import { SatGeriAl, type SatisBasligi } from "./SatGeriAl";
 
 type Magaza = DukkanMagazasi & { ad: string };
 
@@ -29,12 +33,14 @@ const KUCUK_ETIKET = "mb-1 block text-xs font-medium text-slate-600";
 export function AktarimFormu({
   magazalar,
   varsayilanKaynakId,
-  yonetici,
+  saticilar,
+  varsayilanSaticiId,
 }: {
   magazalar: Magaza[];
   varsayilanKaynakId: number | null;
-  /** Alış fiyatı kâr hesabının temeli; düzeltme yalnız yöneticide. */
-  yonetici: boolean;
+  /** Satışı yapan olarak seçilebilecek kişiler. */
+  saticilar: { id: number; adSoyad: string }[];
+  varsayilanSaticiId: number;
 }) {
   const ilkKaynak =
     varsayilanKaynakId && magazalar.some((m) => m.id === varsayilanKaynakId)
@@ -61,6 +67,26 @@ export function AktarimFormu({
 
   /** Aktarımın nedeni; cihazın tarihçesine yazılıyor. */
   const [not, setNot] = useState("");
+
+  // ---------------------------------------------- müşteriye sat, geri al
+  // Dükkân içinde cihaz taşınırken ürün fiilen müşteriye satılıp geri
+  // alınıyor. Varsayılan kapalı: ekran düz taşıma için de kullanılıyor ve
+  // o akışta müşteri sorusu gecikme olurdu.
+  const [satisModu, setSatisModu] = useState(false);
+  const [odemeTipi, setOdemeTipi] = useState<string>(ODEME_TIPI.NAKIT);
+  const [satanId, setSatanId] = useState(varsayilanSaticiId);
+  const [seciliMusteri, setSeciliMusteri] = useState<MusteriOzeti | null>(null);
+  const [yeniAd, setYeniAd] = useState("");
+  const [yeniTelefon, setYeniTelefon] = useState("");
+
+  const musteriHazir = seciliMusteri !== null || yeniAd.trim().length > 0;
+  const satisBasligi: SatisBasligi = {
+    odemeTipi,
+    satanKullaniciId: satanId,
+    musteriId: seciliMusteri?.id ?? null,
+    musteriAdSoyad: seciliMusteri ? null : yeniAd.trim() || null,
+    musteriTelefon: seciliMusteri ? null : yeniTelefon.trim() || null,
+  };
 
   /** Yön değiştir: kaynak ile hedefi takas eder. */
   function yonuCevir() {
@@ -197,6 +223,91 @@ export function AktarimFormu({
           </p>
         </div>
 
+        {/* Sat-geri al: cihaz dükkânda kalıyor ama kasaya satış giriyor.
+            Müşteri, ödeme tipi ve satışı yapan bir kez burada seçiliyor;
+            fiyatlar cihaz başına, aşağıdaki satırlarda. */}
+        <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50/60 p-3">
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              data-test="satis-modu"
+              checked={satisModu}
+              onChange={(e) => setSatisModu(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-400"
+            />
+            <span className="text-sm">
+              <span className="font-medium text-amber-900">
+                Müşteriye satıp geri alıyoruz
+              </span>
+              <span className="block text-xs text-amber-800">
+                Okutulan her cihaz için satış fiyatı ve yeni alış fiyatı sorulur. Satış,
+                paneldeki mağaza ve personel satış raporlarına yansır; cihaz stokta kalır.
+              </span>
+            </span>
+          </label>
+
+          {satisModu ? (
+            <div className="mt-3 space-y-3 border-t border-amber-200 pt-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="aktarimOdemeTipi" className={KUCUK_ETIKET}>
+                    Ödeme Tipi
+                  </label>
+                  <select
+                    id="aktarimOdemeTipi"
+                    data-test="odeme-tipi"
+                    value={odemeTipi}
+                    onChange={(e) => setOdemeTipi(e.target.value)}
+                    className={GIRDI_SINIFI}
+                  >
+                    {Object.values(ODEME_TIPI).map((t) => (
+                      <option key={t} value={t}>
+                        {ODEME_TIPI_ETIKET[t as OdemeTipi]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="aktarimSatan" className={KUCUK_ETIKET}>
+                    Satışı Yapan
+                  </label>
+                  <select
+                    id="aktarimSatan"
+                    data-test="satisi-yapan"
+                    value={satanId}
+                    onChange={(e) => setSatanId(Number(e.target.value))}
+                    className={GIRDI_SINIFI}
+                  >
+                    {saticilar.map((k) => (
+                      <option key={k.id} value={k.id}>
+                        {k.adSoyad}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <MusteriBlogu
+                secili={seciliMusteri}
+                setSecili={setSeciliMusteri}
+                yeniAd={yeniAd}
+                setYeniAd={setYeniAd}
+                yeniTelefon={yeniTelefon}
+                setYeniTelefon={setYeniTelefon}
+              />
+
+              {!musteriHazir ? (
+                <p
+                  data-test="musteri-eksik"
+                  className="rounded border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-medium text-amber-900"
+                >
+                  Satışı kaydetmek için müşteri seçin veya ad soyad girin.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
         <OkutmaKutusu
           odakVer
           etiket="Seri No / Barkod Okut"
@@ -244,13 +355,24 @@ export function AktarimFormu({
                     {geriAlinan === s.anahtar ? "Geri alınıyor…" : "Geri al"}
                   </button>
                 ) : null}
-                {yonetici && !s.geriAlindi ? (
+                {s.geriAlindi ? null : satisModu ? (
+                  musteriHazir ? (
+                    <SatGeriAl
+                      cihazId={s.anahtar}
+                      kaynakMagazaId={s.kaynakId}
+                      etiket={s.etiket}
+                      baslangicAlisKurus={s.alisFiyatiKurus}
+                      baslik={satisBasligi}
+                      not={not.trim() || null}
+                    />
+                  ) : null
+                ) : (
                   <FiyatDuzeltme
                     cihazId={s.anahtar}
                     baslangicFiyatiKurus={s.alisFiyatiKurus}
                     baslangicNotu={s.not}
                   />
-                ) : null}
+                )}
               </li>
             ))}
           </ul>

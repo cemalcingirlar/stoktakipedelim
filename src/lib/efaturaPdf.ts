@@ -30,6 +30,13 @@ export type EFaturaKalemi = {
   siraNo: number;
   /** EAN / barkod. */
   barkod: string;
+  /**
+   * Satırdaki bütün ürün kodları: EAN, satıcı ürün kodu, alıcı ürün kodu.
+   *
+   * Alttaki seri notu bunlardan herhangi birini yazabiliyor — bir faturada
+   * EAN, başkasında satıcı ürün kodu geliyor. Çapraz kontrol hepsine bakıyor.
+   */
+  urunKodlari: string[];
   urunAdi: string;
   adet: number;
   /** KDV hariç birim fiyat. */
@@ -119,7 +126,24 @@ function tutarParcasi(parca: string): number | null {
   return tlyiKurusaCevir(temiz);
 }
 const ADET_KALIBI = /^\d{1,6},\d{2}$/;
+/** EAN / barkod: ilk kod sütunu her zaman bu biçimde. */
 const KOD_KALIBI = /^\d{8,14}$/;
+
+/**
+ * Satıcı / alıcı ürün kodu sütunu — EAN'den sonra gelen 1-2 sütun.
+ *
+ * Bu sütunlar her faturada rakam olmuyor: Apple ürünlerinde "MYE73TU/A" gibi
+ * model kodu geliyor. Ürün adını yutmamak için kalıp dar tutuldu: küçük harf
+ * içeremez (açıklamalar "iPhone", "Galaxy" diye başlıyor), en az bir rakam ve
+ * bir harf bulunmalı, ayrıca bir ayraç (/ - _) taşımalı. "128GB" gibi açıklama
+ * parçaları ayraç taşımadığı için eleniyor.
+ */
+const URUN_KODU_KALIBI = /^(?=.*\d)(?=.*[A-ZÇĞİÖŞÜ])[A-ZÇĞİÖŞÜ0-9][A-ZÇĞİÖŞÜ0-9/\-_.]*[/\-_][A-ZÇĞİÖŞÜ0-9/\-_.]*$/;
+
+/** EAN'den sonraki bir parça kod sütunu mu? */
+function ekKodMu(parca: string): boolean {
+  return KOD_KALIBI.test(parca) || URUN_KODU_KALIBI.test(parca);
+}
 
 /**
  * Not bölümündeki seri numaralarını sıra numarasına göre toplar.
@@ -182,6 +206,21 @@ export function efaturaMi(metin: string): boolean {
 }
 
 /**
+ * Seri notundaki kod, satırın kodlarından biriyle tutuyor mu?
+ *
+ * Not kodu genelde "<kod>/<parti no>" biçiminde geliyor, bu yüzden tam eşitlik
+ * değil önek araması yapılıyor. Ters yön de kabul ediliyor: bazı faturalarda
+ * notta kısaltılmış kod, satırda uzunu oluyor.
+ */
+export function kodTeyitEdildi(notKodu: string, satirKodlari: string[]): boolean {
+  const not = kodNormalize(notKodu);
+  if (!not) return true; // teyit edecek bir şey yok
+  const kodlar = satirKodlari.map((k) => kodNormalize(k)).filter(Boolean);
+  if (kodlar.length === 0) return true; // satırın kodu okunamamış; sıra no esas
+  return kodlar.some((kod) => not.startsWith(kod) || kod.startsWith(not));
+}
+
+/**
  * Kalem tablosunu parça akışından okur.
  *
  * Dilbilgisi: <sıra> <ean> <kod> <kod> <açıklama...> <adet> <birim fiyat> TL
@@ -207,9 +246,11 @@ function kalemleriOku(parcalar: string[]): { kalemler: Omit<EFaturaKalemi, "seri
     let j = i + 1;
 
     // Üç kod sütunu: EAN, satıcı ürün kodu, alıcı ürün kodu. Bazı faturalarda
-    // alıcı kodu boş geliyor, bu yüzden kaç tane varsa okunuyor.
-    const kodlar: string[] = [];
-    while (j < parcalar.length && KOD_KALIBI.test(parcalar[j])) {
+    // alıcı kodu boş geliyor, bu yüzden kaç tane varsa okunuyor. İlki her zaman
+    // EAN; sonraki en çok iki sütun model kodu da olabiliyor.
+    const kodlar: string[] = [parcalar[j]];
+    j += 1;
+    while (j < parcalar.length && kodlar.length < 3 && ekKodMu(parcalar[j])) {
       kodlar.push(parcalar[j]);
       j += 1;
     }
@@ -258,6 +299,7 @@ function kalemleriOku(parcalar: string[]): { kalemler: Omit<EFaturaKalemi, "seri
     kalemler.push({
       siraNo,
       barkod: kodNormalize(kodlar[0] ?? ""),
+      urunKodlari: kodlar.map((k) => kodNormalize(k)).filter(Boolean),
       urunAdi: aciklamaParcalari.join(" ").replace(/\s+/g, " ").trim(),
       adet,
       birimFiyatKurus,
@@ -329,12 +371,19 @@ export function efaturaCoz(metin: string): EFaturaOkumasi {
     const kayit = seriHarita.get(k.siraNo);
     const seriNolar = kayit?.seriler ?? [];
 
-    // Nottaki kod "EAN/alıcıKod" biçiminde; EAN'i doğrulayarak satırların
-    // karışmadığından emin oluyoruz.
-    if (kayit && k.barkod && !kodNormalize(kayit.kod).startsWith(k.barkod)) {
-      hatalar.push(
-        `${k.siraNo}. kalemin seri notu başka ürüne ait görünüyor ` +
-          `(${kayit.kod} ≠ ${k.barkod}).`,
+    // Seri notu kalemle SIRA NUMARASI üzerinden eşleşiyor: not zaten
+    // "N Numaralı satırdaki" diyor ve bu her faturada var.
+    //
+    // Nottaki kod yalnız teyit için. Tedarikçi burada bazen EAN, bazen satıcı
+    // ürün kodu yazıyor ("MYE73TU/A/1411633" gibi), sonuna da parti numarası
+    // ekliyor. Bu yüzden satırın üç kodundan herhangi biriyle başlaması yeterli;
+    // hiçbiriyle tutmuyorsa bu bir hata değil, uyarı — sıra numarası bağlayıcı,
+    // kod yazımı tedarikçiden tedarikçiye değişiyor.
+    if (kayit && !kodTeyitEdildi(kayit.kod, k.urunKodlari)) {
+      uyarilar.push(
+        `${k.siraNo}. kalemin seri notundaki kod (${kayit.kod}) satırın ` +
+          `kodlarıyla eşleşmiyor (${k.urunKodlari.join(", ") || "kod okunamadı"}). ` +
+          "Seriler sıra numarasına göre eşleştirildi; aşağıdan kontrol edin.",
       );
     }
 
