@@ -7,6 +7,8 @@ import {
   efaturadanTedarikciFaturasi,
   kodTeyitEdildi,
   seriNolariTopla,
+  seriParcasiMi,
+  seriSatiriMi,
 } from "./efaturaPdf";
 
 /**
@@ -618,4 +620,114 @@ test("rakamsız uzun kelime kod sanılmıyor", () => {
     }),
   );
   assert.equal(s.kalemler[0].urunAdi, "KULAKICI SIYAH");
+});
+
+// ------------------------------- seri satırı tanıma (saf kurallar)
+
+test("salt rakamlı IMEI seri parçası sayılıyor", () => {
+  assert.equal(seriParcasiMi("976461909525804"), true);
+});
+
+test("harf-rakam karışık seri parçası sayılıyor", () => {
+  assert.equal(seriParcasiMi("SF16HWG06MLR0000SY5"), true);
+  assert.equal(seriParcasiMi("SDCQ4CFHX5V"), true);
+});
+
+test("saf harf seri parçası da kabul ediliyor", () => {
+  // Apple'da rakamsız seriler var; satır düzeyinde rakam aranıyor.
+  assert.equal(seriParcasiMi("SCVGYKRFWLJ"), true);
+});
+
+test("tireli seri parçası kabul ediliyor", () => {
+  assert.equal(seriParcasiMi("MM0249-DQ0096939"), true);
+});
+
+test("kısa parça seri sayılmıyor", () => {
+  assert.equal(seriParcasiMi("TL"), false);
+  assert.equal(seriParcasiMi("YAZI"), false);
+  assert.equal(seriParcasiMi("12345"), false, "beş karakter");
+});
+
+test("küçük harfli ve Türkçe harfli parçalar eleniyor", () => {
+  assert.equal(seriParcasiMi("Fatura"), false);
+  assert.equal(seriParcasiMi("referansı"), false);
+  assert.equal(seriParcasiMi("KURUŞ"), false);
+  assert.equal(seriParcasiMi("TÜRKİYE"), false);
+});
+
+test("seri listesi satırı tanınıyor", () => {
+  assert.equal(seriSatiriMi("SF16HWG06MLR0000SY5; SF16HWG07ZSZ0000SY5;"), true);
+  assert.equal(seriSatiriMi("SCTK2P2XR9T; SCVGYKRFWLJ; SH1F16C4F6Q"), true);
+  assert.equal(seriSatiriMi("MM0249-DQ0096939; MM0245-EP0304822"), true);
+  assert.equal(seriSatiriMi("976461909525804; 982232437582838;"), true);
+  assert.equal(seriSatiriMi("SGXW7C61R2H"), true, "tek seri");
+});
+
+test("fatura altındaki düzyazı satırları seri listesi sayılmıyor", () => {
+  // Gerçek faturalarda seri listesinden hemen sonra gelen satırlar.
+  assert.equal(seriSatiriMi("YAZI İLE YÜZ KIRKBEŞBİNBEŞYÜZYİRMİALTI TL ONSEKİZ KURUŞ"), false);
+  assert.equal(seriSatiriMi("Fatura referansı:1100-93535953"), false);
+  assert.equal(seriSatiriMi("Ödeme Şekli:"), false);
+  assert.equal(seriSatiriMi("Vade Tarihi:"), false);
+  assert.equal(seriSatiriMi("14 - 12 - 2026"), false);
+  assert.equal(seriSatiriMi("TÜRKİYE GARANTİ BANKASI A.Ş."), false);
+  assert.equal(seriSatiriMi("ISTANBUL KURUMSAL SB."), false);
+});
+
+test("tamamen rakamsız satır seri listesi sayılmıyor", () => {
+  // Her parçası biçime uysa bile satırda hiç rakam yoksa bu bir liste değil.
+  assert.equal(seriSatiriMi("SCVGYKRFWLJ; ABCDEFGHIJ"), false);
+});
+
+test("boş satır seri listesi sayılmıyor", () => {
+  assert.equal(seriSatiriMi(""), false);
+  assert.equal(seriSatiriMi("   "), false);
+});
+
+// ------------------ harf ağırlıklı serili fatura (uçtan uca ayrıştırma)
+
+function harfSeriliMetin(): string {
+  return ornekMetin({
+    kalemler: [
+      ["1", "195950673968", "GAMA4TU/A", "GAMA4TU/A", "Gama 40W Dynamic Pow.Adap.with", "60W Max", "3,00", "1.000,00", "TL", "%20", "600,00", "TL", "3.000,00 TL"].join("\n"),
+      ["2", "195951378671", "GAMA5TU/A", "GAMA5TU/A", "Gama Kulaklik ve Kablosuz Sarj", "Kutusu", "3,00", "2.000,00", "TL", "%20", "1.200,00", "TL", "6.000,00 TL"].join("\n"),
+    ],
+    notlar: [
+      // Harf-rakam karışık, üç seri iki satıra taşmış.
+      'Not:\n1 Numaralı satırdaki; "GAMA4TU/A/1435372" kodlu ürün için seriler:\nSF16HWG06MLR0000SY5; SF16HWG07ZSZ0000SY5;\nSF16HWH03Z3D0000SY5',
+      // Ortadaki seri tamamen harf.
+      '2 Numaralı satırdaki; "GAMA5TU/A/1435879" kodlu ürün için seriler:\nSCTK2P2XR9T; SCVGYKRFWLJ; SH1F16C4F6Q',
+      // Seri listesinden sonraki düzyazı listeye karışmamalı.
+      "YAZI İLE DOKUZBİN TL",
+      "Fatura referansı:1100-93535953",
+    ],
+    araToplam: "9.000,00",
+  });
+}
+
+test("harf ağırlıklı serili fatura hatasız okunuyor", () => {
+  const s = efaturaCoz(harfSeriliMetin());
+  assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+  assert.deepEqual(s.uyarilar, [], s.uyarilar.join(" | "));
+});
+
+test("iki satıra taşan harf-rakam seriler toplanıyor", () => {
+  const s = efaturaCoz(harfSeriliMetin());
+  assert.deepEqual(s.kalemler[0].seriNolar, [
+    "SF16HWG06MLR0000SY5",
+    "SF16HWG07ZSZ0000SY5",
+    "SF16HWH03Z3D0000SY5",
+  ]);
+});
+
+test("aralarında rakamsız seri olan satır eksiksiz okunuyor", () => {
+  const s = efaturaCoz(harfSeriliMetin());
+  assert.deepEqual(s.kalemler[1].seriNolar, ["SCTK2P2XR9T", "SCVGYKRFWLJ", "SH1F16C4F6Q"]);
+});
+
+test("seri listesinden sonraki düzyazı seriye karışmıyor", () => {
+  const s = efaturaCoz(harfSeriliMetin());
+  const hepsi = s.kalemler.flatMap((k) => k.seriNolar);
+  assert.ok(!hepsi.some((x) => /YAZI|TL|REFERANS/i.test(x)), hepsi.join(", "));
+  assert.equal(hepsi.length, 6);
 });
