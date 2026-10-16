@@ -180,6 +180,27 @@ try {
   ]);
   kontrol("hazırlık: M2'de satış yapıldı", !sayfa.url().includes("/satis"), sayfa.url());
 
+  // M2 → M3 sevkiyatı: personel1 iki tarafta da yetkisiz, bu sevkiyatı hiç
+  // görmemeli. Kalan M2 cihazı sevkiyata giriyor.
+  await sayfa.goto(`${hedef}/sevkiyat/yeni`, { waitUntil: "networkidle" });
+  await sayfa.selectOption("#kaynak", { label: "2 Nolu Mağaza" });
+  await sayfa.selectOption("#hedef", { label: "3 Nolu Mağaza" });
+  await sayfa.fill("#okutmaKutusu", M2_IMEI);
+  await sayfa.press("#okutmaKutusu", "Enter");
+  await sayfa.waitForTimeout(1500);
+  await Promise.all([
+    sayfa.waitForURL(/\/sevkiyat\/\d+$/, { timeout: 30000 }),
+    sayfa.click('button:has-text("Sevkiyatı Gönder")'),
+  ]);
+  const m2Sevkiyat = Number(sayfa.url().match(/\/sevkiyat\/(\d+)$/)[1]);
+  const m2SevkiyatNo =
+    ((await sayfa.locator("main").textContent()) ?? "").match(/SVK-[\w-]+/)?.[0] ?? "";
+  kontrol(
+    "hazırlık: M2 → M3 sevkiyatı açıldı",
+    m2Sevkiyat > 0 && m2SevkiyatNo !== "",
+    `#${m2Sevkiyat} ${m2SevkiyatNo}`,
+  );
+
   const m1CihazId = await cihazIdBul(M1_IMEI);
   const m2CihazId = await cihazIdBul(M2_IMEI);
   kontrol(
@@ -363,6 +384,25 @@ try {
     "rapor Excel'i başka mağazayı içermiyor",
     raporExcel.durum === 200 && !raporExcel.hucreler.includes("2 Nolu Mağaza"),
     `HTTP ${raporExcel.durum}`,
+  );
+
+  // ------------------------------------------- 9b) Sevkiyat ekranı kısıtlı
+  await sayfa.goto(`${hedef}/sevkiyat`, { waitUntil: "networkidle" });
+  const sevkiyatListesi = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "sevkiyat listesinde ilgisiz mağazaların sevkiyatı yok",
+    !sevkiyatListesi.includes(m2SevkiyatNo) && !sevkiyatListesi.includes("3 Nolu Mağaza"),
+    m2SevkiyatNo,
+  );
+
+  const sevkiyatDetay = await sayfa.goto(`${hedef}/sevkiyat/${m2Sevkiyat}`, {
+    waitUntil: "networkidle",
+  });
+  kontrol(
+    "ilgisiz sevkiyatın detayı 404",
+    sevkiyatDetay?.status() === 404 ||
+      /bulunamadı|not found/i.test((await sayfa.locator("body").textContent()) ?? ""),
+    `HTTP ${sevkiyatDetay?.status()}`,
   );
 
   // ------------------------------------------------- 10) Sayım ekranı
