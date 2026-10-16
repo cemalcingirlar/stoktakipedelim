@@ -310,6 +310,122 @@ try {
     excelBaglantisi ?? "yok",
   );
 
+  // --------------- 10) Künye düzeltme: tek cihaz ve barkodun tamamı
+  // Kullanıcı istedi: marka/kategori listeden değiştirilsin, barkod seçilince
+  // "bu barkoddaki hepsine uygulansın mı" diye sorulsun.
+  await sayfa.goto(`${hedef}/cihazlar?marka=ALFAMARKA`, { waitUntil: "networkidle" });
+  const alfaAdedi = await cihazSayisi();
+  kontrol("düzeltme öncesi 3 ALFAMARKA cihaz var", alfaAdedi === 3, `${alfaAdedi}`);
+
+  const markaHucresi = sayfa.locator('[data-test="kunye-duzelt-ac"]').first();
+  kontrol("marka hücresi tıklanabilir", (await markaHucresi.count()) === 1);
+  await markaHucresi.click();
+  await sayfa.waitForTimeout(400);
+  kontrol("künye düzenleme açıldı", (await sayfa.locator('[data-test="kunye-duzenleme"]').count()) === 1);
+
+  // Değişiklik yokken kaydet kapalı olmalı.
+  kontrol(
+    "değişiklik yokken kaydet kapalı",
+    await sayfa.locator('[data-test="kunye-kaydet"]').isDisabled(),
+  );
+
+  await sayfa.fill('[data-test="kunye-marka"]', "ALFA DUZELTILMIS");
+  await sayfa.waitForTimeout(200);
+  await sayfa.locator('[data-test="kunye-kaydet"]').click();
+  await sayfa.waitForTimeout(600);
+
+  const soru = (await sayfa.locator('[data-test="kapsam-sorusu"]').textContent()) ?? "";
+  kontrol(
+    "barkodtaki cihaz sayısı soruluyor",
+    soru.includes("3 cihaz var") && soru.includes("hepsine uygulansın mı"),
+    soru.replace(/\s+/g, " ").trim().slice(0, 90),
+  );
+
+  // Önce "yalnız bu cihaz": diğer ikisi eski markada kalmalı.
+  await sayfa.locator('[data-test="kapsam-tek"]').click();
+  await sayfa.waitForTimeout(2500);
+
+  await sayfa.goto(`${hedef}/cihazlar?marka=ALFAMARKA`, { waitUntil: "networkidle" });
+  const tekSonrasi = await cihazSayisi();
+  kontrol(
+    "yalnız bu cihaz seçilince tek cihaz değişti",
+    tekSonrasi === 2,
+    `${tekSonrasi} cihaz kaldı (2 bekleniyor)`,
+  );
+
+  await sayfa.goto(`${hedef}/cihazlar?marka=ALFA DUZELTILMIS`, { waitUntil: "networkidle" });
+  kontrol("düzeltilen cihaz yeni markada görünüyor", (await cihazSayisi()) === 1);
+
+  // Şimdi kalan ikisinde "hepsi": barkodun tamamı değişmeli.
+  await sayfa.goto(`${hedef}/cihazlar?marka=ALFAMARKA`, { waitUntil: "networkidle" });
+  await sayfa.locator('[data-test="kunye-duzelt-ac"]').first().click();
+  await sayfa.waitForTimeout(400);
+  await sayfa.fill('[data-test="kunye-marka"]', "ALFA TOPLU");
+  await sayfa.waitForTimeout(200);
+  await sayfa.locator('[data-test="kunye-kaydet"]').click();
+  await sayfa.waitForTimeout(600);
+  await sayfa.locator('[data-test="kapsam-barkod"]').click();
+  await sayfa.waitForTimeout(2500);
+
+  await sayfa.goto(`${hedef}/cihazlar?marka=ALFA TOPLU`, { waitUntil: "networkidle" });
+  const topluSonrasi = await cihazSayisi();
+  kontrol(
+    "hepsi seçilince barkodun tamamı değişti",
+    topluSonrasi === 3,
+    `${topluSonrasi} cihaz (3 bekleniyor)`,
+  );
+  await sayfa.goto(`${hedef}/cihazlar?marka=ALFAMARKA`, { waitUntil: "networkidle" });
+  kontrol("eski markada cihaz kalmadı", (await cihazSayisi()) === 0, `${await cihazSayisi()}`);
+
+  // Kapsam gerçekten BARKOD: daha önce tek tek düzeltilen cihaz da aynı
+  // barkodu taşıdığı için toplu işleme dahil oldu, eski adı kalmadı.
+  await sayfa.goto(`${hedef}/cihazlar?marka=ALFA DUZELTILMIS`, { waitUntil: "networkidle" });
+  kontrol(
+    "tek tek düzeltilmiş cihaz da barkod kapsamına girdi",
+    (await cihazSayisi()) === 0,
+    `${await cihazSayisi()} cihaz (0 bekleniyor)`,
+  );
+
+  // Kategori de değiştirilebilmeli ve tarihçeye yazılmalı.
+  await sayfa.goto(`${hedef}/cihazlar?marka=ALFA TOPLU`, { waitUntil: "networkidle" });
+  await sayfa.locator('[data-test="kunye-duzelt-ac"]').first().click();
+  await sayfa.waitForTimeout(400);
+  const kategoriSecenekleri = await sayfa.locator('[data-test="kunye-kategori"] option').count();
+  kontrol("kategori listesi dolu geliyor", kategoriSecenekleri >= 2, `${kategoriSecenekleri} seçenek`);
+  await sayfa.selectOption('[data-test="kunye-kategori"]', { label: "Aksesuar" });
+  await sayfa.waitForTimeout(200);
+  await sayfa.locator('[data-test="kunye-kaydet"]').click();
+  await sayfa.waitForTimeout(600);
+  await sayfa.locator('[data-test="kapsam-barkod"]').click();
+  await sayfa.waitForTimeout(2500);
+
+  await sayfa.goto(`${hedef}/cihazlar?kategori=`, { waitUntil: "networkidle" });
+  await sayfa.goto(`${hedef}/cihazlar?marka=ALFA TOPLU`, { waitUntil: "networkidle" });
+  const kunyeKategorileri = await sutunDegerleri("Kategori");
+  kontrol(
+    "kategori değişikliği tüm barkoda işledi",
+    kunyeKategorileri.length === 3 && kunyeKategorileri.every((k) => k === "Aksesuar"),
+    [...new Set(kunyeKategorileri)].join(", "),
+  );
+
+  // Değişiklik cihazın tarihçesine düzeltme olarak yazılmalı.
+  const kunyeSerileri = await sutunDegerleri("Seri No / IMEI");
+  await sayfa.goto(`${hedef}/cihazlar?ara=${kunyeSerileri[0]}`, { waitUntil: "networkidle" });
+  const tarihce = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "künye düzeltmesi tarihçeye yazıldı",
+    tarihce.includes("Kategori") && tarihce.includes("Aksesuar"),
+    tarihce.replace(/\s+/g, " ").slice(0, 100),
+  );
+
+  // Personel künyeyi düzeltememeli.
+  await giris("personel1");
+  await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
+  kontrol(
+    "personelde künye düzeltme açılmıyor",
+    (await sayfa.locator('[data-test="kunye-duzelt-ac"]').count()) === 0,
+  );
+
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
   kontrol("tarayıcı konsolunda hata yok", hatalar.length === 0, hatalar.slice(0, 3).join(" | "));
 } catch (hata) {
