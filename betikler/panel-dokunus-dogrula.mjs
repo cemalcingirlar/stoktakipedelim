@@ -354,6 +354,38 @@ try {
     haftaBolum.slice(0, 60),
   );
 
+  // Çubuklar gerçekten çiziliyor mu? Sütun saymak yetmiyor: bir sürümde
+  // sütunlar yerindeydi ama sütun kutusu `items-end` yüzünden uzamadığı için
+  // çubukların yüzde yüksekliği sıfıra çöküyordu — grafik boş görünüyordu ve
+  // bu betik yine de geçiyordu.
+  const cubukOlcumu = await sayfa.locator('[data-test="grafik-kovasi"]').evaluateAll((kovalar) =>
+    kovalar.map((kova) => ({
+      kovaPx: Math.round(kova.getBoundingClientRect().height),
+      // Yalnız değeri sıfırdan büyük çubuklar; sıfır zaten çizilmemeli.
+      dolucubukPx: [...kova.querySelectorAll("[data-deger]")]
+        .filter((c) => Number(c.getAttribute("data-deger")) > 0)
+        .map((c) => Math.round(c.getBoundingClientRect().height)),
+    })),
+  );
+
+  kontrol(
+    "grafik sütunları tam yükseklikte",
+    cubukOlcumu.length > 0 && cubukOlcumu.every((k) => k.kovaPx > 100),
+    `kova yükseklikleri: ${[...new Set(cubukOlcumu.map((k) => k.kovaPx))].join(", ")}px`,
+  );
+
+  const dolular = cubukOlcumu.flatMap((k) => k.dolucubukPx);
+  kontrol(
+    "değeri olan çubuklar gerçekten çiziliyor",
+    dolular.length > 0 && dolular.every((px) => px > 2),
+    dolular.length > 0 ? `${dolular.join(", ")}px` : "değeri olan çubuk bulunamadı",
+  );
+
+  const bosCizilen = await sayfa
+    .locator('[data-test="grafik-kovasi"] [data-deger="0"]')
+    .evaluateAll((c) => c.filter((e) => e.getBoundingClientRect().height > 0).length);
+  kontrol("sıfır değerli çubuk çizilmiyor", bosCizilen === 0, `${bosCizilen} çubuk`);
+
   await sayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
   await sayfa.screenshot({ path: `${cikti}-panel.png`, fullPage: true });
 

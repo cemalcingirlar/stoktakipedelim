@@ -8,6 +8,8 @@ import {
   kovaEtiketi,
   GRAFIK_DONEMLERI,
   VARSAYILAN_DONEM,
+  cubukYuzdesi,
+  enYuksekDeger,
 } from "./grafikDonem";
 
 // 14 Ekim 2026 bir çarşamba.
@@ -135,4 +137,50 @@ test("etiketler boş değil", () => {
 
 test("haftalık etiket aralık gösterir", () => {
   assert.equal(kovaEtiketi(new Date(2026, 9, 12), "hafta"), "12-18 Eki");
+});
+
+// ------------------------------------------------------- çubuk ölçeği
+
+function kova(giris: number, satis = 0) {
+  return { anahtar: "a", etiket: "a", giris, satis, ciroKurus: 0 };
+}
+
+test("en yüksek değer giriş ve satışın büyüğü", () => {
+  assert.equal(enYuksekDeger([kova(3, 7), kova(5, 2)]), 7);
+});
+
+test("boş grafikte en yüksek değer bire düşüyor", () => {
+  // Sıfıra bölme olmasın; tüm çubuklar zaten sıfır yüksekliğinde.
+  assert.equal(enYuksekDeger([]), 1);
+  assert.equal(enYuksekDeger([kova(0, 0)]), 1);
+});
+
+test("sıfır değer çubuk çizdirmiyor", () => {
+  assert.equal(cubukYuzdesi(0, 10), 0);
+  assert.equal(cubukYuzdesi(-1, 10), 0);
+});
+
+test("en yüksek değer tam yüzde yüz", () => {
+  assert.equal(cubukYuzdesi(10, 10), 100);
+});
+
+test("yarısı yüzde elli", () => {
+  assert.equal(cubukYuzdesi(5, 10), 50);
+});
+
+test("çok küçük değer görünür kalıyor", () => {
+  // 1/100 = %1 olurdu; 160 piksellik alanda 1.6 piksel, görünmez.
+  assert.equal(cubukYuzdesi(1, 100), 2);
+});
+
+test("sıfır ile küçük değer birbirinden ayırt ediliyor", () => {
+  assert.equal(cubukYuzdesi(0, 100), 0);
+  assert.ok(cubukYuzdesi(1, 100) > 0);
+});
+
+test("yüzde hiçbir zaman yüzü aşmıyor", () => {
+  for (const [deger, enYuksek] of [[1, 1], [10, 10], [3, 7], [1, 100]] as const) {
+    const y = cubukYuzdesi(deger, enYuksek);
+    assert.ok(y <= 100, `${deger}/${enYuksek} -> ${y}`);
+  }
 });
