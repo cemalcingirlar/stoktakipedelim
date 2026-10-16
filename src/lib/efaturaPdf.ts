@@ -132,7 +132,7 @@ const KOD_KALIBI = /^\d{8,14}$/;
 /**
  * Satıcı / alıcı ürün kodu sütunu — EAN'den sonra gelen 1-2 sütun.
  *
- * Bu sütunlar her faturada rakam olmuyor: Apple ürünlerinde "MYE73TU/A" gibi
+ * Bu sütunlar her faturada rakam olmuyor: Apple ürünlerinde "GAMA11TU/A" gibi
  * model kodu geliyor. Ürün adını yutmamak için kalıp dar tutuldu: küçük harf
  * içeremez (açıklamalar "iPhone", "Galaxy" diye başlıyor), en az bir rakam ve
  * bir harf bulunmalı, ayrıca bir ayraç (/ - _) taşımalı. "128GB" gibi açıklama
@@ -375,7 +375,7 @@ export function efaturaCoz(metin: string): EFaturaOkumasi {
     // "N Numaralı satırdaki" diyor ve bu her faturada var.
     //
     // Nottaki kod yalnız teyit için. Tedarikçi burada bazen EAN, bazen satıcı
-    // ürün kodu yazıyor ("MYE73TU/A/1411633" gibi), sonuna da parti numarası
+    // ürün kodu yazıyor ("GAMA11TU/A/1400001" gibi), sonuna da parti numarası
     // ekliyor. Bu yüzden satırın üç kodundan herhangi biriyle başlaması yeterli;
     // hiçbiriyle tutmuyorsa bu bir hata değil, uyarı — sıra numarası bağlayıcı,
     // kod yazımı tedarikçiden tedarikçiye değişiyor.
