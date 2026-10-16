@@ -98,7 +98,7 @@ try {
         // tıpkı gerçek Apple faturalarındaki gibi. Program kalemi sıra
         // numarasından eşleştirmeli; eskiden bu faturayı reddediyordu.
         kod: "4000000000028",
-        modelKodu: "MYE73TU/A",
+        modelKodu: "GAMA11TU/A",
         ad: "BETA FON 70 PRO 5G 8/128GB",
         adet: 3,
         birim: "20.000,00",
