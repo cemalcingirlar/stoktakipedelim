@@ -177,10 +177,24 @@ try {
     (await sayfa.locator('[data-test="sat-geri-al"]').count()) === 1,
   );
   kontrol(
-    "satış kaydedilmedi uyarısı duruyor",
+    "kaydedilmedi uyarısı duruyor",
     ((await sayfa.locator('[data-test="sat-geri-al"]').textContent()) ?? "").includes(
-      "satış kaydedilmedi",
+      "kaydedilmedi",
     ),
+  );
+  kontrol(
+    "satış fiyatı boşken ne olacağı yazıyor",
+    ((await sayfa.locator('[data-test="ne-olacak"]').textContent()) ?? "").includes(
+      "yalnız alış fiyatı güncellenecek",
+    ),
+    ((await sayfa.locator('[data-test="ne-olacak"]').textContent()) ?? "").trim(),
+  );
+  kontrol(
+    "satış fiyatı boşken düğme alış fiyatını kaydediyor",
+    ((await sayfa.locator('[data-test="satisi-kaydet"]').textContent()) ?? "").includes(
+      "Alış Fiyatını Kaydet",
+    ),
+    ((await sayfa.locator('[data-test="satisi-kaydet"]').textContent()) ?? "").trim(),
   );
   kontrol(
     "yeni alış fiyatı mevcut alışla hazır geliyor",
@@ -188,14 +202,57 @@ try {
     await sayfa.locator('[data-test="yeni-alis-fiyati"]').inputValue(),
   );
 
-  // ---------------------------------- 5) Boş satış fiyatı reddedilmeli
+  // ------------- 5) Satış fiyatı boşken yalnız alış fiyatı kaydedilebilmeli
+  // Kullanıcı bildirdi: kutucuğun adı "Alış Fiyatını Revize Et" olduğu için
+  // yalnız alış fiyatı yazılıyor, satış fiyatı istemek kaydı engelliyordu.
+  await sayfa.fill('[data-test="yeni-alis-fiyati"]', "9.000,00");
   await sayfa.locator('[data-test="satisi-kaydet"]').click();
-  await sayfa.waitForTimeout(600);
+  await sayfa.waitForTimeout(2000);
   kontrol(
-    "boş satış fiyatı reddedildi",
-    (await sayfa.locator('[data-test="satis-hata"]').count()) === 1,
-    ((await sayfa.locator('[data-test="satis-hata"]').textContent()) ?? "").trim(),
+    "satış fiyatı boşken alış fiyatı kaydedildi",
+    (await sayfa.locator('[data-test="fiyat-kaydedildi"]').count()) === 1,
+    ((await sayfa.locator('[data-test="satis-hata"]').count()) > 0
+      ? ((await sayfa.locator('[data-test="satis-hata"]').first().textContent()) ?? "").trim()
+      : ""),
   );
+  kontrol(
+    "yalnız fiyat kaydında satış açılmadığı söyleniyor",
+    ((await sayfa.locator('[data-test="fiyat-kaydedildi"]').textContent()) ?? "").includes(
+      "satış kaydı açılmadı",
+    ),
+  );
+
+  // Cihazın maliyeti gerçekten değişmiş olmalı.
+  await sayfa.goto(`${hedef}/cihazlar?ara=${imei(1)}`, { waitUntil: "networkidle" });
+  const yalnizFiyatSonrasi = await kunyeOku("Alış Fiyatı");
+  kontrol(
+    "yalnız fiyat kaydı cihazın maliyetine işledi",
+    yalnizFiyatSonrasi.includes("9.000,00"),
+    `${yalnizFiyatSonrasi} (beklenen 9.000,00)`,
+  );
+  const yalnizFiyatTarihce = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "yalnız fiyat kaydında satış hareketi yazılmadı",
+    !yalnizFiyatTarihce.includes("satılıp geri alındı"),
+  );
+
+  // Satış akışına geri dön: aynı cihaz için şimdi satış fiyatı da yazılacak.
+  await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
+  await sayfa.locator('[data-test="satis-modu"]').check();
+  await sayfa.fill('[data-test="musteri-ad"]', MUSTERI);
+  await sayfa.selectOption("#kaynak", { label: "2 Nolu Mağaza" });
+  await sayfa.waitForTimeout(400);
+  const geriMesaj = await aktar(imei(1));
+  kontrol("cihaz kaynağa geri aktarıldı", geriMesaj.includes("aktarıldı"), geriMesaj);
+  await sayfa.fill('[data-test="yeni-alis-fiyati"]', ALIS);
+  await sayfa.locator('[data-test="satisi-kaydet"]').click();
+  await sayfa.waitForTimeout(2000);
+  await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
+  await sayfa.locator('[data-test="satis-modu"]').check();
+  await sayfa.fill('[data-test="musteri-ad"]', MUSTERI);
+  await sayfa.selectOption("#kaynak", { label: "1 Nolu Mağaza" });
+  await sayfa.waitForTimeout(400);
+  await aktar(imei(1));
 
   // ------------------------------------------------ 6) Kâr satış anındaki
   // maliyete göre gösteriliyor mu? 13.000 − 10.000 = 3.000
