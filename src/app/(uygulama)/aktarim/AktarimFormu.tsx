@@ -237,7 +237,7 @@ export function AktarimFormu({
             />
             <span className="text-sm">
               <span className="font-medium text-amber-900">
-                Müşteriye satıp geri alıyoruz
+                Alış Fiyatını Revize Et
               </span>
               <span className="block text-xs text-amber-800">
                 Okutulan her cihaz için satış fiyatı ve yeni alış fiyatı sorulur. Satış,
