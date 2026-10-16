@@ -44,7 +44,45 @@ else
 fi
 
 baslik "2/7  Kod indiriliyor ($DAL)"
-sudo -u "$KULLANICI" git fetch origin
+# Betik kimlik sormaz: depo private olup kimlik bulunamazsa git, kullanıcı
+# adı isteyip sonsuza kadar bekler ve güncelleme orada asılı kalır. Bu iki
+# değişken git'i sormak yerine hata vermeye zorluyor.
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
+
+if ! sudo -u "$KULLANICI" --preserve-env=GIT_TERMINAL_PROMPT,GIT_SSH_COMMAND \
+  git fetch origin; then
+  kirmizi "Kod indirilemedi — GitHub'a erişilemiyor."
+  UZAK=$(sudo -u "$KULLANICI" git remote get-url origin 2>/dev/null || echo "bilinmiyor")
+  echo
+  echo "Uzak adres: $UZAK"
+  case "$UZAK" in
+    https://*)
+      echo
+      echo "Depo private ise HTTPS ile kimliksiz indirilemez. Dağıtım anahtarı kurun:"
+      echo
+      echo "  sudo -u $KULLANICI mkdir -p /opt/stok/.ssh && sudo chmod 700 /opt/stok/.ssh"
+      echo "  sudo -u $KULLANICI ssh-keygen -t ed25519 -N '' -f /opt/stok/.ssh/id_ed25519"
+      echo "  sudo cat /opt/stok/.ssh/id_ed25519.pub"
+      echo
+      echo "Çıkan satırı GitHub'da depo > Settings > Deploy keys > Add deploy key"
+      echo "ekranına yapıştırın (yazma izni vermeyin), sonra:"
+      echo
+      echo "  sudo -u $KULLANICI bash -c 'ssh-keyscan -t ed25519 github.com >> /opt/stok/.ssh/known_hosts'"
+      echo "  sudo -u $KULLANICI git -C $UYGULAMA remote set-url origin git@github.com:cemalcingirlar/stoktakipedelim.git"
+      echo
+      echo "Sonra bu betiği tekrar çalıştırın."
+      ;;
+    git@*|ssh://*)
+      echo
+      echo "SSH anahtarı GitHub'da tanımlı değil ya da $KULLANICI kullanıcısına ait değil."
+      echo "Genel anahtarı görmek için:  sudo cat /opt/stok/.ssh/id_ed25519.pub"
+      echo "Bağlantıyı denemek için:     sudo -u $KULLANICI ssh -T git@github.com"
+      ;;
+  esac
+  exit 1
+fi
+
 sudo -u "$KULLANICI" git reset --hard "$DAL"
 YENI=$(sudo -u "$KULLANICI" git rev-parse --short HEAD)
 sudo -u "$KULLANICI" git log --oneline -1

@@ -165,8 +165,35 @@ Kullanıcı, klasör ve kod:
 sudo useradd --system --create-home --home-dir /opt/stok stok
 sudo chmod 755 /opt/stok
 sudo mkdir -p /var/lib/stok && sudo chown stok:stok /var/lib/stok
-sudo -u stok git clone https://github.com/cemalcingirlar/stoktakipedelim.git /opt/stok/app
+```
+
+**Depo private olduğu için önce dağıtım anahtarı gerekiyor.** HTTPS ile
+kimliksiz klonlamak artık çalışmaz; git kullanıcı adı sorar ve bekler.
+
+```bash
+sudo -u stok mkdir -p /opt/stok/.ssh && sudo chmod 700 /opt/stok/.ssh
+sudo -u stok ssh-keygen -t ed25519 -N '' -f /opt/stok/.ssh/id_ed25519
+sudo cat /opt/stok/.ssh/id_ed25519.pub
+```
+
+Çıkan satırı GitHub'da **depo → Settings → Deploy keys → Add deploy key**
+ekranına yapıştır. *Allow write access* işaretleme: sunucunun yalnız okuması
+yeterli, bu anahtar çalınsa bile depoya yazılamaz.
+
+Sonra GitHub'ın sunucu kimliğini tanıt ve klonla:
+
+```bash
+sudo -u stok bash -c 'ssh-keyscan -t ed25519 github.com >> /opt/stok/.ssh/known_hosts'
+sudo -u stok git clone git@github.com:cemalcingirlar/stoktakipedelim.git /opt/stok/app
 sudo -u stok bash -c 'cd /opt/stok/app && npm ci'
+```
+
+Hâlihazırda HTTPS ile klonlanmış bir kurulumu SSH'a çevirmek için (anahtar
+yukarıdaki gibi kurulduktan sonra):
+
+```bash
+sudo -u stok git -C /opt/stok/app remote set-url origin git@github.com:cemalcingirlar/stoktakipedelim.git
+sudo -u stok git -C /opt/stok/app fetch origin
 ```
 
 Cloudflare istemcisi (tünel kimliği arşivden gelecek, yeniden giriş yapmayacaksın):
