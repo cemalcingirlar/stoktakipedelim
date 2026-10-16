@@ -212,6 +212,45 @@ function kodSutunuOku(
 }
 
 /**
+ * Tek bir parça seri numarası olabilir mi?
+ *
+ * Seri numaraları tedarikçiden tedarikçiye çok değişiyor:
+ *   IMEI    976461909525804      (salt rakam)
+ *   Apple   SF16HWG06MLR0000SY5, SDCQ4CFHX5V, SCVGYKRFWLJ (saf harf olabiliyor)
+ *   JBL     MM0249-DQ0096939     (tireli)
+ *
+ * Ortak yan: boşluksuz, en az altı karakter, yalnız ASCII büyük harf, rakam ve
+ * birkaç ayraç. Küçük harf ve Türkçe harf dışarıda — fatura altındaki
+ * "Fatura referansı:...", "YAZI İLE ... KURUŞ", "TÜRKİYE GARANTİ BANKASI"
+ * gibi satırlar böyle eleniyor.
+ */
+export function seriParcasiMi(parca: string): boolean {
+  const p = parca.trim();
+  if (p.length < 6) return false;
+  return /^[A-Z0-9][A-Z0-9/._-]*$/.test(p);
+}
+
+/**
+ * Bu satır, bir önceki "N Numaralı satırdaki ... seriler:" başlığının devamı mı?
+ *
+ * Önceki sürüm "satırda ardışık altı rakam var mı" diye bakıyordu. Apple
+ * aksesuarlarında seri numaraları harf ağırlıklı (en uzun rakam dizisi dört),
+ * bu yüzden satırlar liste sayılmıyor ve ürünler "seri numarası yok" diye
+ * kaydediliyordu.
+ *
+ * Yerine parça parça bakılıyor: satır noktalı virgül ve boşluklardan ayrılıyor,
+ * her parça seri numarasına benzemeli. Ayrıca satırın tamamında en az bir
+ * rakam aranıyor — tek tek parçalarda değil, çünkü "SCVGYKRFWLJ" gibi saf
+ * harf seriler var ama rakamsız bir satırın tamamı seri listesi olmuyor.
+ */
+export function seriSatiriMi(satir: string): boolean {
+  const parcalar = satir.split(/[;\s]+/).filter(Boolean);
+  if (parcalar.length === 0) return false;
+  if (!parcalar.every(seriParcasiMi)) return false;
+  return parcalar.some((p) => /\d/.test(p));
+}
+
+/**
  * Not bölümündeki seri numaralarını sıra numarasına göre toplar.
  *
  * Biçim: `3 Numaralı satırdaki; "4894947084461/1433819" kodlu ürün için
@@ -247,15 +286,7 @@ export function seriNolariTopla(metin: string): Map<number, { kod: string; seril
     }
 
     // Taşan seri listesi.
-    //
-    // Seri numaraları her zaman salt rakam (IMEI) değil: aksesuarlarda
-    // "MM0249-DQ0096939" gibi tire içeren numaralar geliyor. Tire kabul
-    // edilmeyince bu satırlar seri listesi sayılmıyor ve ürünler "seri
-    // numarası yok" diye kaydediliyordu.
-    //
-    // Ayrıca "seriler:" ile biten başlık satırından sonra liste alt satıra
-    // geçebiliyor; bu dal onu yakalıyor.
-    if (aktif && /^[\dA-Za-z;\s/._-]+$/.test(satir) && /\d{6,}/.test(satir)) {
+    if (aktif && seriSatiriMi(satir)) {
       aktif.parcalar.push(satir);
       continue;
     }
