@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Kart } from "@/bilesenler/Kart";
 import { Rozet } from "@/bilesenler/Rozet";
+import { gorunurMagazaIdleri, magazaKosulu } from "@/lib/gorunurluk";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { vadeEtiketi } from "@/lib/vade";
@@ -14,7 +15,10 @@ export default async function FaturalarSayfasi() {
   const oturum = await oturumGerekli();
   const bugun = new Date();
 
+  // Fatura, girişinin yapıldığı depoya ait: kullanıcı yalnız kendi
+  // mağazalarının alışlarını görür, başka mağazanın maliyetlerini görmez.
   const faturalar = await prisma.alisFaturasi.findMany({
+    where: magazaKosulu(gorunurMagazaIdleri(oturum)),
     orderBy: [{ faturaTarihi: "desc" }, { id: "desc" }],
     take: 100,
     include: {

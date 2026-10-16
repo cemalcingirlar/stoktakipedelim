@@ -19,13 +19,13 @@ import {
   vadesiGecenCihazSayisi,
 } from "@/lib/sorgular";
 import { inputTarih, saatYaz, tarihSaatYaz } from "@/lib/tarih";
-import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
+import { gorunurMagazaIdleri } from "@/lib/gorunurluk";
+import { oturumGerekli } from "@/lib/yetki";
 
 export const metadata = { title: "Panel — Stok Takip" };
 
 export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">) {
   const oturum = await oturumGerekli();
-  const yonetici = adminMi(oturum);
 
   const params = await searchParams;
   const donem = donemiCoz(Array.isArray(params.donem) ? params.donem[0] : params.donem);
@@ -34,7 +34,10 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
   );
   const satisAraligi = satisDonemAraligi(satisDonemi);
 
-  const kendiMagazalari = yonetici ? null : yetkiliMagazalar(oturum);
+  // Tek kural: yönetici her mağazayı görür, diğer herkes yalnız yetkili
+  // olduklarını. Panelin bütün kartları, dökümleri ve grafiği aynı kısıttan
+  // geçiyor; biri atlanırsa ekrandaki rakamlar birbirini tutmaz.
+  const gorunur = gorunurMagazaIdleri(oturum);
 
   const [
     ozetler,
@@ -46,14 +49,14 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
     magazaSatislari,
     personelSatislari,
   ] = await Promise.all([
-    magazaStokOzeti(),
-    vadesiGecenCihazSayisi(),
-    bugunSatilanlar(kendiMagazalari),
-    bekleyenSevkiyatlar(kendiMagazalari),
-    sonHareketler(10),
-    hareketRaporu(donem),
-    magazaSatisRaporu(satisAraligi),
-    kullaniciSatisRaporu(satisAraligi),
+    magazaStokOzeti(gorunur),
+    vadesiGecenCihazSayisi(gorunur),
+    bugunSatilanlar(gorunur),
+    bekleyenSevkiyatlar(gorunur),
+    sonHareketler(gorunur, 10),
+    hareketRaporu(donem, gorunur),
+    magazaSatisRaporu(satisAraligi, gorunur),
+    kullaniciSatisRaporu(satisAraligi, gorunur),
   ]);
 
   const magazaToplami = satisToplami(magazaSatislari);

@@ -3,6 +3,7 @@ import {
   aktarimSatislariniTopla,
   dokumleriBirlestir,
 } from "./aktarimSatisi";
+import { gorunurMagazalar, magazaKosulu, transferKosulu } from "./gorunurluk";
 import { prisma } from "./prisma";
 import { SAYIM_DURUM, STOK_DURUM, TRANSFER_DURUM } from "./sabitler";
 import {
@@ -37,16 +38,17 @@ function aktarimTarihKosulu(aralik: RaporAraligi) {
 }
 
 /** Mağaza bazlı stok adedi ve değeri (yalnız STOKTA olanlar). */
-export async function magazaStokRaporu() {
-  const [magazalar, gruplar] = await Promise.all([
+export async function magazaStokRaporu(gorunur: number[] | null) {
+  const [tumMagazalar, gruplar] = await Promise.all([
     prisma.magaza.findMany({ where: { aktif: true }, orderBy: { kod: "asc" } }),
     prisma.stokKalemi.groupBy({
       by: ["magazaId"],
-      where: { durum: STOK_DURUM.STOKTA },
+      where: { durum: STOK_DURUM.STOKTA, ...magazaKosulu(gorunur) },
       _count: { _all: true },
       _sum: { alisFiyatiKurus: true },
     }),
   ]);
+  const magazalar = gorunurMagazalar(tumMagazalar, gorunur);
   const harita = new Map(gruplar.map((g) => [g.magazaId, g]));
   return magazalar.map((m) => ({
     magazaId: m.id,
@@ -58,12 +60,12 @@ export async function magazaStokRaporu() {
 }
 
 /** Kategori kırılımında stok. */
-export async function kategoriStokRaporu() {
+export async function kategoriStokRaporu(gorunur: number[] | null) {
   const [kategoriler, gruplar] = await Promise.all([
     prisma.kategori.findMany({ orderBy: { sira: "asc" } }),
     prisma.stokKalemi.groupBy({
       by: ["kategoriId"],
-      where: { durum: STOK_DURUM.STOKTA },
+      where: { durum: STOK_DURUM.STOKTA, ...magazaKosulu(gorunur) },
       _count: { _all: true },
       _sum: { alisFiyatiKurus: true },
     }),
@@ -79,9 +81,14 @@ export async function kategoriStokRaporu() {
 }
 
 /** Ödenmemiş vadeli faturalar; geçenler ve yaklaşanlar ayrı ayrı. */
-export async function vadeRaporu(bugun: Date = new Date()) {
+export async function vadeRaporu(gorunur: number[] | null, bugun: Date = new Date()) {
   const faturalar = await prisma.alisFaturasi.findMany({
-    where: { vadeOdendi: false, vadeGun: { gt: 0 }, vadeTarihi: { not: null } },
+    where: {
+      vadeOdendi: false,
+      vadeGun: { gt: 0 },
+      vadeTarihi: { not: null },
+      ...magazaKosulu(gorunur),
+    },
     include: {
       tedarikci: { select: { ad: true } },
       magaza: { select: { ad: true } },
@@ -105,20 +112,21 @@ export async function vadeRaporu(bugun: Date = new Date()) {
 }
 
 /** Tarih aralığındaki girişler ve satışlar. */
-export async function girisCikisRaporu(aralik: RaporAraligi) {
+export async function girisCikisRaporu(aralik: RaporAraligi, gorunur: number[] | null) {
+  const magaza = magazaKosulu(gorunur);
   const [girisler, satislar, aktarimlar] = await Promise.all([
     prisma.stokKalemi.aggregate({
-      where: tarihKosulu("girisTarihi", aralik),
+      where: { ...tarihKosulu("girisTarihi", aralik), ...magaza },
       _count: { _all: true },
       _sum: { alisFiyatiKurus: true },
     }),
     prisma.stokKalemi.aggregate({
-      where: { durum: STOK_DURUM.SATILDI, ...tarihKosulu("satisTarihi", aralik) },
+      where: { durum: STOK_DURUM.SATILDI, ...tarihKosulu("satisTarihi", aralik), ...magaza },
       _count: { _all: true },
       _sum: { alisFiyatiKurus: true, satisFiyatiKurus: true },
     }),
     prisma.aktarimSatisi.aggregate({
-      where: aktarimTarihKosulu(aralik),
+      where: { ...aktarimTarihKosulu(aralik), ...magaza },
       _count: { _all: true },
       _sum: { satisFiyatiKurus: true, maliyetKurus: true },
     }),
@@ -145,20 +153,22 @@ export async function girisCikisRaporu(aralik: RaporAraligi) {
  * Cihaz satışları cihazın bulunduğu mağazaya, aktarım satışları ise satışın
  * yapıldığı mağazaya (aktarımın kaynağına) yazılıyor.
  */
-export async function magazaSatisRaporu(aralik: RaporAraligi) {
-  const [magazalar, gruplar, aktarimlar] = await Promise.all([
+export async function magazaSatisRaporu(aralik: RaporAraligi, gorunur: number[] | null) {
+  const magaza = magazaKosulu(gorunur);
+  const [tumMagazalar, gruplar, aktarimlar] = await Promise.all([
     prisma.magaza.findMany({ orderBy: { kod: "asc" } }),
     prisma.stokKalemi.groupBy({
       by: ["magazaId"],
-      where: { durum: STOK_DURUM.SATILDI, ...tarihKosulu("satisTarihi", aralik) },
+      where: { durum: STOK_DURUM.SATILDI, ...tarihKosulu("satisTarihi", aralik), ...magaza },
       _count: { _all: true },
       _sum: { alisFiyatiKurus: true, satisFiyatiKurus: true },
     }),
     prisma.aktarimSatisi.findMany({
-      where: aktarimTarihKosulu(aralik),
+      where: { ...aktarimTarihKosulu(aralik), ...magaza },
       select: { magazaId: true, satisFiyatiKurus: true, maliyetKurus: true },
     }),
   ]);
+  const magazalar = gorunurMagazalar(tumMagazalar, gorunur);
 
   const birlesik = dokumleriBirlestir([
     ...gruplar.map((g) => ({
@@ -201,7 +211,8 @@ export async function magazaSatisRaporu(aralik: RaporAraligi) {
  * Mağaza içi aktarımda müşteriye satıp geri alma da bu kişinin satışı sayılıyor:
  * işi fiilen yapan personel, dökümde kendi rakamını görmeli.
  */
-export async function kullaniciSatisRaporu(aralik: RaporAraligi) {
+export async function kullaniciSatisRaporu(aralik: RaporAraligi, gorunur: number[] | null) {
+  const magaza = magazaKosulu(gorunur);
   const [gruplar, aktarimlar] = await Promise.all([
     prisma.stokKalemi.groupBy({
       by: ["satanKullaniciId"],
@@ -209,12 +220,13 @@ export async function kullaniciSatisRaporu(aralik: RaporAraligi) {
         durum: STOK_DURUM.SATILDI,
         satanKullaniciId: { not: null },
         ...tarihKosulu("satisTarihi", aralik),
+        ...magaza,
       },
       _count: { _all: true },
       _sum: { alisFiyatiKurus: true, satisFiyatiKurus: true },
     }),
     prisma.aktarimSatisi.findMany({
-      where: aktarimTarihKosulu(aralik),
+      where: { ...aktarimTarihKosulu(aralik), ...magaza },
       select: { satanKullaniciId: true, satisFiyatiKurus: true, maliyetKurus: true },
     }),
   ]);
@@ -258,14 +270,17 @@ export async function kullaniciSatisRaporu(aralik: RaporAraligi) {
 }
 
 /** Sevkiyat durum özeti. */
-export async function transferRaporu(aralik: RaporAraligi) {
+export async function transferRaporu(aralik: RaporAraligi, gorunur: number[] | null) {
   const kosul: { gte?: Date; lte?: Date } = {};
   if (aralik.baslangic) kosul.gte = aralik.baslangic;
   if (aralik.bitis) kosul.lte = gunSonu(aralik.bitis);
 
   const gruplar = await prisma.transfer.groupBy({
     by: ["durum"],
-    where: Object.keys(kosul).length ? { gonderimTarihi: kosul } : {},
+    where: {
+      ...(Object.keys(kosul).length ? { gonderimTarihi: kosul } : {}),
+      ...transferKosulu(gorunur),
+    },
     _count: { _all: true },
   });
 
@@ -281,9 +296,9 @@ export async function transferRaporu(aralik: RaporAraligi) {
 }
 
 /** Son sayımların eksik/fazla özeti. */
-export async function sayimRaporu() {
+export async function sayimRaporu(gorunur: number[] | null) {
   const sayimlar = await prisma.sayim.findMany({
-    where: { durum: SAYIM_DURUM.TAMAMLANDI },
+    where: { durum: SAYIM_DURUM.TAMAMLANDI, ...magazaKosulu(gorunur) },
     orderBy: { bitisTarihi: "desc" },
     take: 20,
     include: {
@@ -314,23 +329,25 @@ export async function sayimRaporu() {
  */
 export async function hareketRaporu(
   donem: GrafikDonemi,
+  gorunur: number[] | null,
   bugun: Date = new Date(),
 ): Promise<GrafikKovasi[]> {
   const { baslangic, kovalar } = donemKovalari(donem, bugun);
+  const magaza = magazaKosulu(gorunur);
 
   const [girisler, satislar, aktarimlar] = await Promise.all([
     prisma.stokKalemi.findMany({
-      where: { girisTarihi: { gte: baslangic } },
+      where: { girisTarihi: { gte: baslangic }, ...magaza },
       select: { girisTarihi: true },
     }),
     prisma.stokKalemi.findMany({
-      where: { durum: STOK_DURUM.SATILDI, satisTarihi: { gte: baslangic } },
+      where: { durum: STOK_DURUM.SATILDI, satisTarihi: { gte: baslangic }, ...magaza },
       select: { satisTarihi: true, satisFiyatiKurus: true },
     }),
     // Aktarımdaki sat-geri al işlemleri de satış; grafikte görünmezse
     // paneldeki döküm ile grafik birbirini tutmaz.
     prisma.aktarimSatisi.findMany({
-      where: { satisTarihi: { gte: baslangic } },
+      where: { satisTarihi: { gte: baslangic }, ...magaza },
       select: { satisTarihi: true, satisFiyatiKurus: true },
     }),
   ]);

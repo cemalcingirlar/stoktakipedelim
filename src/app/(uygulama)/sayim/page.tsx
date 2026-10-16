@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Kart } from "@/bilesenler/Kart";
 import { Rozet } from "@/bilesenler/Rozet";
+import { gorunurMagazaIdleri, magazaKosulu } from "@/lib/gorunurluk";
 import { prisma } from "@/lib/prisma";
 import { SAYIM_DURUM, STOK_DURUM } from "@/lib/sabitler";
 import { tarihSaatYaz } from "@/lib/tarih";
@@ -14,6 +15,9 @@ export default async function SayimSayfasi() {
   const yonetici = adminMi(oturum);
   // Sayım mağaza bazında yapılır; kullanıcı yalnız yetkili olduğu mağazaları sayar.
   const yetkili = yetkiliMagazalar(oturum);
+  // Geçmiş sayımlar ve stok adetleri de aynı kısıttan geçiyor: başka
+  // mağazanın sayım sonucu onun stok dökümüdür.
+  const gorunur = gorunurMagazaIdleri(oturum);
 
   const [magazalar, sayimlar, stokGruplari] = await Promise.all([
     prisma.magaza.findMany({
@@ -24,6 +28,7 @@ export default async function SayimSayfasi() {
       orderBy: { kod: "asc" },
     }),
     prisma.sayim.findMany({
+      where: magazaKosulu(gorunur),
       orderBy: [{ baslangicTarihi: "desc" }, { id: "desc" }],
       take: 50,
       include: {
@@ -35,7 +40,7 @@ export default async function SayimSayfasi() {
     }),
     prisma.stokKalemi.groupBy({
       by: ["magazaId"],
-      where: { durum: STOK_DURUM.STOKTA },
+      where: { durum: STOK_DURUM.STOKTA, ...magazaKosulu(gorunur) },
       _count: { _all: true },
     }),
   ]);

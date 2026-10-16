@@ -1,4 +1,6 @@
 import "server-only";
+import type { Prisma } from "@/generated/prisma/client";
+import { gorunurMagazalar, hareketKosulu, magazaKosulu } from "./gorunurluk";
 import { prisma } from "./prisma";
 import { STOK_DURUM, TRANSFER_DURUM } from "./sabitler";
 import { gunBasi, gunSonu } from "./tarih";
@@ -11,18 +13,25 @@ export type MagazaOzeti = {
   degerKurus: number;
 };
 
-/** Her mağaza için stoktaki cihaz adedi ve toplam alış değeri. */
-export async function magazaStokOzeti(): Promise<MagazaOzeti[]> {
-  const [magazalar, gruplar] = await Promise.all([
+/**
+ * Her mağaza için stoktaki cihaz adedi ve toplam alış değeri.
+ *
+ * Hem mağaza listesi hem sayılar görünür mağazalara kısıtlanıyor: yalnız
+ * sayıları kısıtlamak, kullanıcıya göremediği mağazaları "0 adet" diye
+ * gösterirdi.
+ */
+export async function magazaStokOzeti(gorunur: number[] | null): Promise<MagazaOzeti[]> {
+  const [tumMagazalar, gruplar] = await Promise.all([
     prisma.magaza.findMany({ where: { aktif: true }, orderBy: { kod: "asc" } }),
     prisma.stokKalemi.groupBy({
       by: ["magazaId"],
-      where: { durum: STOK_DURUM.STOKTA },
+      where: { durum: STOK_DURUM.STOKTA, ...magazaKosulu(gorunur) },
       _count: { _all: true },
       _sum: { alisFiyatiKurus: true },
     }),
   ]);
 
+  const magazalar = gorunurMagazalar(tumMagazalar, gorunur);
   const haritalanan = new Map(gruplar.map((g) => [g.magazaId, g]));
 
   return magazalar.map((m) => {
@@ -38,11 +47,12 @@ export async function magazaStokOzeti(): Promise<MagazaOzeti[]> {
 }
 
 /** Ödenmemiş ve vadesi geçmiş alış faturaları. */
-export async function vadesiGecenFaturalar(bugun: Date = new Date()) {
+export async function vadesiGecenFaturalar(gorunur: number[] | null, bugun: Date = new Date()) {
   return prisma.alisFaturasi.findMany({
     where: {
       vadeOdendi: false,
       vadeTarihi: { not: null, lt: bugun },
+      ...magazaKosulu(gorunur),
     },
     include: { tedarikci: true, magaza: true, _count: { select: { kalemler: true } } },
     orderBy: { vadeTarihi: "asc" },
@@ -57,10 +67,14 @@ export async function vadesiGecenFaturalar(bugun: Date = new Date()) {
  * birebir aynı (src/lib/cihazFiltre.ts), böylece paneldeki sayıya tıklayınca
  * aynı cihazlar listelenir.
  */
-export async function vadesiGecenCihazSayisi(bugun: Date = new Date()) {
-  const vadeKosulu = {
+export async function vadesiGecenCihazSayisi(
+  gorunur: number[] | null,
+  bugun: Date = new Date(),
+) {
+  const vadeKosulu: Prisma.StokKalemiWhereInput = {
     alisFaturasi: { is: { vadeOdendi: false, vadeTarihi: { not: null, lt: bugun } } },
-  } as const;
+    ...magazaKosulu(gorunur),
+  };
   const [toplam, stokta] = await Promise.all([
     prisma.stokKalemi.count({ where: vadeKosulu }),
     prisma.stokKalemi.count({ where: { ...vadeKosulu, durum: STOK_DURUM.STOKTA } }),
@@ -200,9 +214,10 @@ export async function bekleyenSevkiyatlar(magazaIdleri: number[] | null) {
   });
 }
 
-/** Panelde gösterilen son stok hareketleri. */
-export async function sonHareketler(adet = 10) {
+/** Panelde gösterilen son stok hareketleri — yalnız görünür mağazaların. */
+export async function sonHareketler(gorunur: number[] | null, adet = 10) {
   return prisma.stokHareketi.findMany({
+    where: hareketKosulu(gorunur),
     take: adet,
     orderBy: { tarih: "desc" },
     include: {

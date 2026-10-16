@@ -12,6 +12,7 @@ import {
   type SayimSonuc,
 } from "@/lib/sabitler";
 import { tarihSaatYaz } from "@/lib/tarih";
+import { gorebilirMi, gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { magazadaIslemYapabilirMi, oturumGerekli } from "@/lib/yetki";
 import { SayimPaneli } from "./SayimPaneli";
 
@@ -144,6 +145,8 @@ export default async function SayimDetaySayfasi({ params }: PageProps<"/sayim/[i
     },
   });
   if (!sayim) notFound();
+  // Başka mağazanın sayımı o mağazanın stok dökümüdür; kimliğiyle açılmasın.
+  if (!gorebilirMi(gorunurMagazaIdleri(oturum), sayim.magazaId)) notFound();
 
   const beklenenler = sayim.kalemler.filter((k) => k.beklenen);
   const sayilanlar = beklenenler.filter((k) => k.sayildi);

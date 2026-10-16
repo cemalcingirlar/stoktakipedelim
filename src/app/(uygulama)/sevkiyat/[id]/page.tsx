@@ -8,6 +8,7 @@ import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { TRANSFER_DURUM, TRANSFER_KALEM_DURUM } from "@/lib/sabitler";
 import { tarihSaatYaz } from "@/lib/tarih";
+import { gorebilirMi, gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { magazadaIslemYapabilirMi, oturumGerekli } from "@/lib/yetki";
 import { IptalDugmesi } from "./IptalDugmesi";
 import { KabulPaneli } from "./KabulPaneli";
@@ -47,6 +48,15 @@ export default async function SevkiyatDetaySayfasi({ params }: PageProps<"/sevki
     },
   });
   if (!transfer) notFound();
+  // İki taraftan biri bile görünür değilse bu sevkiyat kullanıcıyı
+  // ilgilendirmiyor; içinde başka mağazaların cihaz listesi var.
+  const gorunur = gorunurMagazaIdleri(oturum);
+  if (
+    !gorebilirMi(gorunur, transfer.kaynakMagazaId) &&
+    !gorebilirMi(gorunur, transfer.hedefMagazaId)
+  ) {
+    notFound();
+  }
 
   const kabulEdilen = transfer.kalemler.filter((k) => k.durum === TRANSFER_KALEM_DURUM.KABUL);
   const reddedilen = transfer.kalemler.filter((k) => k.durum === TRANSFER_KALEM_DURUM.RED);

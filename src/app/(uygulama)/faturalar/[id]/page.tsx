@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Kart } from "@/bilesenler/Kart";
 import { DurumRozeti, Rozet } from "@/bilesenler/Rozet";
+import { gorebilirMi, gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { vadeEtiketi } from "@/lib/vade";
@@ -44,6 +45,7 @@ export default async function FaturaDetaySayfasi({ params }: PageProps<"/fatural
     },
   });
   if (!fatura) notFound();
+  if (!gorebilirMi(gorunurMagazaIdleri(oturum), fatura.magazaId)) notFound();
 
   const bugun = new Date();
   const vade = vadeDurumu(fatura, bugun);

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { logYaz } from "@/lib/log";
 import { excelBasliklari, excelUret, kurusuExcelSayisi, type ExcelSayfasi } from "@/lib/excel";
+import { gorebilirMi, gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { prisma } from "@/lib/prisma";
 import {
   LOG_ISLEM,
@@ -58,6 +59,8 @@ export async function GET(_istek: Request, { params }: RouteContext<"/sayim/[id]
     },
   });
   if (!sayim) notFound();
+  // Dosya, ekranda görülemeyen bir sayımı da indirtmemeli.
+  if (!gorebilirMi(gorunurMagazaIdleri(oturum), sayim.magazaId)) notFound();
 
   if (sayim.durum === SAYIM_DURUM.DEVAM) {
     return new Response("Devam eden sayımın raporu alınamaz. Önce sayımı kapatın.", {

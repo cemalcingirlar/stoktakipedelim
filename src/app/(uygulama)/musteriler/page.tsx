@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { Kart } from "@/bilesenler/Kart";
+import { gorunurMagazaIdleri, magazaKosulu } from "@/lib/gorunurluk";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { aramaNormalize } from "@/lib/metin";
@@ -11,7 +12,12 @@ import { oturumGerekli } from "@/lib/yetki";
 export const metadata = { title: "Müşteriler — Stok Takip" };
 
 export default async function MusterilerSayfasi({ searchParams }: PageProps<"/musteriler">) {
-  await oturumGerekli();
+  const oturum = await oturumGerekli();
+  // Müşteri kaydının kendisi mağazalar arasında ortak — aynı telefon tek kayda
+  // bağlanıyor ve her mağaza yeni satışta onu bulmalı. Kısıtlanan, müşterinin
+  // satın aldıkları: başka mağazanın hangi cihazı kaça sattığı o mağazanın
+  // satış dökümüdür, burada görünmemeli.
+  const gorunur = gorunurMagazaIdleri(oturum);
   const params = await searchParams;
   const ham = typeof params.ara === "string" ? params.ara.trim() : "";
   const rakamlar = ham.replace(/\D/g, "");
@@ -31,7 +37,7 @@ export default async function MusterilerSayfasi({ searchParams }: PageProps<"/mu
     take: 200,
     include: {
       satinAlinanlar: {
-        where: { durum: STOK_DURUM.SATILDI },
+        where: { durum: STOK_DURUM.SATILDI, ...magazaKosulu(gorunur) },
         orderBy: { satisTarihi: "desc" },
         select: {
           id: true,
