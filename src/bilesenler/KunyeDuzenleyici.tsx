@@ -42,12 +42,18 @@ export function KunyeDuzenleyici({
   kategoriler,
   etiket,
   kapat,
+  gorunum = "satir",
 }: {
   cihaz: DuzenlenecekCihaz;
   kategoriler: KategoriSecenegi[];
-  /** Düğme üzerinde görünen mevcut değer. */
+  /** Düğme üzerinde görünen metin: listede mevcut değer, kartta "Düzenle". */
   etiket: string;
   kapat?: () => void;
+  /**
+   * "satir": cihaz listesinde hücrenin içinde, noktalı altı çizili değer.
+   * "dugme": künye kartının başlığında duran ayrı bir düğme.
+   */
+  gorunum?: "satir" | "dugme";
 }) {
   const [acik, setAcik] = useState(false);
   const [marka, setMarka] = useState(cihaz.marka);
@@ -102,6 +108,9 @@ export function KunyeDuzenleyici({
       setBasari(sonuc.mesaj);
       setAcik(false);
       kapat?.();
+      // Ekranı tazeleyen şey eylemdeki revalidatePath. Ölçüldü: ek bir istemci
+      // tarafı tazeleme çağrısı kaldırılınca ekran yine güncelleniyor,
+      // revalidate kapatılınca ise eski değer ekranda kalıyor.
     });
   }
 
@@ -115,8 +124,12 @@ export function KunyeDuzenleyici({
             setBasari(null);
             setAcik(true);
           }}
-          title="Marka ve kategoriyi düzelt"
-          className="text-left underline decoration-dotted underline-offset-2 hover:text-blue-700"
+          title="Marka, model ve kategoriyi düzelt"
+          className={
+            gorunum === "dugme"
+              ? "rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+              : "text-left underline decoration-dotted underline-offset-2 hover:text-blue-700"
+          }
         >
           {etiket || "—"}
         </button>
