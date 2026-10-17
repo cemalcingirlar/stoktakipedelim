@@ -95,6 +95,38 @@ try {
   await giris("admin");
   await cihazlariGir([1, 2, 3]);
 
+  // ------------------- 0) arka arkaya okutmada imleç kutuda kalmalı
+  // Barkod okuyucu tuş tuş yazar: odak kutuda değilse karakterler hiçbir yere
+  // gitmez ve operatör her cihazdan sonra elle tıklamak zorunda kalır.
+  // Bu yüzden burada bilerek `fill()` KULLANILMIYOR — fill odağı kendisi
+  // verdiği için odak kaybını gizlerdi; gerçek okuyucu gibi klavyeden yazıyoruz.
+  await sayfa.goto(`${hedef}/sevkiyat/yeni`, { waitUntil: "networkidle" });
+  await sayfa.selectOption("#hedef", { label: "2 Nolu Mağaza" });
+
+  const odak = () => sayfa.evaluate(() => document.activeElement?.id ?? "");
+  kontrol("açılışta imleç okutma kutusunda", (await odak()) === "okutmaKutusu", await odak());
+
+  await sayfa.keyboard.type(imei(1));
+  await sayfa.keyboard.press("Enter");
+  await sayfa.waitForTimeout(1200);
+  kontrol(
+    "1. cihaz klavyeden okutuldu (tıklamadan)",
+    (await sayfa.locator("tbody tr").count()) === 1,
+    `${await sayfa.locator("tbody tr").count()} satır`,
+  );
+  kontrol("okutmadan sonra imleç kutuda kaldı", (await odak()) === "okutmaKutusu", await odak());
+
+  // İkinci cihaz: hiçbir yere tıklamadan, doğrudan yazarak.
+  await sayfa.keyboard.type(imei(2));
+  await sayfa.keyboard.press("Enter");
+  await sayfa.waitForTimeout(1200);
+  kontrol(
+    "2. cihaz da tıklamadan okutuldu",
+    (await sayfa.locator("tbody tr").count()) === 2,
+    `${await sayfa.locator("tbody tr").count()} satır`,
+  );
+  kontrol("ikinci okutmadan sonra da imleç kutuda", (await odak()) === "okutmaKutusu", await odak());
+
   // ------------------------------------------------ 1) gönderme
   const sevkiyatYolu = await sevkEt([imei(1), imei(2)]);
   kontrol("sevkiyat oluşturuldu", /\/sevkiyat\/\d+$/.test(sevkiyatYolu), sevkiyatYolu);

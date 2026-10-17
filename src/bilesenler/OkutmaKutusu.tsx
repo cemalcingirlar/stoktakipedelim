@@ -46,6 +46,10 @@ export function OkutmaKutusu({
   const [geriBildirim, setGeriBildirim] = useState<OkutmaGeriBildirimi>(null);
   const [bekliyor, basla] = useTransition();
   const girdiRef = useRef<HTMLInputElement>(null);
+  // Okutma kutudan başlatıldıysa, istek bitince imleci oraya geri veriyoruz.
+  // Kameradan gelen okumada bayrak kalkmıyor; kullanıcı o sırada başka bir
+  // alanda olabilir ve odağı ondan çalmak doğru olmaz.
+  const odagiGeriVer = useRef(false);
 
   useEffect(() => {
     if (!odakVer || devreDisi) return;
@@ -59,9 +63,10 @@ export function OkutmaKutusu({
   }, [odakVer, devreDisi]);
 
   const kodGonder = useCallback(
-    (kod: string) => {
+    (kod: string, odakGeri = false) => {
       const temiz = kod.trim();
       if (!temiz) return;
+      odagiGeriVer.current = odakGeri;
       setDeger("");
       basla(async () => {
         const sonuc = await okut(temiz);
@@ -71,10 +76,23 @@ export function OkutmaKutusu({
     [okut],
   );
 
+  /**
+   * İstek bitince imleci kutuya geri verir.
+   *
+   * Arka arkaya cihaz okutulurken imlecin kutuda kalması şart; aksi halde her
+   * cihazdan sonra elle tıklamak gerekiyor ve barkod okuyucunun yazdığı
+   * karakterler hiçbir yere gitmiyor.
+   */
+  useEffect(() => {
+    if (bekliyor || devreDisi) return;
+    if (!odagiGeriVer.current) return;
+    odagiGeriVer.current = false;
+    girdiRef.current?.focus();
+  }, [bekliyor, devreDisi]);
+
   function gonder() {
     if (bekliyor) return;
-    kodGonder(deger);
-    girdiRef.current?.focus();
+    kodGonder(deger, true);
   }
 
   return (
@@ -87,7 +105,8 @@ export function OkutmaKutusu({
           id="okutmaKutusu"
           ref={girdiRef}
           value={deger}
-          disabled={devreDisi || bekliyor}
+          disabled={devreDisi}
+          readOnly={bekliyor}
           autoFocus
           onChange={(e) => setDeger(e.target.value)}
           onKeyDown={(e) => {
@@ -97,7 +116,7 @@ export function OkutmaKutusu({
             }
           }}
           placeholder={yerTutucu}
-          className={`okutma-girdisi min-w-0 flex-1 ${GIRDI_SINIFI} font-mono`}
+          className={`okutma-girdisi min-w-0 flex-1 ${GIRDI_SINIFI} font-mono read-only:bg-slate-100`}
         />
         <button
           type="button"
@@ -108,7 +127,11 @@ export function OkutmaKutusu({
           {bekliyor ? "Aranıyor…" : "Okut"}
         </button>
         {devreDisi ? null : (
-          <KameraDugmesi onKod={kodGonder} surekli={kameraSurekli} baslik={etiket} />
+          <KameraDugmesi
+            onKod={(kod) => kodGonder(kod)}
+            surekli={kameraSurekli}
+            baslik={etiket}
+          />
         )}
       </div>
       {ipucu ? <p className="mt-1.5 text-xs text-blue-800">{ipucu}</p> : null}
