@@ -60,12 +60,27 @@ export default async function FaturaDetaySayfasi({ params }: PageProps<"/fatural
             {fatura.tedarikci.ad} · {tarihYaz(fatura.faturaTarihi)}
           </p>
         </div>
-        <Link
-          href="/faturalar"
-          className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-        >
-          ← Faturalar
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Arka arkaya fatura yüklenirken her seferinde Cihazlar'a dönüp
+              oradan başlamak gerekiyordu; kaydedilen faturanın ekranından
+              doğrudan bir sonrakine geçiliyor. Yükleme ekranı yalnız
+              yöneticide, düğme de öyle. */}
+          {adminMi(oturum) ? (
+            <Link
+              href="/cihazlar/tedarikci-faturasi"
+              data-test="baska-tedarikci-faturasi"
+              className="rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+            >
+              + Başka Tedarikçi Faturası Yükle
+            </Link>
+          ) : null}
+          <Link
+            href="/faturalar"
+            className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            ← Faturalar
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
