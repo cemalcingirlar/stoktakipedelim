@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { Kart } from "@/bilesenler/Kart";
+import { KunyeDuzenleyici } from "@/bilesenler/KunyeDuzenleyici";
 import { DurumRozeti, Rozet } from "@/bilesenler/Rozet";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
@@ -88,6 +89,30 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
       ])
     : [[], []];
 
+  // Künye düzeltme yalnız yöneticide (eylem adminZorunlu); listeleri de yalnız
+  // o zaman çekiyoruz. Aynı barkoddaki adet, "hepsine uygulansın mı" sorusu
+  // için gerekiyor ve gerçekten değişecek cihaz sayısıyla birebir aynı olmalı.
+  const [kategoriler, ayniBarkodAdedi] = yonetici
+    ? await Promise.all([
+        prisma.kategori.findMany({
+          where: { aktif: true },
+          orderBy: { sira: "asc" },
+          select: {
+            id: true,
+            ad: true,
+            altKategoriler: {
+              where: { aktif: true },
+              orderBy: { sira: "asc" },
+              select: { id: true, ad: true },
+            },
+          },
+        }),
+        cihaz.barkod
+          ? prisma.stokKalemi.count({ where: { barkod: cihaz.barkod } })
+          : Promise.resolve(1),
+      ])
+    : [[], 1];
+
   const bugun = new Date();
   const vade = vadeDurumu(cihaz.alisFaturasi, bugun);
   const kar = karKurus(cihaz);
@@ -136,7 +161,27 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="space-y-5">
-          <Kart baslik="Künye">
+          <Kart
+            baslik="Künye"
+            eylem={
+              yonetici ? (
+                <KunyeDuzenleyici
+                  gorunum="dugme"
+                  etiket="Düzenle"
+                  cihaz={{
+                    id: cihaz.id,
+                    marka: cihaz.marka,
+                    model: cihaz.model,
+                    barkod: cihaz.barkod,
+                    kategoriId: cihaz.kategoriId,
+                    altKategoriId: cihaz.altKategoriId,
+                    ayniBarkodAdedi,
+                  }}
+                  kategoriler={kategoriler}
+                />
+              ) : null
+            }
+          >
             <dl>
               <Satir etiket="Kategori">
                 {cihaz.kategori.ad}
