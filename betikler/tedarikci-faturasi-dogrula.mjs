@@ -170,6 +170,22 @@ try {
   kontrol("faturada seri numaraları var", faturaMetni.includes(seri("5MKUN", 2)));
   kontrol("sipariş no fatura notuna yazıldı", faturaMetni.includes(SIPARIS_NO), SIPARIS_NO);
 
+  // 6b) kaydedilen faturadan doğrudan bir sonraki faturaya geçilebiliyor.
+  // Arka arkaya fatura yüklerken her seferinde Cihazlar'a dönmek gerekiyordu.
+  const tekrarYukleDugmesi = sayfa.locator('[data-test="baska-tedarikci-faturasi"]');
+  kontrol("fatura ekranında 'Başka Tedarikçi Faturası Yükle' düğmesi var",
+    (await tekrarYukleDugmesi.count()) === 1);
+  await Promise.all([
+    sayfa.waitForURL(/\/cihazlar\/tedarikci-faturasi$/, { timeout: 30000 }),
+    tekrarYukleDugmesi.click(),
+  ]);
+  kontrol("düğme yükleme ekranını açıyor",
+    sayfa.url().endsWith("/cihazlar/tedarikci-faturasi"), sayfa.url());
+  // Boş form gelmeli: önceki faturanın kalemleri taşınmamalı.
+  kontrol("yükleme ekranı boş form ile açılıyor",
+    (await sayfa.locator('[data-test="urun-satiri"]').count()) === 0 &&
+      (await sayfa.locator('input[type="file"]').count()) >= 1);
+
   // 7) cihaz listesinde seri no ile bulunabiliyor
   await sayfa.goto(`${hedef}/cihazlar?ara=${encodeURIComponent(seri("5MKUN", 3))}`, { waitUntil: "networkidle" });
   const listeMetni = (await sayfa.locator("body").textContent()) ?? "";
