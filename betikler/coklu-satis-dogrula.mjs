@@ -115,6 +115,30 @@ try {
   const fiyatKutulari = sayfa.locator('[data-test="sepet-fiyat"]');
   kontrol("her cihazın kendi fiyat kutusu var", (await fiyatKutulari.count()) === 2);
 
+  // Fiyat kutuları alış fiyatıyla dolu gelmeli: 10 cihazlık satışta her
+  // kutuyu elle doldurmak yavaştı. Cihazlar 10.000,00'a girildi.
+  const ilkDolgu = await fiyatKutulari.nth(0).inputValue();
+  const ikinciDolgu = await fiyatKutulari.nth(1).inputValue();
+  kontrol(
+    "satış fiyatı alış fiyatıyla dolu geliyor",
+    ilkDolgu === "10.000,00" && ikinciDolgu === "10.000,00",
+    `${ilkDolgu} | ${ikinciDolgu}`,
+  );
+  const dolguBandi = (await sayfa.locator('[data-test="satis-toplami"]').textContent()) ?? "";
+  kontrol(
+    "dolu gelen fiyatta kâr sıfır",
+    dolguBandi.includes("20.000,00"),
+    dolguBandi.replace(/\s+/g, " ").trim(),
+  );
+  // Müşteri henüz seçilmedi, o yüzden sorun kutusu görünüyor; bizi ilgilendiren
+  // içinde fiyat sorunu olup olmadığı.
+  const fiyatSorunuVarMi = async () => {
+    const kutu = sayfa.locator('[data-test="satis-sorunlari"]');
+    if ((await kutu.count()) === 0) return false;
+    return /satış fiyatı/.test((await kutu.textContent()) ?? "");
+  };
+  kontrol("dolu fiyatla fiyat sorunu bildirilmiyor", !(await fiyatSorunuVarMi()));
+
   await fiyatKutulari.nth(0).fill("13.000,00");
   await fiyatKutulari.nth(1).fill("11.500,50");
   await sayfa.waitForTimeout(400);
@@ -127,11 +151,31 @@ try {
   const dugmeMetni = (await sayfa.locator('button:has-text("Cihazı Sat")').textContent()) ?? "";
   kontrol("kaydet düğmesi adedi gösteriyor", dugmeMetni.includes("2 Cihazı Sat"), dugmeMetni.trim());
 
-  // Fiyatı silince kaydetme engellenmeli.
+  // Fiyatı silmek artık engel değil: alış fiyatına satılmış sayılıyor.
   await fiyatKutulari.nth(1).fill("");
-  await sayfa.waitForTimeout(300);
+  await sayfa.waitForTimeout(400);
+  kontrol("fiyatı boş bırakmak fiyat sorunu doğurmuyor", !(await fiyatSorunuVarMi()));
+  const bosBant = (await sayfa.locator('[data-test="satis-toplami"]').textContent()) ?? "";
+  kontrol(
+    "boş fiyat alış fiyatı (10.000,00) sayılıyor",
+    bosBant.includes("23.000,00"),
+    bosBant.replace(/\s+/g, " ").trim(),
+  );
+  kontrol(
+    "boş kutuda ipucu görünüyor",
+    (await sayfa.locator('[data-test="fiyat-ipucu"]').count()) === 1,
+  );
+
+  // Okunamayan metin ise engellemeli: yazım hatasını sessizce alış fiyatı
+  // saymak yanlış olurdu.
+  await fiyatKutulari.nth(1).fill("abc");
+  await sayfa.waitForTimeout(400);
   const sorunMetni = (await sayfa.locator('[data-test="satis-sorunlari"]').textContent()) ?? "";
-  kontrol("fiyatı eksik cihaz uyarı veriyor", /satış fiyatı girin/.test(sorunMetni), sorunMetni.trim());
+  kontrol(
+    "okunamayan fiyat uyarı veriyor",
+    /satış fiyatı okunamadı/.test(sorunMetni),
+    sorunMetni.replace(/\s+/g, " ").trim(),
+  );
   await fiyatKutulari.nth(1).fill("11.500,50");
   await sayfa.waitForTimeout(300);
 

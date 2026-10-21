@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   cihazAdi,
   cihazKari,
+  etkinSatisKurusu,
   fiyatiYaz,
   sepetOzeti,
   sepetSatirlari,
@@ -28,11 +29,19 @@ function cihaz(id: number, alis: number, satis = ""): SepetCihazi {
 
 // ----------------------------------------------------------------- ekleme
 
-test("sepete cihaz eklenir", () => {
-  const sonuc = sepeteEkle([], cihaz(1, 100000));
+test("sepete eklenen cihazın satış fiyatı alış fiyatıyla dolu gelir", () => {
+  const sonuc = sepeteEkle([], cihaz(1, 1239000));
   assert.ok("sepet" in sonuc);
   assert.equal(sonuc.sepet.length, 1);
-  assert.equal(sonuc.sepet[0].satisFiyati, "", "fiyat boş başlar");
+  // 10 cihazlık satışta her kutuyu elle doldurmak yavaş ve hataya açıktı.
+  assert.equal(sonuc.sepet[0].satisFiyati, "12.390,00");
+  assert.equal(cihazKari(sonuc.sepet[0]), 0, "dolu gelen fiyatta kâr sıfır");
+});
+
+test("kuruşlu alış fiyatı da doğru yazılır", () => {
+  const sonuc = sepeteEkle([], cihaz(1, 2549417));
+  assert.ok("sepet" in sonuc);
+  assert.equal(sonuc.sepet[0].satisFiyati, "25.494,17");
 });
 
 test("ikinci cihaz birincinin yanına eklenir", () => {
@@ -85,8 +94,22 @@ test("zararına satışta kâr negatif", () => {
   assert.equal(cihazKari(cihaz(1, 1000000, "9.000,00")), -100000);
 });
 
-test("fiyat girilmemişse kâr hesaplanmaz", () => {
-  assert.equal(cihazKari(cihaz(1, 1000000)), null);
+test("boş fiyat alış fiyatı sayılır, kâr sıfır olur", () => {
+  // Satış fiyatı kaydetmenin önkoşulu değil: boş bırakılırsa alış fiyatına
+  // satılmış sayılıyor, kullanıcı engellenmiyor.
+  assert.equal(etkinSatisKurusu(cihaz(1, 1000000)), 1000000);
+  assert.equal(cihazKari(cihaz(1, 1000000)), 0);
+});
+
+test("okunamayan fiyat sessizce alış fiyatına düşmez", () => {
+  // Yazım hatasını alış fiyatı sayıp geçmek yanlış olurdu; burada duruyoruz.
+  assert.equal(etkinSatisKurusu(cihaz(1, 1000000, "abc")), null);
+  assert.equal(cihazKari(cihaz(1, 1000000, "abc")), null);
+});
+
+test("yazılan fiyat alış fiyatını ezer", () => {
+  assert.equal(etkinSatisKurusu(cihaz(1, 1000000, "13.000,00")), 1300000);
+  assert.equal(cihazKari(cihaz(1, 1000000, "13.000,00")), 300000);
 });
 
 // ----------------------------------------------------------------- özet
@@ -112,12 +135,19 @@ test("özet adet, tutar ve kârı toplar", () => {
   });
 });
 
-test("fiyatı girilmemiş cihaz özette sayılır ama tutara girmez", () => {
+test("boş fiyatlı cihaz özette alış fiyatıyla toplanır", () => {
   const sepet = [cihaz(1, 1000000, "13.000,00"), cihaz(2, 20000)];
   const ozet = sepetOzeti(sepet);
+  assert.equal(ozet.fiyatiEksik, 0, "boş alan eksik sayılmaz");
+  assert.equal(ozet.satisKurus, 1320000, "13.000,00 + 200,00 (alış)");
+  assert.equal(ozet.alisKurus, 1020000);
+  assert.equal(ozet.karKurus, 300000, "boş fiyatlı cihaz kâra katkı vermez");
+});
+
+test("okunamayan fiyatlı cihaz özette eksik sayılır", () => {
+  const ozet = sepetOzeti([cihaz(1, 1000000, "13.000,00"), cihaz(2, 20000, "abc")]);
   assert.equal(ozet.fiyatiEksik, 1);
   assert.equal(ozet.satisKurus, 1300000);
-  assert.equal(ozet.alisKurus, 1020000, "alış fiyatı yine de toplanır");
 });
 
 test("Türkçe para biçimi doğru toplanır", () => {
@@ -135,8 +165,15 @@ test("kayıt satırları cihaz başına fiyat taşır", () => {
   ]);
 });
 
-test("fiyatı eksik sepet satır üretmez", () => {
-  assert.equal(sepetSatirlari([cihaz(1, 100, "13.000,00"), cihaz(2, 200)]), null);
+test("boş fiyatlı cihaz alış fiyatıyla satır üretir", () => {
+  assert.deepEqual(sepetSatirlari([cihaz(1, 100, "13.000,00"), cihaz(2, 200)]), [
+    { cihazId: 1, satisFiyatiKurus: 1300000 },
+    { cihazId: 2, satisFiyatiKurus: 200 },
+  ]);
+});
+
+test("okunamayan fiyat satır üretmez", () => {
+  assert.equal(sepetSatirlari([cihaz(1, 100, "13.000,00"), cihaz(2, 200, "abc")]), null);
 });
 
 test("boş sepet satır üretmez", () => {
@@ -168,10 +205,15 @@ test("müşterisiz satış uyarı verir", () => {
   assert.ok(sorunlar.some((s) => /Müşteri seçin/.test(s)), sorunlar.join(" | "));
 });
 
-test("fiyatı eksik cihaz adıyla bildirilir", () => {
-  const sorunlar = sepetSorunlari([cihaz(1, 100, "500,00"), cihaz(2, 200)], true);
+test("boş fiyat kaydetmeye engel değil", () => {
+  // Asıl istenen bu: satış fiyatı önkoşul olmasın.
+  assert.deepEqual(sepetSorunlari([cihaz(1, 100, "500,00"), cihaz(2, 200)], true), []);
+});
+
+test("okunamayan fiyat cihaz adıyla bildirilir", () => {
+  const sorunlar = sepetSorunlari([cihaz(1, 100, "500,00"), cihaz(2, 200, "abc")], true);
   assert.equal(sorunlar.length, 1);
-  assert.match(sorunlar[0], /Galaxy A2 için satış fiyatı girin/);
+  assert.match(sorunlar[0], /Galaxy A2 için satış fiyatı okunamadı/);
 });
 
 test("negatif fiyat cihaz adıyla bildirilir", () => {
