@@ -8,6 +8,8 @@ import { aktarilanCihaziDuzelt, aktarimSatisiKaydet } from "./eylemler";
 
 /** Ekranın üstünde bir kez girilen, tüm satırlarda ortak olan satış bilgileri. */
 export type SatisBasligi = {
+  /** İşlem tarihi (yyyy-aa-gg); geçmişe dönük kayıt için ekranda seçiliyor. */
+  satisTarihi: string;
   odemeTipi: string;
   satanKullaniciId: number | null;
   musteriId: number | null;
@@ -88,6 +90,7 @@ export function SatGeriAl({
         kaynakMagazaId,
         satisFiyatiKurus: satisKurus!,
         yeniAlisFiyatiKurus: alisKurus!,
+        satisTarihi: baslik.satisTarihi,
         odemeTipi: baslik.odemeTipi,
         satanKullaniciId: baslik.satanKullaniciId,
         musteriId: baslik.musteriId,
