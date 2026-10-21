@@ -10,6 +10,7 @@ import {
 import { dukkanIciAktarabilirMi } from "@/lib/dukkan";
 import { logYaz } from "@/lib/log";
 import { aramaMetniUret, kodNormalize } from "@/lib/metin";
+import { formTarihiCevir } from "@/lib/tarih";
 import { kurusuTLYaz } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { saticiSorunu, type SaticiAdayi } from "@/lib/satici";
@@ -48,9 +49,20 @@ export async function dukkanIciAktar(
   kaynakMagazaId: number,
   hedefMagazaId: number,
   not = "",
+  /**
+   * İşlem tarihi. Geçmişe dönük kayıt girilebilsin diye ekranda seçiliyor;
+   * verilmezse bugün. Cihazın tarihçesindeki hareket bu tarihle yazılıyor,
+   * yoksa dün yapılan aktarım bugün olmuş gibi görünürdü.
+   */
+  tarih?: string,
 ): Promise<AktarimSonucu> {
   try {
     const oturum = await oturumZorunlu();
+
+    // Tarih verilmediyse bugün; verildiyse okunabilir olmalı. Sessizce bugüne
+    // düşmek, kullanıcının yazdığı tarihi yok saymak olurdu.
+    const islemTarihi = tarih === undefined || tarih === "" ? new Date() : formTarihiCevir(tarih);
+    if (islemTarihi === null) return { durum: "HATA", mesaj: "Aktarım tarihi geçersiz." };
 
     // Not cihazın tarihçesine yazılıyor; neden taşındığı sonradan okunabilsin.
     const temizNot = not.trim().slice(0, 200);
@@ -125,6 +137,7 @@ export async function dukkanIciAktar(
           kaynakMagazaId: kaynakMagazaId,
           hedefMagazaId: hedefMagazaId,
           kullaniciId: oturum.kullaniciId,
+          tarih: islemTarihi,
           aciklama:
             `Dükkân içi aktarım: ${kaynak.ad} → ${hedef.ad}` +
             (temizNot ? ` · ${temizNot}` : ""),
@@ -314,6 +327,8 @@ export type AktarimSatisKaydi = {
   kaynakMagazaId: number;
   satisFiyatiKurus: number;
   yeniAlisFiyatiKurus: number;
+  /** Satış tarihi (gg-aa-yyyy girdi biçiminde); geçmişe dönük kayıt için. */
+  satisTarihi: string;
   odemeTipi: string;
   satanKullaniciId: number | null;
   musteriId: number | null;
@@ -338,6 +353,7 @@ const aktarimSatisSemasi = z
     kaynakMagazaId: z.number().int().positive(),
     satisFiyatiKurus: z.number().int().min(0).max(EN_YUKSEK_TUTAR_KURUS),
     yeniAlisFiyatiKurus: z.number().int().min(0).max(EN_YUKSEK_TUTAR_KURUS),
+    satisTarihi: z.coerce.date({ message: "Satış tarihi geçersiz." }),
     odemeTipi: z.enum(Object.values(ODEME_TIPI) as [string, ...string[]], "Ödeme tipi seçin."),
     satanKullaniciId: z.number().int().positive().nullable(),
     musteriId: z.number().int().positive().nullable(),
@@ -481,6 +497,7 @@ export async function aktarimSatisiKaydet(
           satisFiyatiKurus: veri.satisFiyatiKurus,
           maliyetKurus: cihaz.alisFiyatiKurus,
           yeniAlisFiyatiKurus: veri.yeniAlisFiyatiKurus,
+          satisTarihi: veri.satisTarihi,
           odemeTipi: veri.odemeTipi,
           not: veri.not,
         },
@@ -514,6 +531,7 @@ export async function aktarimSatisiKaydet(
           tip: HAREKET_TIP.SATIS,
           kaynakMagazaId: kaynak.id,
           kullaniciId: satanId,
+          tarih: veri.satisTarihi,
           aciklama: aktarimSatisAciklamasi({
             musteriAdi: musteri.adSoyad,
             satisFiyatiYazi: kurusuTLYaz(veri.satisFiyatiKurus),

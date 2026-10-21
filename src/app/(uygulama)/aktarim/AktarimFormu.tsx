@@ -10,6 +10,7 @@ import type { MusteriOzeti } from "../satis/eylemler";
 import { dukkanIciAktar } from "./eylemler";
 import { FiyatDuzeltme } from "./FiyatDuzeltme";
 import { MusteriBlogu } from "./MusteriBlogu";
+import { inputTarih } from "@/lib/tarih";
 import { SatGeriAl, type SatisBasligi } from "./SatGeriAl";
 
 type Magaza = DukkanMagazasi & { ad: string };
@@ -67,6 +68,9 @@ export function AktarimFormu({
 
   /** Aktarımın nedeni; cihazın tarihçesine yazılıyor. */
   const [not, setNot] = useState("");
+  // Tek tarih hem aktarım hareketine hem sat-geri al satışına yazılıyor:
+  // ikisi aynı işlemin parçası, ayrı tarih tutmak tarihçeyi tutarsız yapardı.
+  const [islemTarihi, setIslemTarihi] = useState(inputTarih(new Date()));
 
   // ---------------------------------------------- müşteriye sat, geri al
   // Dükkân içinde cihaz taşınırken ürün fiilen müşteriye satılıp geri
@@ -81,6 +85,7 @@ export function AktarimFormu({
 
   const musteriHazir = seciliMusteri !== null || yeniAd.trim().length > 0;
   const satisBasligi: SatisBasligi = {
+    satisTarihi: islemTarihi,
     odemeTipi,
     satanKullaniciId: satanId,
     musteriId: seciliMusteri?.id ?? null,
@@ -98,7 +103,7 @@ export function AktarimFormu({
   async function okut(kod: string): Promise<OkutmaGeriBildirimi> {
     if (!kaynak || !hedef) return { tur: "hata", mesaj: "Önce mağazaları seçin." };
 
-    const sonuc = await dukkanIciAktar(kod, kaynak.id, hedef.id, not);
+    const sonuc = await dukkanIciAktar(kod, kaynak.id, hedef.id, not, islemTarihi);
     if (sonuc.durum === "HATA") return { tur: "hata", mesaj: sonuc.mesaj };
 
     setSatirlar((mevcut) => [
@@ -122,7 +127,13 @@ export function AktarimFormu({
   async function geriAl(satir: Satir) {
     if (!satir.kod) return;
     setGeriAlinan(satir.anahtar);
-    const sonuc = await dukkanIciAktar(satir.kod, satir.hedefId, satir.kaynakId, "Geri alındı");
+    const sonuc = await dukkanIciAktar(
+      satir.kod,
+      satir.hedefId,
+      satir.kaynakId,
+      "Geri alındı",
+      islemTarihi,
+    );
     setGeriAlinan(null);
     if (sonuc.durum === "TAMAM") {
       setSatirlar((mevcut) =>
@@ -205,22 +216,39 @@ export function AktarimFormu({
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         {/* Not okutmadan önce yazılıyor; o andan sonra okutulan cihazların
             tarihçesine geçiyor. Aktarımın nedeni sonradan okunabilsin. */}
-        <div className="mb-3">
-          <label htmlFor="aktarimNotu" className="mb-1 block text-xs font-medium text-slate-600">
-            Not (bu aktarıma ait açıklama)
-          </label>
-          <input
-            id="aktarimNotu"
-            data-test="aktarim-notu"
-            value={not}
-            onChange={(e) => setNot(e.target.value)}
-            maxLength={200}
-            placeholder="Örn. müşteri siparişi, vitrin değişimi"
-            className={GIRDI_SINIFI}
-          />
-          <p className="mt-1 text-xs text-slate-500">
-            Yazdığınız not, bundan sonra okuttuğunuz cihazların tarihçesine eklenir.
-          </p>
+        <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_11rem]">
+          <div>
+            <label htmlFor="aktarimNotu" className="mb-1 block text-xs font-medium text-slate-600">
+              Not (bu aktarıma ait açıklama)
+            </label>
+            <input
+              id="aktarimNotu"
+              data-test="aktarim-notu"
+              value={not}
+              onChange={(e) => setNot(e.target.value)}
+              maxLength={200}
+              placeholder="Örn. müşteri siparişi, vitrin değişimi"
+              className={GIRDI_SINIFI}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Yazdığınız not, bundan sonra okuttuğunuz cihazların tarihçesine eklenir.
+            </p>
+          </div>
+          {/* Geçmişe dönük kayıt: dün yapılan aktarım bugün olmuş gibi
+              görünmesin. Aynı tarih sat-geri al satışına da yazılıyor. */}
+          <div>
+            <label htmlFor="aktarimTarihi" className="mb-1 block text-xs font-medium text-slate-600">
+              İşlem Tarihi
+            </label>
+            <input
+              id="aktarimTarihi"
+              data-test="aktarim-tarihi"
+              type="date"
+              value={islemTarihi}
+              onChange={(e) => setIslemTarihi(e.target.value)}
+              className={GIRDI_SINIFI}
+            />
+          </div>
         </div>
 
         {/* Sat-geri al: cihaz dükkânda kalıyor ama kasaya satış giriyor.

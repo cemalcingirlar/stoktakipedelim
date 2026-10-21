@@ -19,6 +19,21 @@ const GERI_ALIS = "12.000,00";
 const BEKLENEN_KAR = "3.000,00";
 const MUSTERI = `Aktarim Musteri ${damga}`;
 
+// Geçmişe dönük kayıt denemesi: 2. cihaz 5 gün önceki tarihle satılıyor.
+// Tutarlar birinci satıştan farklı seçildi ki raporda karışmasın.
+const GECMIS_SATIS = "17.777,00";
+const GECMIS_GERI_ALIS = "11.111,00";
+const gunOnce = (gun) => {
+  const d = new Date();
+  d.setDate(d.getDate() - gun);
+  return d;
+};
+/** "2026-10-16" — tarih girdisi ve rapor sorgusu biçimi. */
+const girdiTarihi = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const GECMIS_TARIH = girdiTarihi(gunOnce(5));
+const BUGUN_TARIH = girdiTarihi(new Date());
+
 const tarayici = await chromium.launch(
   process.env.CHROME_YOLU ? { executablePath: process.env.CHROME_YOLU } : {},
 );
@@ -415,6 +430,70 @@ try {
       return (await kunyeOku("Alış Fiyatı")).includes("4.000,00");
     })(),
     await kunyeOku("Alış Fiyatı"),
+  );
+
+  // ======================= 10) Geçmişe dönük tarihle aktarım ve satış
+  // Dün yapılan bir işlem bugünün rakamlarına karışmamalı. Cihaz sat-geri
+  // alda stokta kaldığı için aynı cihazla yeniden satış yapılabiliyor.
+  await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
+  const tarihKutusu = sayfa.locator('[data-test="aktarim-tarihi"]');
+  kontrol("aktarım ekranında tarih alanı var", (await tarihKutusu.count()) === 1);
+  kontrol(
+    "tarih varsayılan olarak bugün",
+    (await tarihKutusu.inputValue()) === BUGUN_TARIH,
+    `${await tarihKutusu.inputValue()} (bugün ${BUGUN_TARIH})`,
+  );
+
+  await tarihKutusu.fill(GECMIS_TARIH);
+  await sayfa.locator('[data-test="satis-modu"]').check();
+  await sayfa.fill('[data-test="musteri-ad"]', MUSTERI);
+  // Cihaz 2 Nolu'da duruyor; oradan 1 Nolu'ya aktarıp satışı 2 Nolu'ya yazdır.
+  await sayfa.selectOption("#kaynak", { label: "2 Nolu Mağaza" });
+  await sayfa.waitForTimeout(400);
+  const gecmisMesaj = await aktar(imei(2));
+  kontrol("geçmiş tarihli aktarım yapıldı", gecmisMesaj.includes("aktarıldı"), gecmisMesaj);
+
+  await sayfa.fill('[data-test="satis-fiyati"]', GECMIS_SATIS);
+  await sayfa.fill('[data-test="yeni-alis-fiyati"]', GECMIS_GERI_ALIS);
+  await sayfa.locator('[data-test="satisi-kaydet"]').click();
+  await sayfa.waitForTimeout(2500);
+  kontrol(
+    "geçmiş tarihli satış kaydedildi",
+    (await sayfa.locator('[data-test="satis-kaydedildi"]').count()) === 1,
+    ((await sayfa.locator('[data-test="satis-hata"]').count()) > 0
+      ? ((await sayfa.locator('[data-test="satis-hata"]').first().textContent()) ?? "").trim()
+      : ""),
+  );
+
+  // Asıl ölçüm: tarih gerçekten raporlara yansıyor mu?
+  await sayfa.goto(`${hedef}/rapor?bas=${GECMIS_TARIH}&bit=${GECMIS_TARIH}`, {
+    waitUntil: "networkidle",
+  });
+  const gecmisRapor = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "satış seçilen geçmiş tarihin raporunda görünüyor",
+    gecmisRapor.includes(GECMIS_SATIS),
+    `${GECMIS_SATIS} bekleniyor`,
+  );
+
+  await sayfa.goto(`${hedef}/rapor?bas=${BUGUN_TARIH}&bit=${BUGUN_TARIH}`, {
+    waitUntil: "networkidle",
+  });
+  const bugunRapor = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "geçmiş tarihli satış bugünün raporuna karışmıyor",
+    !bugunRapor.includes(GECMIS_SATIS),
+    `${GECMIS_SATIS} görünmemeli`,
+  );
+
+  // Cihazın tarihçesindeki hareketler de o tarihle yazılmalı.
+  await sayfa.goto(`${hedef}/cihazlar?ara=${imei(2)}`, { waitUntil: "networkidle" });
+  const gosterimTarihi = GECMIS_TARIH.split("-").reverse().join(".");
+  const gecmisTarihce = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "cihaz tarihçesinde geçmiş tarih görünüyor",
+    gecmisTarihce.includes(gosterimTarihi),
+    `${gosterimTarihi} bekleniyor`,
   );
 
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
