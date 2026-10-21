@@ -201,12 +201,34 @@ try {
   await sayfa.waitForTimeout(200);
   const secilenSatici = personelSecenegi.trim();
 
-  // ---- ödeme tipinde Temlik seçeneği
+  // ---- ödeme tipi: Temlik öndeğer, ama değiştirilebiliyor
   const odemeSecenekleri = await sayfa.locator("#odemeTipi option").allTextContents();
   kontrol(
     "ödeme tipinde Temlik var",
     odemeSecenekleri.some((o) => o.trim() === "Temlik"),
     odemeSecenekleri.join(" | "),
+  );
+  // Satışların çoğu temlikle yapılıyor; her satışta listeden seçmek fazladan
+  // bir adımdı. Seçili değerin etiketini okuyoruz, value'yu değil: kullanıcı
+  // ekranda "Temlik" yazdığını görmeli.
+  const secikiOdeme = await sayfa
+    .locator("#odemeTipi option:checked")
+    .first()
+    .textContent();
+  kontrol(
+    "ödeme tipi öndeğeri Temlik geliyor",
+    (secikiOdeme ?? "").trim() === "Temlik",
+    (secikiOdeme ?? "").trim(),
+  );
+
+  // Öndeğer bir kilit değil: başka bir tip seçilebilmeli.
+  await sayfa.selectOption("#odemeTipi", { label: "Nakit" });
+  await sayfa.waitForTimeout(200);
+  const degisenOdeme = await sayfa.locator("#odemeTipi option:checked").first().textContent();
+  kontrol(
+    "ödeme tipi listeden değiştirilebiliyor",
+    (degisenOdeme ?? "").trim() === "Nakit",
+    (degisenOdeme ?? "").trim(),
   );
   await sayfa.selectOption("#odemeTipi", { label: "Temlik" });
 

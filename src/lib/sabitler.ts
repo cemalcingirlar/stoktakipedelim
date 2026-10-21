@@ -112,6 +112,15 @@ export const ODEME_TIPI = {
 } as const;
 export type OdemeTipi = (typeof ODEME_TIPI)[keyof typeof ODEME_TIPI];
 
+/**
+ * Yeni satışta seçili gelen ödeme tipi.
+ *
+ * Satışların çoğu operatöre temlikle yapılıyor; her satışta listeden seçmek
+ * gereksiz bir adımdı. Tek yerde duruyor ki satış ekranı ile ileride eklenecek
+ * başka ekranlar ayrışmasın.
+ */
+export const VARSAYILAN_ODEME_TIPI: OdemeTipi = ODEME_TIPI.TEMLIK;
+
 export const ODEME_TIPI_ETIKET: Record<OdemeTipi, string> = {
   NAKIT: "Nakit",
   KREDI_KARTI: "Kredi Kartı",

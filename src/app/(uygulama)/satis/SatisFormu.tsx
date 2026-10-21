@@ -15,7 +15,12 @@ import {
   sepettenCikar,
   type SepetCihazi,
 } from "@/lib/satisSepeti";
-import { ODEME_TIPI, ODEME_TIPI_ETIKET, type OdemeTipi } from "@/lib/sabitler";
+import {
+  ODEME_TIPI,
+  ODEME_TIPI_ETIKET,
+  VARSAYILAN_ODEME_TIPI,
+  type OdemeTipi,
+} from "@/lib/sabitler";
 import { inputTarih } from "@/lib/tarih";
 import { adayEtiketi, secimBasligi, type AdayCihaz } from "@/lib/cihazSecimi";
 import {
@@ -53,7 +58,7 @@ export function SatisFormu({
   useEffect(() => {
     sepetRef.current = sepet;
   }, [sepet]);
-  const [odemeTipi, setOdemeTipi] = useState<string>(ODEME_TIPI.NAKIT);
+  const [odemeTipi, setOdemeTipi] = useState<string>(VARSAYILAN_ODEME_TIPI);
   const [satisTarihi, setSatisTarihi] = useState(inputTarih(new Date()));
   const [satanKullaniciId, setSatanKullaniciId] = useState(varsayilanSaticiId);
   const [not, setNot] = useState("");
