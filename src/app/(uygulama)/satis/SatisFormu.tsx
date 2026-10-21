@@ -270,7 +270,7 @@ export function SatisFormu({
 
                     <div className="sm:w-36">
                       <label className={KUCUK_ETIKET} htmlFor={`fiyat-${c.id}`}>
-                        Satış Fiyatı (TL) *
+                        Satış Fiyatı (TL)
                       </label>
                       <input
                         id={`fiyat-${c.id}`}
@@ -278,9 +278,19 @@ export function SatisFormu({
                         value={c.satisFiyati}
                         onChange={(e) => setSepet((o) => fiyatiYaz(o, c.id, e.target.value))}
                         inputMode="decimal"
-                        placeholder="0,00"
+                        // Alan alış fiyatıyla dolu geliyor; boşaltılırsa yine
+                        // alış fiyatı yazılıyor, kaydetmeyi engellemiyor.
+                        placeholder={kurusuTLYaz(c.alisFiyatiKurus)}
                         className={`${GIRDI_SINIFI} text-right tabular-nums`}
                       />
+                      {c.satisFiyati.trim() === "" ? (
+                        <p
+                          data-test="fiyat-ipucu"
+                          className="mt-0.5 text-[11px] text-slate-500"
+                        >
+                          Boş: alış fiyatına satılır
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="sm:w-28">

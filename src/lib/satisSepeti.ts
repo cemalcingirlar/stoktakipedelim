@@ -8,7 +8,7 @@
  * Burada veritabanı yok: hesap ve denetim saf, ekran ve sunucu aynı kuralları
  * kullanıyor.
  */
-import { tlyiKurusaCevir } from "./para";
+import { kurusuTLYaz, tlyiKurusaCevir } from "./para";
 
 export type SepetCihazi = {
   id: number;
@@ -19,9 +19,31 @@ export type SepetCihazi = {
   magazaId: number;
   magazaAdi: string;
   alisFiyatiKurus: number;
-  /** Kullanıcının yazdığı satış fiyatı; kuruşa çevrilmemiş ham metin. */
+  /**
+   * Kullanıcının yazdığı satış fiyatı; kuruşa çevrilmemiş ham metin.
+   *
+   * Sepete eklenirken alış fiyatıyla dolu geliyor ve boş bırakılırsa yine alış
+   * fiyatı kabul ediliyor — bkz. `etkinSatisKurusu`.
+   */
   satisFiyati: string;
 };
+
+/**
+ * Cihazın geçerli satış fiyatı (kuruş). Metin okunamıyorsa null.
+ *
+ * Boş alan hata değil, "alış fiyatına sat" demek: zararına satmamak için
+ * taban zaten alış fiyatı ve çoğu satışta fiyat değiştirilmiyor. Satış fiyatı
+ * girmek kaydetmenin önkoşulu olmasın diye böyle; yalnız anlamsız bir metin
+ * (örn. "abc") yazıldığında kaydetme duruyor, çünkü o kullanıcının yazım
+ * hatasıdır ve sessizce alış fiyatına düşmek yanlış olurdu.
+ */
+export function etkinSatisKurusu(cihaz: {
+  satisFiyati: string;
+  alisFiyatiKurus: number;
+}): number | null {
+  if (cihaz.satisFiyati.trim() === "") return cihaz.alisFiyatiKurus;
+  return tlyiKurusaCevir(cihaz.satisFiyati);
+}
 
 export type SepetSatiri = {
   cihazId: number;
@@ -44,7 +66,12 @@ export function sepeteEkle(
   if (sepet.some((c) => c.id === cihaz.id)) {
     return { hata: `${cihazAdi(cihaz)} zaten listede.` };
   }
-  return { sepet: [...sepet, { ...cihaz, satisFiyati: "" }] };
+  // Satış fiyatı alış fiyatıyla dolu geliyor: 10 cihazlık bir satışta her
+  // kutuyu elle doldurmak yavaş ve hataya açıktı. Değiştirmek isteyen üzerine
+  // yazıyor.
+  return {
+    sepet: [...sepet, { ...cihaz, satisFiyati: kurusuTLYaz(cihaz.alisFiyatiKurus) }],
+  };
 }
 
 export function sepettenCikar(sepet: SepetCihazi[], cihazId: number): SepetCihazi[] {
@@ -61,7 +88,7 @@ export function fiyatiYaz(
 
 /** Bir cihazın kârı; fiyat okunamıyorsa null. */
 export function cihazKari(cihaz: SepetCihazi): number | null {
-  const satis = tlyiKurusaCevir(cihaz.satisFiyati);
+  const satis = etkinSatisKurusu(cihaz);
   if (satis === null) return null;
   return satis - cihaz.alisFiyatiKurus;
 }
@@ -71,7 +98,7 @@ export type SepetOzeti = {
   satisKurus: number;
   alisKurus: number;
   karKurus: number;
-  /** Satış fiyatı girilmemiş ya da okunamayan cihaz sayısı. */
+  /** Satış fiyatı okunamayan cihaz sayısı (boş alan buna girmez). */
   fiyatiEksik: number;
 };
 
@@ -82,7 +109,7 @@ export function sepetOzeti(sepet: SepetCihazi[]): SepetOzeti {
 
   for (const cihaz of sepet) {
     alisKurus += cihaz.alisFiyatiKurus;
-    const satis = tlyiKurusaCevir(cihaz.satisFiyati);
+    const satis = etkinSatisKurusu(cihaz);
     if (satis === null) fiyatiEksik += 1;
     else satisKurus += satis;
   }
@@ -103,7 +130,7 @@ export function sepetOzeti(sepet: SepetCihazi[]): SepetOzeti {
 export function sepetSatirlari(sepet: SepetCihazi[]): SepetSatiri[] | null {
   const satirlar: SepetSatiri[] = [];
   for (const cihaz of sepet) {
-    const satis = tlyiKurusaCevir(cihaz.satisFiyati);
+    const satis = etkinSatisKurusu(cihaz);
     if (satis === null || satis < 0) return null;
     satirlar.push({ cihazId: cihaz.id, satisFiyatiKurus: satis });
   }
@@ -121,13 +148,14 @@ export function sepetSorunlari(
     sorunlar.push("Satılacak cihaz okutun.");
   }
 
-  const eksikler = sepet.filter((c) => tlyiKurusaCevir(c.satisFiyati) === null);
-  for (const cihaz of eksikler) {
-    sorunlar.push(`${cihazAdi(cihaz)} için satış fiyatı girin.`);
+  // Boş alan sorun değil (alış fiyatına satılır); yalnız okunamayan metin.
+  const okunmayanlar = sepet.filter((c) => etkinSatisKurusu(c) === null);
+  for (const cihaz of okunmayanlar) {
+    sorunlar.push(`${cihazAdi(cihaz)} için satış fiyatı okunamadı.`);
   }
 
   const negatifler = sepet.filter((c) => {
-    const satis = tlyiKurusaCevir(c.satisFiyati);
+    const satis = etkinSatisKurusu(c);
     return satis !== null && satis < 0;
   });
   for (const cihaz of negatifler) {
