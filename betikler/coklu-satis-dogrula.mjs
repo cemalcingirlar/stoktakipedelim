@@ -294,9 +294,11 @@ try {
   await okut(imei(3));
   await sayfa.locator('[data-test="sepet-fiyat"]').first().fill("12.000,00");
   await sayfa.fill("#musteriSorgu", MUSTERI);
-  await sayfa.click('button:has-text("Ara")');
+  // Metne göre seçmek kırılgan: ekrana "…Seç" diyen başka bir düğme eklenince
+  // sessizce yanlış düğmeye tıklanıyordu. data-test ile hedefliyoruz.
+  await sayfa.locator('[data-test="musteri-ara"]').click();
   await sayfa.waitForTimeout(1500);
-  const secButonu = sayfa.locator('button:has-text("Seç")').first();
+  const secButonu = sayfa.locator('[data-test="musteri-sec"]').first();
   if ((await secButonu.count()) > 0) {
     await secButonu.click();
     await sayfa.waitForTimeout(300);

@@ -1,0 +1,156 @@
+/**
+ * Satış ekranında stoktaki ürünleri adıyla bulma.
+ *
+ * Bazı ürünü okutmak yerine adıyla bulmak daha kolay: aksesuarın barkodu
+ * silinmiş olabiliyor, ya da müşteri "şu powerbank" diyor. Arama sonucu cihaz
+ * cihaz değil ürün ürün gösteriliyor — aynı aksesuardan 20 adet varsa 20 satır
+ * dökmek listeyi okunmaz yapardı.
+ *
+ * Burada veritabanı yok: gruplama ve etiketler saf, böylece doğrudan test
+ * edilebiliyor ve ekranla sunucu aynı kuralı kullanıyor.
+ */
+import { kurusuTLYaz } from "./para";
+
+export type AranabilirCihaz = {
+  id: number;
+  marka: string;
+  model: string;
+  barkod: string | null;
+  seriNo: string | null;
+  kategori: string;
+  magazaAdi: string;
+  alisFiyatiKurus: number;
+};
+
+export type UrunGrubu = {
+  /** Gruplama anahtarı; ekranda React anahtarı olarak da kullanılıyor. */
+  anahtar: string;
+  marka: string;
+  model: string;
+  kategori: string;
+  barkod: string | null;
+  /** Gruptaki cihaz sayısı. */
+  adet: number;
+  /** Gruptaki en düşük ve en yüksek alış fiyatı (kuruş). */
+  enDusukAlisKurus: number;
+  enYuksekAlisKurus: number;
+  /** Cihazların bulunduğu mağazalar, tekilleştirilmiş. */
+  magazalar: string[];
+  /**
+   * Gruptaki cihazların kimlikleri, seçim sırasıyla.
+   *
+   * Sıra cihazSecimi.ts'deki ile aynı tutuluyor (seri numaralı olanlar önce,
+   * sonra numaraya göre): kullanıcı listede gördüğü fiyatın hangi cihaza ait
+   * olduğunu tahmin edebilmeli.
+   */
+  cihazIdleri: number[];
+};
+
+/** Aramanın çalışması için gereken en az karakter. */
+export const EN_AZ_ARAMA = 2;
+
+/** Sonuç listesinde gösterilecek en çok ürün; fazlası ekranı boğar. */
+export const EN_COK_GRUP = 30;
+
+export function aramaYeterliMi(sorgu: string): boolean {
+  return sorgu.trim().length >= EN_AZ_ARAMA;
+}
+
+/**
+ * Cihazları ürün bazında gruplar.
+ *
+ * Anahtar barkod; barkodu olmayan ürünlerde marka + model. Barkodu olan iki
+ * ayrı ürün aynı marka/modeli taşıyabildiği için önce barkoda bakılıyor.
+ */
+export function gruplaUrunler(cihazlar: AranabilirCihaz[]): UrunGrubu[] {
+  const gruplar = new Map<string, UrunGrubu>();
+
+  for (const cihaz of siralaCihazlar(cihazlar)) {
+    const anahtar = cihaz.barkod
+      ? `b:${cihaz.barkod}`
+      : `m:${cihaz.marka.toLocaleLowerCase("tr")}|${cihaz.model.toLocaleLowerCase("tr")}`;
+
+    const mevcut = gruplar.get(anahtar);
+    if (!mevcut) {
+      gruplar.set(anahtar, {
+        anahtar,
+        marka: cihaz.marka,
+        model: cihaz.model,
+        kategori: cihaz.kategori,
+        barkod: cihaz.barkod,
+        adet: 1,
+        enDusukAlisKurus: cihaz.alisFiyatiKurus,
+        enYuksekAlisKurus: cihaz.alisFiyatiKurus,
+        magazalar: [cihaz.magazaAdi],
+        cihazIdleri: [cihaz.id],
+      });
+      continue;
+    }
+
+    mevcut.adet += 1;
+    mevcut.cihazIdleri.push(cihaz.id);
+    mevcut.enDusukAlisKurus = Math.min(mevcut.enDusukAlisKurus, cihaz.alisFiyatiKurus);
+    mevcut.enYuksekAlisKurus = Math.max(mevcut.enYuksekAlisKurus, cihaz.alisFiyatiKurus);
+    if (!mevcut.magazalar.includes(cihaz.magazaAdi)) mevcut.magazalar.push(cihaz.magazaAdi);
+  }
+
+  // Ada göre sırala: kullanıcı aradığı ürünü tahmin edilebilir bir yerde
+  // bulmalı, veritabanı sırası rastgele görünür.
+  return [...gruplar.values()].sort((a, b) =>
+    `${a.marka} ${a.model}`.localeCompare(`${b.marka} ${b.model}`, "tr"),
+  );
+}
+
+/**
+ * Cihazları seçim sırasına dizer: seri numaralı olanlar önce, sonra numaraya
+ * göre. cihazSecimi.ts'deki sıralamayla aynı — listede görünen fiyat ile
+ * seçildiğinde gelen cihaz birbirini tutsun.
+ */
+function siralaCihazlar(cihazlar: AranabilirCihaz[]): AranabilirCihaz[] {
+  return [...cihazlar].sort((a, b) => {
+    if (Boolean(a.seriNo) !== Boolean(b.seriNo)) return a.seriNo ? -1 : 1;
+    if (a.seriNo && b.seriNo) return a.seriNo.localeCompare(b.seriNo, "tr");
+    return a.id - b.id;
+  });
+}
+
+/** Listede görünen ürün adı. */
+export function grupEtiketi(grup: UrunGrubu): string {
+  return `${grup.marka} ${grup.model}`.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Alış fiyatı metni. Gruptaki cihazların fiyatı farklıysa aralık yazılıyor:
+ * tek bir rakam yazmak, seçilince gelen cihazın fiyatı başka olduğunda
+ * kullanıcıyı yanıltırdı (satış fiyatı alış fiyatıyla dolu geliyor).
+ */
+export function grupFiyatMetni(grup: UrunGrubu): string {
+  if (grup.enDusukAlisKurus === grup.enYuksekAlisKurus) {
+    return `${kurusuTLYaz(grup.enDusukAlisKurus)} TL`;
+  }
+  return `${kurusuTLYaz(grup.enDusukAlisKurus)} – ${kurusuTLYaz(grup.enYuksekAlisKurus)} TL`;
+}
+
+/** Satır altındaki açıklama: adet ve mağazalar. */
+export function grupAciklamasi(grup: UrunGrubu): string {
+  const parcalar = [`${grup.adet} adet`, grup.kategori, grup.magazalar.join(", ")];
+  if (grup.barkod) parcalar.push(grup.barkod);
+  return parcalar.filter(Boolean).join(" · ");
+}
+
+/**
+ * Listeden seçimde "hangi cihaz?" diye sorulmalı mı?
+ *
+ * Seri numarası olan cihazlarda sorulur: hangi IMEI'nin satıldığı önemli ve
+ * maliyetleri farklı olabiliyor. Seri numarası olmayan özdeş ürünlerde
+ * (3 adet aynı powerbank) sorulmaz — kullanıcıya "(seri no yok · kayıt 12)"
+ * diye üç satır göstermek anlamsız bir tıklama olurdu.
+ */
+export function secimSorulmali(adaylar: { seriNo: string | null }[]): boolean {
+  return adaylar.some((a) => (a.seriNo ?? "") !== "");
+}
+
+/** Sonuç yokken gösterilecek mesaj. */
+export function sonucYokMesaji(sorgu: string): string {
+  return `"${sorgu.trim()}" için stokta ürün bulunamadı.`;
+}
