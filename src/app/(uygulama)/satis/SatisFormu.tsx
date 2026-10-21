@@ -4,6 +4,14 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { OkutmaKutusu, type OkutmaGeriBildirimi } from "@/bilesenler/OkutmaKutusu";
+import {
+  aramaYeterliMi,
+  grupAciklamasi,
+  grupEtiketi,
+  grupFiyatMetni,
+  sonucYokMesaji,
+  type UrunGrubu,
+} from "@/lib/urunArama";
 import { kurusuTLYaz, kurusuTLYazSembollu } from "@/lib/para";
 import {
   cihazKari,
@@ -27,6 +35,8 @@ import {
   musteriAra,
   satisCihaziOkut,
   satisCihaziniSec,
+  satisUrunGrubunuSec,
+  satisUrunleriniAra,
   satisKaydet,
   type MusteriOzeti,
   type SatisDurumu,
@@ -73,6 +83,12 @@ export function SatisFormu({
   const [yeniTckn, setYeniTckn] = useState("");
   const [yeniAdres, setYeniAdres] = useState("");
 
+  // "Listeden Seç": bazı ürünü okutmak yerine adıyla bulmak daha kolay.
+  const [listeAcik, setListeAcik] = useState(false);
+  const [urunSorgu, setUrunSorgu] = useState("");
+  const [urunler, setUrunler] = useState<UrunGrubu[] | null>(null);
+  const [urunAraniyor, urunAramaBasla] = useTransition();
+
   // Okutulan barkod birden çok cihaza denk geldiğinde seçim listesi.
   const [secim, setSecim] = useState<{ aranan: string; adaylar: AdayCihaz[] } | null>(null);
   const [secimHatasi, setSecimHatasi] = useState<string | null>(null);
@@ -115,6 +131,42 @@ export function SatisFormu({
     }
 
     return sepeteAl(sonuc.cihaz);
+  }
+
+  function urunAramayiCalistir() {
+    const sorgu = urunSorgu.trim();
+    if (!aramaYeterliMi(sorgu)) {
+      setUrunler(null);
+      return;
+    }
+    urunAramaBasla(async () => {
+      setUrunler(
+        await satisUrunleriniAra(sorgu, sepetRef.current.map((c) => c.id)),
+      );
+    });
+  }
+
+  /** Listeden bir ürün seçildi: tek cihazsa sepete, çoksa hangisi diye sor. */
+  function urunSec(grup: UrunGrubu) {
+    setSecimHatasi(null);
+    urunAramaBasla(async () => {
+      const sonuc = await satisUrunGrubunuSec(
+        grup.cihazIdleri,
+        sepetRef.current.map((c) => c.id),
+      );
+      if (sonuc.durum === "BULUNDU") {
+        sepeteAl(sonuc.cihaz);
+        // Liste açık kalıyor: aynı müşteriye birkaç ürün eklemek yaygın.
+        // Sonuçları tazele ki eklenen cihaz adetten düşsün.
+        urunAramayiCalistir();
+        return;
+      }
+      if (sonuc.durum === "SECIM") {
+        setSecim({ aranan: sonuc.aranan, adaylar: sonuc.adaylar });
+        return;
+      }
+      setSecimHatasi(sonuc.mesaj);
+    });
   }
 
   /** Seçim listesinden bir cihaz seçildi. */
@@ -182,6 +234,93 @@ export function SatisFormu({
         }
         okut={okut}
       />
+
+      {/* Listeden seç: barkodu silinmiş ya da adıyla aranması daha kolay olan
+          ürünler için. Okutma yolunu kapatmıyor, yanına ekleniyor. */}
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <button
+          type="button"
+          data-test="liste-ac"
+          onClick={() => {
+            const yeni = !listeAcik;
+            setListeAcik(yeni);
+            if (!yeni) {
+              setUrunSorgu("");
+              setUrunler(null);
+            }
+          }}
+          className="text-sm font-medium text-blue-700 underline-offset-2 hover:underline"
+        >
+          {listeAcik ? "− Listeyi kapat" : "☰ Ürün Listesinden Ekle"}
+        </button>
+
+        {listeAcik ? (
+          <div className="mt-3 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <input
+                data-test="urun-sorgu"
+                value={urunSorgu}
+                onChange={(e) => setUrunSorgu(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    urunAramayiCalistir();
+                  }
+                }}
+                placeholder="Ürün adı, marka veya model (en az 2 harf)"
+                className={`min-w-0 flex-1 ${GIRDI_SINIFI}`}
+              />
+              <button
+                type="button"
+                data-test="urun-ara"
+                onClick={urunAramayiCalistir}
+                disabled={urunAraniyor}
+                className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:opacity-60"
+              >
+                {urunAraniyor ? "Aranıyor…" : "Bul"}
+              </button>
+            </div>
+
+            {urunler === null ? (
+              <p className="text-xs text-slate-500">
+                Stoktaki ürünler arasında arar. Aynı üründen birden çok varsa tek satırda
+                toplanır; seçtiğinizde hangi cihazın satılacağı sorulur.
+              </p>
+            ) : urunler.length === 0 ? (
+              <p data-test="urun-sonuc-yok" className="text-sm text-slate-500">
+                {sonucYokMesaji(urunSorgu)}
+              </p>
+            ) : (
+              <ul data-test="urun-listesi" className="divide-y divide-slate-100">
+                {urunler.map((g) => (
+                  <li key={g.anahtar}>
+                    <button
+                      type="button"
+                      data-test="urun-satiri"
+                      onClick={() => urunSec(g)}
+                      disabled={urunAraniyor}
+                      className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-2 py-2 text-left transition hover:bg-blue-50 disabled:opacity-50"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-slate-900">
+                          {grupEtiketi(g)}
+                        </span>
+                        <span className="block truncate text-xs text-slate-500">
+                          {grupAciklamasi(g)}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right text-xs text-slate-600">
+                        <span className="block">alış {grupFiyatMetni(g)}</span>
+                        <span className="block font-medium text-blue-700">+ Sepete ekle</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : null}
+      </div>
 
       {/* Barkod birden çok cihaza denk geldi: hangisi satılacak? */}
       {secim ? (
@@ -444,6 +583,7 @@ export function SatisFormu({
                 />
                 <button
                   type="button"
+                  data-test="musteri-ara"
                   onClick={musteriAramayiCalistir}
                   className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                 >
@@ -457,6 +597,7 @@ export function SatisFormu({
                     <li key={m.id}>
                       <button
                         type="button"
+                        data-test="musteri-sec"
                         onClick={() => {
                           setSeciliMusteri(m);
                           setSonuclar([]);

@@ -7,6 +7,13 @@ import { logYaz } from "@/lib/log";
 import { aramaMetniUret, aramaNormalize, kodNormalize } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
 import { cihazSec, type AdayCihaz } from "@/lib/cihazSecimi";
+import {
+  EN_COK_GRUP,
+  aramaYeterliMi,
+  gruplaUrunler,
+  secimSorulmali,
+  type UrunGrubu,
+} from "@/lib/urunArama";
 import { saticiSorunu, type SaticiAdayi } from "@/lib/satici";
 import {
   HAREKET_TIP,
@@ -233,6 +240,128 @@ export async function satisCihaziniSec(
     if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
     console.error("Cihaz seçilemedi:", hata);
     return { durum: "HATA", mesaj: "Cihaz seçilemedi. Tekrar deneyin." };
+  }
+}
+
+// ------------------------------------------------------------ Ürün arama
+
+/**
+ * Stoktaki ürünleri adıyla arar — satış ekranındaki "Listeden Seç" için.
+ *
+ * Bazı ürünü okutmak yerine adıyla bulmak daha kolay: aksesuarın barkodu
+ * silinmiş olabiliyor. Sonuç cihaz cihaz değil ürün ürün dönüyor; aynı
+ * aksesuardan 20 adet varsa tek satır.
+ *
+ * Yalnız satılabilir cihazlar geliyor: stokta olanlar, kullanıcının yetkili
+ * olduğu mağazalardakiler ve sepette olmayanlar. Böylece listeden seçilen bir
+ * ürün "satılamaz" diye geri dönmüyor.
+ */
+export async function satisUrunleriniAra(
+  sorgu: string,
+  secilmisIdler: number[] = [],
+): Promise<UrunGrubu[]> {
+  try {
+    const oturum = await oturumZorunlu();
+    if (!aramaYeterliMi(sorgu)) return [];
+
+    const gorunur = adminMi(oturum) ? null : yetkiliMagazalar(oturum);
+
+    const cihazlar = await prisma.stokKalemi.findMany({
+      where: {
+        durum: STOK_DURUM.STOKTA,
+        aramaMetni: { contains: aramaNormalize(sorgu) },
+        ...(gorunur === null ? {} : { magazaId: { in: gorunur } }),
+        ...(secilmisIdler.length > 0 ? { id: { notIn: secilmisIdler } } : {}),
+      },
+      include: { magaza: { select: { ad: true } }, kategori: { select: { ad: true } } },
+      // Gruplama ekranda değil burada yapılıyor; makul bir üst sınır yeter.
+      take: 500,
+      orderBy: { id: "asc" },
+    });
+
+    return gruplaUrunler(
+      cihazlar.map((c) => ({
+        id: c.id,
+        marka: c.marka,
+        model: c.model,
+        barkod: c.barkod,
+        seriNo: c.seriNo,
+        kategori: c.kategori.ad,
+        magazaAdi: c.magaza.ad,
+        alisFiyatiKurus: c.alisFiyatiKurus,
+      })),
+    ).slice(0, EN_COK_GRUP);
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return [];
+    console.error("Ürün araması başarısız:", hata);
+    return [];
+  }
+}
+
+/**
+ * Listeden seçilen ürünü satışa alır.
+ *
+ * Tek cihaz varsa doğrudan sepete; birden çok varsa hangisinin satılacağı
+ * sorulur — okutmadaki kuralın aynısı, çünkü aynı ürünün iki kaydı farklı
+ * seri numarası ve farklı maliyet taşıyabiliyor.
+ *
+ * Kimlikler ekrandan geliyor ama uygunluk burada yeniden denetleniyor:
+ * arama yapıldıktan sonra başkası o cihazı satmış olabilir.
+ */
+export async function satisUrunGrubunuSec(
+  cihazIdleri: number[],
+  secilmisIdler: number[] = [],
+): Promise<SatisOkutmaSonucu> {
+  try {
+    const oturum = await oturumZorunlu();
+
+    const idler = cihazIdleri.filter((id) => Number.isInteger(id) && id > 0).slice(0, 500);
+    if (idler.length === 0) return { durum: "HATA", mesaj: "Ürün seçimi okunamadı." };
+
+    const adaylar = await prisma.stokKalemi.findMany({
+      where: { id: { in: idler } },
+      include: { magaza: { select: { ad: true } }, kategori: { select: { ad: true } } },
+      orderBy: { id: "asc" },
+    });
+    if (adaylar.length === 0) return { durum: "HATA", mesaj: "Seçilen ürün bulunamadı." };
+
+    const aranan = adaylar[0].barkod ?? `${adaylar[0].marka} ${adaylar[0].model}`;
+    const secim = cihazSec(adaylar.map(adayaCevir), {
+      aranan,
+      yetkiliMagazalar: adminMi(oturum) ? null : yetkiliMagazalar(oturum),
+      secilmisIdler,
+    });
+
+    if (secim.durum === "YOK") return { durum: "HATA", mesaj: secim.mesaj };
+
+    // Seri numaralı cihazlarda hangisinin satıldığı sorulur; seri numarası
+    // olmayan özdeş ürünlerde ilk uygun cihaz alınır.
+    if (secim.durum === "SECIM" && secimSorulmali(secim.adaylar)) {
+      return { durum: "SECIM", aranan, adaylar: secim.adaylar };
+    }
+    const secilenId = secim.durum === "TEK" ? secim.cihaz.id : secim.adaylar[0].id;
+
+    const cihaz = adaylar.find((a) => a.id === secilenId)!;
+    return {
+      durum: "BULUNDU",
+      cihaz: {
+        id: cihaz.id,
+        marka: cihaz.marka,
+        model: cihaz.model,
+        renk: cihaz.renk,
+        kapasite: cihaz.kapasite,
+        seriNo: cihaz.seriNo,
+        barkod: cihaz.barkod,
+        kategori: cihaz.kategori.ad,
+        magazaId: cihaz.magazaId,
+        magazaAdi: cihaz.magaza.ad,
+        alisFiyatiKurus: cihaz.alisFiyatiKurus,
+      },
+    };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
+    console.error("Listeden ürün seçilemedi:", hata);
+    return { durum: "HATA", mesaj: "Ürün seçilemedi. Tekrar deneyin." };
   }
 }
 
