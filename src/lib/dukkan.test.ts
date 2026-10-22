@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  aktarimEngeli,
   aktarimaUygunKaynaklar,
   ayniDukkanMi,
   ayniDukkandakiler,
@@ -118,4 +119,48 @@ test("yönetici için tüm eşleşen mağazalar kaynak olur", () => {
 
 test("hiç dükkân kodu tanımlı değilse kaynak çıkmaz", () => {
   assert.deepEqual(aktarimaUygunKaynaklar(yonetici, [GRUPSUZ_A, GRUPSUZ_B]), []);
+});
+
+// ------------------------------------------------- Engel sebebi
+
+const magazalar = [
+  { id: 1, ad: "M1 REAL ANA DEPO", dukkanKodu: "M1" },
+  { id: 2, ad: "M1 NAKİT", dukkanKodu: "M1" },
+  { id: 3, ad: "KOZAN CADDESİ", dukkanKodu: null },
+];
+
+test("yetkisi tam olan kullanıcıda engel yok", () => {
+  const oturum = { rol: ROLLER.MAGAZA_PERSONELI, magazaId: 1, magazaIdleri: [1, 2] };
+  assert.equal(aktarimEngeli(oturum, magazalar), null);
+});
+
+test("yöneticide hiç engel olmaz", () => {
+  assert.equal(aktarimEngeli({ rol: ROLLER.ADMIN, magazaId: null }, magazalar), null);
+});
+
+test("dükkân tanımlı ama eşte yetki yoksa yetki engeli ve mağaza adı söylenir", () => {
+  // Personel yalnız depoda yetkili; kasada yetkisi yok. Ona "dükkân kodu
+  // tanımlanmalı" demek yanlış yere yönlendirirdi.
+  const oturum = { rol: ROLLER.MAGAZA_PERSONELI, magazaId: 1, magazaIdleri: [1] };
+  assert.deepEqual(aktarimEngeli(oturum, magazalar), {
+    tur: "YETKI_YOK",
+    magazaAdlari: ["M1 NAKİT"],
+  });
+});
+
+test("hiç dükkân kodu yoksa dükkân engeli", () => {
+  const kodsuz = [
+    { id: 1, ad: "A", dukkanKodu: null },
+    { id: 2, ad: "B", dukkanKodu: null },
+  ];
+  const oturum = { rol: ROLLER.MAGAZA_PERSONELI, magazaId: 1, magazaIdleri: [1, 2] };
+  assert.deepEqual(aktarimEngeli(oturum, kodsuz), { tur: "DUKKAN_YOK" });
+});
+
+test("kendi mağazasının dükkân eşi yoksa, başka dükkânlar olsa da dükkân engeli", () => {
+  // KOZAN CADDESİ'nin dükkân kodu yok. Başka mağazalarda grup bulunması bu
+  // kullanıcıyı ilgilendirmiyor; ona "yetki iste" demek yanlış yönlendirme
+  // olurdu, eksik olan kendi mağazasının dükkân kodu.
+  const oturum = { rol: ROLLER.MAGAZA_PERSONELI, magazaId: 3, magazaIdleri: [3] };
+  assert.deepEqual(aktarimEngeli(oturum, magazalar), { tur: "DUKKAN_YOK" });
 });
