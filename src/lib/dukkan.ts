@@ -73,3 +73,43 @@ export function aktarimaUygunKaynaklar<T extends DukkanMagazasi>(
       tumu.some((d) => dukkanIciAktarabilirMi(oturum, m, d)),
   );
 }
+
+/**
+ * Aktarım ekranının açılmama sebebi.
+ *
+ * İki sebep çok farklı ve kullanıcıyı farklı yere yönlendiriyor: dükkân kodu
+ * hiç tanımlanmamışsa yöneticinin ayar yapması gerekir, tanımlıysa ama kişi
+ * eşteki mağazada yetkisizse istenecek şey yetkidir. İkisine aynı mesajı
+ * göstermek, personeli olmayan bir ayarın peşine düşürüyordu.
+ */
+export type AktarimEngeli =
+  /** Hiçbir mağaza çifti aynı dükkân kodunu taşımıyor. */
+  | { tur: "DUKKAN_YOK" }
+  /** Dükkân tanımlı ama kullanıcı eşteki mağazada yetkili değil. */
+  | { tur: "YETKI_YOK"; magazaAdlari: string[] };
+
+export function aktarimEngeli<T extends DukkanMagazasi & { ad: string }>(
+  oturum: YetkiSahibi,
+  tumu: T[],
+): AktarimEngeli | null {
+  if (aktarimaUygunKaynaklar(oturum, tumu).length > 0) return null;
+
+  // Kullanıcının yetkili olduğu mağazaların dükkân eşleri: yetki istenecek
+  // yerler tam olarak bunlar.
+  const eksikYetkiler = new Set<string>();
+  for (const m of tumu) {
+    if (!magazadaIslemYapabilirMi(oturum, m.id)) continue;
+    for (const es of ayniDukkandakiler(m, tumu)) eksikYetkiler.add(es.ad);
+  }
+  if (eksikYetkiler.size > 0) {
+    return {
+      tur: "YETKI_YOK",
+      magazaAdlari: [...eksikYetkiler].sort((a, b) => a.localeCompare(b, "tr")),
+    };
+  }
+
+  // Kullanıcının hiçbir mağazasının dükkân eşi yok. Başka dükkânlarda grup
+  // olması onu ilgilendirmiyor: ona "yetki iste" demek yanlış yere
+  // yönlendirirdi, eksik olan şey kendi mağazasının dükkân kodu.
+  return { tur: "DUKKAN_YOK" };
+}

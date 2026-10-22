@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Kart } from "@/bilesenler/Kart";
-import { aktarimaUygunKaynaklar } from "@/lib/dukkan";
+import { aktarimEngeli, aktarimaUygunKaynaklar } from "@/lib/dukkan";
 import { prisma } from "@/lib/prisma";
 import { saticiAdaylari, type SaticiAdayi } from "@/lib/satici";
 import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
@@ -18,6 +18,10 @@ export default async function AktarimSayfasi() {
   });
 
   const uygun = aktarimaUygunKaynaklar(oturum, magazalar);
+  // Ekran açılmıyorsa sebebini ayırt ediyoruz: dükkân kodu eksikse yöneticinin
+  // ayar yapması, yetki eksikse kullanıcının yetki istemesi gerekiyor. İkisine
+  // aynı mesajı göstermek personeli olmayan bir ayarın peşine düşürüyordu.
+  const engel = aktarimEngeli(oturum, magazalar);
 
   // Sat-geri al işleminde satışı fiilen yapan kişi seçilebiliyor; personel
   // bazlı satış raporu doğru çıksın. Satış ekranıyla aynı kurallar.
@@ -59,7 +63,27 @@ export default async function AktarimSayfasi() {
         </p>
       </div>
 
-      {uygun.length === 0 ? (
+      {engel?.tur === "YETKI_YOK" ? (
+        <Kart baslik="Bu dükkânda yetkiniz eksik">
+          <p data-test="aktarim-yetki-engeli" className="text-sm text-slate-700">
+            Mağaza içi aktarım dükkânınızda tanımlı, ama tek adımlı aktarım için{" "}
+            <strong>iki mağazada da</strong> yetkili olmanız gerekiyor.
+            {engel.magazaAdlari.length > 0 ? (
+              <>
+                {" "}
+                Şu mağaza(lar)da yetkiniz yok:{" "}
+                <strong>{engel.magazaAdlari.join(", ")}</strong>.
+              </>
+            ) : null}
+          </p>
+          <p className="mt-2 text-sm text-slate-700">
+            Yöneticinizden <strong>Ayarlar → Mağazalar</strong> ekranında, o mağazanın
+            &quot;Yetkili Kullanıcılar&quot; bölümünden size yetki vermesini isteyin. Bu bir
+            yönetici ayrıcalığı değil; yetki verilen her kullanıcı aktarım yapabilir ve alış
+            fiyatını revize edebilir.
+          </p>
+        </Kart>
+      ) : engel?.tur === "DUKKAN_YOK" ? (
         <Kart baslik="Önce dükkân grubu tanımlanmalı">
           <p className="text-sm text-slate-700">
             Mağaza içi aktarım için aynı dükkânda duran mağazaların <strong>aynı dükkân

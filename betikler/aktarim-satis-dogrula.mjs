@@ -496,6 +496,77 @@ try {
     `${gosterimTarihi} bekleniyor`,
   );
 
+  // ================= 11) Sat-geri al yönetici ayrıcalığı DEĞİL
+  // Kullanıcı "admin'de görünüyor, diğerlerinde de olsun" dedi. Kodda rol
+  // kısıtı yok; ekranı açan şey iki mağazada da yetkili olmak. Bölüm kendi
+  // içinde tutarlı: betiğin başında verilmiş yetkiyi önce geri alıyoruz,
+  // yoksa "yetkisiz hal" hiç ölçülemezdi.
+  async function m2Yetkisi(ver) {
+    await giris("admin");
+    await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
+    const form = magazaKarti("M2")
+      .locator("form")
+      .filter({ hasText: "Yetkileri Kaydet" })
+      .first();
+    const kutu = form.locator(
+      'label:has-text("1 Nolu Mağaza Personeli") input[name="yetkililer"]',
+    );
+    if (ver) await kutu.check();
+    else await kutu.uncheck();
+    await form.getByRole("button", { name: "Yetkileri Kaydet" }).click();
+    await sayfa.waitForTimeout(1500);
+  }
+
+  await m2Yetkisi(false);
+  await giris("personel1");
+  await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
+  kontrol(
+    "eşte yetkisi olmayan personele kutu çıkmıyor",
+    (await sayfa.locator('[data-test="satis-modu"]').count()) === 0,
+  );
+  const engelMetni = await sayfa
+    .locator('[data-test="aktarim-yetki-engeli"]')
+    .textContent()
+    .catch(() => null);
+  kontrol(
+    "engel sebebi 'dükkân kodu' değil 'yetki' diye söyleniyor",
+    Boolean(engelMetni) && /yetkili olmanız/.test(engelMetni ?? ""),
+    (engelMetni ?? "(mesaj yok)").replace(/\s+/g, " ").slice(0, 110),
+  );
+  kontrol(
+    "eksik yetkinin hangi mağazada olduğu yazıyor",
+    (engelMetni ?? "").includes("2 Nolu Mağaza"),
+    (engelMetni ?? "").replace(/\s+/g, " ").slice(0, 110),
+  );
+
+  await m2Yetkisi(true);
+  await giris("personel1");
+  await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
+  kontrol(
+    "yetki verilince personele de sat-geri al kutusu çıkıyor",
+    (await sayfa.locator('[data-test="satis-modu"]').count()) === 1,
+  );
+
+  // Düğmeyi göstermek yetmez: personel gerçekten kaydedebilmeli.
+  // Cihaz bu noktada 2 Nolu Mağaza'da duruyor; aktarım oradan başlıyor.
+  await sayfa.locator('[data-test="satis-modu"]').check();
+  await sayfa.fill('[data-test="musteri-ad"]', `${MUSTERI} P`);
+  await sayfa.selectOption("#kaynak", { label: "2 Nolu Mağaza" });
+  await sayfa.waitForTimeout(400);
+  const personelMesaj = await aktar(imei(1));
+  kontrol("personel cihazı aktardı", personelMesaj.includes("aktarıldı"), personelMesaj);
+  await sayfa.fill('[data-test="satis-fiyati"]', "15.000,00");
+  await sayfa.fill('[data-test="yeni-alis-fiyati"]', "14.000,00");
+  await sayfa.locator('[data-test="satisi-kaydet"]').click();
+  await sayfa.waitForTimeout(2500);
+  kontrol(
+    "personel sat-geri al satışını kaydedebildi",
+    (await sayfa.locator('[data-test="satis-kaydedildi"]').count()) === 1,
+    ((await sayfa.locator('[data-test="satis-hata"]').count()) > 0
+      ? ((await sayfa.locator('[data-test="satis-hata"]').first().textContent()) ?? "").trim()
+      : ""),
+  );
+
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
   kontrol("tarayıcı konsolunda hata yok", hatalar.length === 0, hatalar.slice(0, 3).join(" | "));
 } catch (hata) {
