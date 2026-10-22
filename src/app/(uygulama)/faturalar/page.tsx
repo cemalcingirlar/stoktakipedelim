@@ -34,12 +34,24 @@ export default async function FaturalarSayfasi() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-slate-900">Alış Faturaları</h1>
         {adminMi(oturum) ? (
-          <Link
-            href="/faturalar/yeni"
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-          >
-            + Yeni Alış Faturası
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Tedarikçi dosyasını buradan da yüklenebilsin: fatura girmeye
+                gelen kullanıcı önce bu ekrana bakıyor, Cihazlar'a dönmek
+                gereksiz bir adımdı. */}
+            <Link
+              href="/cihazlar/tedarikci-faturasi"
+              data-test="tedarikci-faturasi-yukle"
+              className="rounded-lg border border-blue-300 bg-blue-50 px-3.5 py-2 text-sm font-medium text-blue-800 transition hover:bg-blue-100"
+            >
+              Tedarikçi Faturası Yükle
+            </Link>
+            <Link
+              href="/faturalar/yeni"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+            >
+              + Yeni Alış Faturası
+            </Link>
+          </div>
         ) : null}
       </div>
 

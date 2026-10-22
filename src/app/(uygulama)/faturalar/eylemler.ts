@@ -5,7 +5,13 @@ import { redirect } from "next/navigation";
 import { faturaOlustur } from "@/lib/fatura";
 import { prisma } from "@/lib/prisma";
 import { logYaz } from "@/lib/log";
-import { kodNormalize } from "@/lib/metin";
+import { aramaNormalize, kodNormalize } from "@/lib/metin";
+import {
+  EN_COK_GRUP,
+  aramaYeterliMi,
+  gruplaGecmisUrunler,
+  type GecmisUrun,
+} from "@/lib/urunArama";
 import { LOG_ISLEM } from "@/lib/sabitler";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
 import { faturaSemasi } from "./dogrulama";
@@ -147,6 +153,58 @@ export type SeriNoKontrolu = { kullanimda: boolean; aciklama?: string };
  * Okutulan seri numarası sistemde var mı? Okutma anında bakılır ki kullanıcı
  * onlarca IMEI girdikten sonra kayıtta sürprizle karşılaşmasın.
  */
+/**
+ * Daha önce girilmiş ürün kartlarını adıyla arar — fatura ekranındaki liste.
+ *
+ * Barkodu okutmak her zaman mümkün olmuyor: kutu açılmış, etiket silinmiş ya
+ * da kullanıcı ürünü adıyla hatırlıyor. Liste barkodu buluyor, seçildiğinde
+ * okutmuş gibi kart açılıyor.
+ *
+ * Stok durumuna bakılmıyor: tükenmiş ürün yeniden alınabilir, hatta listenin
+ * asıl işi bu.
+ */
+export async function faturaUrunleriniAra(sorgu: string): Promise<GecmisUrun[]> {
+  try {
+    await adminZorunlu();
+    if (!aramaYeterliMi(sorgu)) return [];
+
+    const kayitlar = await prisma.stokKalemi.findMany({
+      where: {
+        barkod: { not: null },
+        aramaMetni: { contains: aramaNormalize(sorgu) },
+      },
+      select: {
+        barkod: true,
+        marka: true,
+        model: true,
+        alisFiyatiKurus: true,
+        girisTarihi: true,
+        kategori: { select: { ad: true } },
+        altKategori: { select: { ad: true } },
+      },
+      // Gruplama burada yapılıyor; makul bir üst sınır yeter.
+      take: 500,
+      orderBy: { girisTarihi: "desc" },
+    });
+
+    return gruplaGecmisUrunler(
+      kayitlar.map((k) => ({
+        barkod: k.barkod,
+        marka: k.marka,
+        model: k.model,
+        kategoriAdi: k.kategori.ad,
+        altKategoriAdi: k.altKategori?.ad ?? null,
+        alisFiyatiKurus: k.alisFiyatiKurus,
+        girisTarihi: k.girisTarihi,
+      })),
+    ).slice(0, EN_COK_GRUP);
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return [];
+    console.error("Fatura ürün araması başarısız:", hata);
+    return [];
+  }
+}
+
 export async function seriNoKontrolEt(seriNo: string): Promise<SeriNoKontrolu> {
   try {
     await adminZorunlu();
