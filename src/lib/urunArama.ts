@@ -154,3 +154,94 @@ export function secimSorulmali(adaylar: { seriNo: string | null }[]): boolean {
 export function sonucYokMesaji(sorgu: string): string {
   return `"${sorgu.trim()}" için stokta ürün bulunamadı.`;
 }
+
+// ------------------------------------------------- Alış faturası ekranı
+
+/**
+ * Daha önce girilmiş bir ürün kartı.
+ *
+ * Alış faturasında aranan şey stok değil geçmiş: barkodu okutulduğunda
+ * marka, model, kategori ve son alış fiyatı otomatik geliyor. Ürün tükenmiş
+ * olsa bile kartı listede durmalı — yeniden alınan ürün tam da bu.
+ */
+export type GecmisUrun = {
+  barkod: string;
+  marka: string;
+  model: string;
+  kategoriAdi: string;
+  altKategoriAdi: string | null;
+  /** En son girişteki alış fiyatı (kuruş). */
+  sonAlisKurus: number;
+  sonGirisTarihi: Date;
+  /** Bu barkodla bugüne kadar girilmiş toplam cihaz sayısı. */
+  toplamAdet: number;
+};
+
+export type GecmisKayit = {
+  barkod: string | null;
+  marka: string;
+  model: string;
+  kategoriAdi: string;
+  altKategoriAdi: string | null;
+  alisFiyatiKurus: number;
+  girisTarihi: Date;
+};
+
+/**
+ * Geçmiş girişleri barkod bazında tek karta indirger.
+ *
+ * Kart bilgisi en son girişten alınıyor: aynı barkod yıllar içinde farklı
+ * fiyatlarla girilmiş olabiliyor ve kullanıcı en güncelini bekler. Barkodu
+ * olmayan kayıtlar listeye girmiyor — seçildiğinde okutulacak bir kod yok.
+ */
+export function gruplaGecmisUrunler(kayitlar: GecmisKayit[]): GecmisUrun[] {
+  const gruplar = new Map<string, GecmisUrun>();
+
+  for (const k of kayitlar) {
+    if (!k.barkod) continue;
+
+    const mevcut = gruplar.get(k.barkod);
+    if (!mevcut) {
+      gruplar.set(k.barkod, {
+        barkod: k.barkod,
+        marka: k.marka,
+        model: k.model,
+        kategoriAdi: k.kategoriAdi,
+        altKategoriAdi: k.altKategoriAdi,
+        sonAlisKurus: k.alisFiyatiKurus,
+        sonGirisTarihi: k.girisTarihi,
+        toplamAdet: 1,
+      });
+      continue;
+    }
+
+    mevcut.toplamAdet += 1;
+    if (k.girisTarihi.getTime() > mevcut.sonGirisTarihi.getTime()) {
+      mevcut.marka = k.marka;
+      mevcut.model = k.model;
+      mevcut.kategoriAdi = k.kategoriAdi;
+      mevcut.altKategoriAdi = k.altKategoriAdi;
+      mevcut.sonAlisKurus = k.alisFiyatiKurus;
+      mevcut.sonGirisTarihi = k.girisTarihi;
+    }
+  }
+
+  // En son girilenler önce: kullanıcı genelde yakın zamanda aldığı ürünü
+  // yeniden alıyor.
+  return [...gruplar.values()].sort(
+    (a, b) => b.sonGirisTarihi.getTime() - a.sonGirisTarihi.getTime(),
+  );
+}
+
+/** Listede görünen ürün adı. */
+export function gecmisUrunEtiketi(urun: GecmisUrun): string {
+  return `${urun.marka} ${urun.model}`.replace(/\s+/g, " ").trim();
+}
+
+/** Satır altındaki açıklama: kategori, barkod ve toplam giriş adedi. */
+export function gecmisUrunAciklamasi(urun: GecmisUrun): string {
+  const kategori = urun.altKategoriAdi
+    ? `${urun.kategoriAdi} / ${urun.altKategoriAdi}`
+    : urun.kategoriAdi;
+  return [kategori, urun.barkod, `${urun.toplamAdet} adet girilmiş`].join(" · ");
+}

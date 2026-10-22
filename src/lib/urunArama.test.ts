@@ -5,10 +5,14 @@ import {
   grupAciklamasi,
   grupEtiketi,
   grupFiyatMetni,
+  gecmisUrunAciklamasi,
+  gecmisUrunEtiketi,
+  gruplaGecmisUrunler,
   gruplaUrunler,
   secimSorulmali,
   sonucYokMesaji,
   type AranabilirCihaz,
+  type GecmisKayit,
 } from "./urunArama";
 
 function cihaz(ozel: Partial<AranabilirCihaz> & { id: number }): AranabilirCihaz {
@@ -138,4 +142,65 @@ test("seri numaralı cihaz varsa seçim sorulur", () => {
   // olabiliyor ve müşteriye giden cihazın numarası kayda geçmeli.
   assert.equal(secimSorulmali([{ seriNo: "350000000000001" }, { seriNo: null }]), true);
   assert.equal(secimSorulmali([{ seriNo: "350000000000001" }]), true);
+});
+
+// ------------------------------------------------- Alış faturası ekranı
+
+function gecmis(ozel: Partial<GecmisKayit> = {}): GecmisKayit {
+  return {
+    barkod: "8690000000001",
+    marka: "Apple",
+    model: "AirPods 4",
+    kategoriAdi: "Aksesuar",
+    altKategoriAdi: "Kulaklık",
+    alisFiyatiKurus: 958833,
+    girisTarihi: new Date("2026-10-01"),
+    ...ozel,
+  };
+}
+
+test("aynı barkodun geçmiş girişleri tek kartta toplanır", () => {
+  const kartlar = gruplaGecmisUrunler([gecmis(), gecmis(), gecmis()]);
+  assert.equal(kartlar.length, 1);
+  assert.equal(kartlar[0].toplamAdet, 3);
+});
+
+test("kart bilgisi en son girişten alınır", () => {
+  // Aynı barkod yıllar içinde farklı fiyatlarla girilebiliyor; kullanıcı en
+  // güncel fiyatı bekler.
+  const kartlar = gruplaGecmisUrunler([
+    gecmis({ alisFiyatiKurus: 100000, girisTarihi: new Date("2026-01-01"), model: "ESKİ" }),
+    gecmis({ alisFiyatiKurus: 958833, girisTarihi: new Date("2026-10-01"), model: "YENİ" }),
+    gecmis({ alisFiyatiKurus: 500000, girisTarihi: new Date("2026-05-01"), model: "ORTA" }),
+  ]);
+  assert.equal(kartlar[0].sonAlisKurus, 958833);
+  assert.equal(kartlar[0].model, "YENİ");
+  assert.equal(kartlar[0].toplamAdet, 3);
+});
+
+test("barkodsuz kayıtlar listeye girmez", () => {
+  // Seçildiğinde okutulacak bir kod yok; listede göstermek işe yaramaz.
+  assert.deepEqual(gruplaGecmisUrunler([gecmis({ barkod: null })]), []);
+});
+
+test("kartlar en son girilenden eskiye sıralanır", () => {
+  const kartlar = gruplaGecmisUrunler([
+    gecmis({ barkod: "1", model: "ESKİ", girisTarihi: new Date("2026-01-01") }),
+    gecmis({ barkod: "2", model: "YENİ", girisTarihi: new Date("2026-10-01") }),
+  ]);
+  assert.deepEqual(kartlar.map((k) => k.model), ["YENİ", "ESKİ"]);
+});
+
+test("geçmiş ürün açıklamasında kategori, barkod ve adet var", () => {
+  const kartlar = gruplaGecmisUrunler([gecmis(), gecmis()]);
+  const metin = gecmisUrunAciklamasi(kartlar[0]);
+  assert.match(metin, /Aksesuar \/ Kulaklık/);
+  assert.match(metin, /8690000000001/);
+  assert.match(metin, /2 adet girilmiş/);
+  assert.equal(gecmisUrunEtiketi(kartlar[0]), "Apple AirPods 4");
+});
+
+test("alt kategorisi olmayan üründe yalnız kategori yazılır", () => {
+  const kartlar = gruplaGecmisUrunler([gecmis({ altKategoriAdi: null })]);
+  assert.match(gecmisUrunAciklamasi(kartlar[0]), /^Aksesuar ·/);
 });
