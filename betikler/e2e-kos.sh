@@ -42,6 +42,9 @@ trap temizle EXIT
 
 cd "$KOK"
 export DATABASE_URL="file:$VT"
+# Yedekleme ucunun yetki yolu ancak anahtar tanımlıyken denenebilir;
+# tanımsızken uç 503 döndürüyor ve 401 kontrolleri anlamsız kalıyor.
+export YEDEK_ANAHTARI="${YEDEK_ANAHTARI:-e2e-test-anahtari-0123456789}"
 
 npx prisma migrate deploy >/dev/null 2>&1 || { echo "$SUIT :: MIGRATE HATASI"; exit 2; }
 npx tsx prisma/seed.ts >/dev/null 2>&1 || { echo "$SUIT :: SEED HATASI"; exit 2; }

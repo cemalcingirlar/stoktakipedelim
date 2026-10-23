@@ -83,6 +83,27 @@ console.log("8) /api/yedek GET (çerezsiz):", cevap.status(), (await cevap.text(
   cevap.status() === 200 ? "✓" : "✗");
 const yetkisiz = await sayfa.request.post(`${hedef}/api/yedek`);
 console.log("   anahtarsız POST:", yetkisiz.status(), yetkisiz.status() === 401 ? "✓" : "✗");
+if (yetkisiz.status() !== 401) {
+  throw new Error(`anahtarsız POST 401 vermeli, ${yetkisiz.status()} verdi`);
+}
+
+// Yanlış anahtar da reddedilmeli.
+const yanlis = await sayfa.request.post(`${hedef}/api/yedek`, {
+  headers: { "X-Yedek-Anahtari": "yanlis-anahtar-123456" },
+});
+console.log("   yanlış anahtar:", yanlis.status(), yanlis.status() === 401 ? "✓" : "✗");
+if (yanlis.status() !== 401) throw new Error("yanlış anahtar kabul edildi");
+
+// Anahtar sorgu parametresiyle KABUL EDİLMEMELİ: sorgu değerleri erişim
+// kayıtlarına ve tarayıcı geçmişine düşer, sır olmaktan çıkar.
+const anahtar = process.env.YEDEK_ANAHTARI ?? "";
+const sorguyla = await sayfa.request.post(
+  `${hedef}/api/yedek?anahtar=${encodeURIComponent(anahtar)}`,
+);
+console.log("   sorgu parametresiyle:", sorguyla.status(), sorguyla.status() === 401 ? "✓ reddedildi" : "✗ kabul edildi");
+if (sorguyla.status() !== 401) {
+  throw new Error("anahtar sorgu parametresinden kabul ediliyor");
+}
 
 // 9) Mobil
 await giris("admin");
