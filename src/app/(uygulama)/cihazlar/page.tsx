@@ -34,17 +34,25 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
   // sızdırırdı.
   const gorunur = gorunurMagazaIdleri(oturum);
 
-  // Arama kutusuna tam bir seri no / barkod girildiyse doğrudan cihaz detayına git.
+  // Arama kutusuna tam bir seri no / barkod girildiyse doğrudan cihaz detayına
+  // git — ama YALNIZ tek cihaza denk geliyorsa.
+  //
+  // Kısayol seri numarası için yazılmıştı: bir kod bir cihaz demek. Aynı
+  // barkodu paylaşan onlarca aksesuarda ise rastgele birine atlıyor ve
+  // kullanıcı aradığı listeyi hiç göremiyordu. Birden çok eşleşmede liste
+  // gösteriliyor; arama metni barkodu taşıdığı için hepsi listeleniyor.
   if (filtre.ara) {
     const kod = kodNormalize(filtre.ara);
     if (kod.length >= 6) {
-      const tamEslesme = await prisma.stokKalemi.findFirst({
+      const eslesmeler = await prisma.stokKalemi.findMany({
         // Görünmeyen mağazadaki cihaza atlamak, detay sayfası onu 404'leyecek
         // olsa bile "bu kod sistemde var" bilgisini sızdırırdı.
         where: { OR: [{ seriNo: kod }, { barkod: kod }], ...magazaKosulu(gorunur) },
         select: { id: true },
+        // İkiden fazlasını saymaya gerek yok: karar "tek mi, değil mi".
+        take: 2,
       });
-      if (tamEslesme) redirect(`/cihazlar/${tamEslesme.id}`);
+      if (eslesmeler.length === 1) redirect(`/cihazlar/${eslesmeler[0].id}`);
     }
   }
 
