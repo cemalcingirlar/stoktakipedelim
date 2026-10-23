@@ -9,13 +9,24 @@ import {
 } from "@/lib/aktarimSatisi";
 import { dukkanIciAktarabilirMi } from "@/lib/dukkan";
 import { logYaz } from "@/lib/log";
-import { aramaMetniUret, kodNormalize } from "@/lib/metin";
+import { aramaMetniUret, aramaNormalize, kodNormalize } from "@/lib/metin";
 import { formTarihiCevir } from "@/lib/tarih";
 import { kurusuTLYaz } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { saticiSorunu, type SaticiAdayi } from "@/lib/satici";
 import { HAREKET_TIP, LOG_ISLEM, ODEME_TIPI, STOK_DURUM } from "@/lib/sabitler";
-import { YetkiHatasi, magazaIslemiZorunlu, oturumZorunlu } from "@/lib/yetki";
+import {
+  YetkiHatasi,
+  magazaIslemiZorunlu,
+  magazadaIslemYapabilirMi,
+  oturumZorunlu,
+} from "@/lib/yetki";
+import {
+  EN_COK_GRUP,
+  aramaYeterliMi,
+  gruplaUrunler,
+  type UrunGrubu,
+} from "@/lib/urunArama";
 
 export type AktarilanCihaz = {
   id: number;
@@ -55,6 +66,12 @@ export async function dukkanIciAktar(
    * yoksa dün yapılan aktarım bugün olmuş gibi görünürdü.
    */
   tarih?: string,
+  /**
+   * Listeden seçim: hangi cihazın aktarılacağı kodla değil kimlikle
+   * belirlenir. Aynı barkodtan birden çok cihaz varken kodla arama "ilkini"
+   * alırdı; kullanıcının listede seçtiği cihaz gelmeliydi.
+   */
+  cihazId?: number,
 ): Promise<AktarimSonucu> {
   try {
     const oturum = await oturumZorunlu();
@@ -90,18 +107,26 @@ export async function dukkanIciAktar(
       };
     }
 
+    // Listeden seçimde kod yalnız mesajlarda kullanılıyor; cihazı kimlik
+    // belirliyor, bu yüzden en az uzunluk şartı orada aranmıyor.
+    const kimlikle = Number.isInteger(cihazId) && (cihazId ?? 0) > 0;
     const aranan = kodNormalize(kod);
-    if (aranan.length < 3) {
+    if (!kimlikle && aranan.length < 3) {
       return { durum: "HATA", mesaj: "Geçerli bir seri no veya barkod girin." };
     }
 
     const sonuc = await prisma.$transaction(async (tx) => {
       // Cihazın hâlâ kaynak mağazada ve stokta olduğunu işlem içinde doğrula;
       // iki kişi aynı anda okutursa ikincisi hata almalı.
-      const cihaz = await tx.stokKalemi.findFirst({
-        where: { OR: [{ seriNo: aranan }, { barkod: aranan }] },
-        include: { magaza: { select: { ad: true } } },
-      });
+      const cihaz = kimlikle
+        ? await tx.stokKalemi.findUnique({
+            where: { id: cihazId },
+            include: { magaza: { select: { ad: true } } },
+          })
+        : await tx.stokKalemi.findFirst({
+            where: { OR: [{ seriNo: aranan }, { barkod: aranan }] },
+            include: { magaza: { select: { ad: true } } },
+          });
 
       if (!cihaz) return { durum: "HATA" as const, mesaj: `${aranan} sistemde kayıtlı değil.` };
       if (cihaz.durum === STOK_DURUM.SATILDI) {
@@ -365,6 +390,57 @@ const aktarimSatisSemasi = z
     message: "Müşteri seçin veya ad soyad girin.",
     path: ["musteriAdSoyad"],
   });
+
+/**
+ * Kaynak mağazadaki stoktan ürünleri adıyla arar — aktarım ekranındaki liste.
+ *
+ * Barkodu okutmak her zaman mümkün olmuyor ve bazı ürünü adıyla bulmak daha
+ * kolay. Yalnız aktarıma uygun cihazlar geliyor: kaynak mağazada, stokta ve
+ * bu oturumda zaten aktarılmamış olanlar.
+ */
+export async function aktarimUrunleriniAra(
+  sorgu: string,
+  kaynakMagazaId: number,
+  aktarilmisIdler: number[] = [],
+): Promise<UrunGrubu[]> {
+  try {
+    const oturum = await oturumZorunlu();
+    if (!aramaYeterliMi(sorgu)) return [];
+    if (!Number.isInteger(kaynakMagazaId) || kaynakMagazaId <= 0) return [];
+    // Kaynak mağazada yetkisi yoksa o mağazanın stoğunu listelemek sızıntı
+    // olurdu; aktarımın kendisi de zaten reddedilirdi.
+    if (!magazadaIslemYapabilirMi(oturum, kaynakMagazaId)) return [];
+
+    const cihazlar = await prisma.stokKalemi.findMany({
+      where: {
+        durum: STOK_DURUM.STOKTA,
+        magazaId: kaynakMagazaId,
+        aramaMetni: { contains: aramaNormalize(sorgu) },
+        ...(aktarilmisIdler.length > 0 ? { id: { notIn: aktarilmisIdler } } : {}),
+      },
+      include: { magaza: { select: { ad: true } }, kategori: { select: { ad: true } } },
+      take: 500,
+      orderBy: { id: "asc" },
+    });
+
+    return gruplaUrunler(
+      cihazlar.map((c) => ({
+        id: c.id,
+        marka: c.marka,
+        model: c.model,
+        barkod: c.barkod,
+        seriNo: c.seriNo,
+        kategori: c.kategori.ad,
+        magazaAdi: c.magaza.ad,
+        alisFiyatiKurus: c.alisFiyatiKurus,
+      })),
+    ).slice(0, EN_COK_GRUP);
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return [];
+    console.error("Aktarım ürün araması başarısız:", hata);
+    return [];
+  }
+}
 
 /**
  * Mağaza içi aktarımda cihazı müşteriye satıp geri alır.

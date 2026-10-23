@@ -567,6 +567,63 @@ try {
       : ""),
   );
 
+  // ===== 12) Müşteri girilmeden de alış fiyatı revize edilebilmeli
+  // Kullanıcı bildirdi: "Alış Fiyatını Revize Et" işaretliyken müşteri
+  // girilmediğinde satır için HİÇBİR fiyat alanı çıkmıyordu — ne satış formu
+  // ne fiyat düzeltme. Oysa satış için müşteri gerekir, fiyat düzeltmek için
+  // gerekmez; kutunun kendi metni de bunu söylüyor.
+  await giris("admin");
+  await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
+  await sayfa.locator('[data-test="satis-modu"]').check();
+  await sayfa.selectOption("#kaynak", { label: "1 Nolu Mağaza" });
+  await sayfa.waitForTimeout(400);
+  const musterisizMesaj = await aktar(imei(2));
+  kontrol("müşterisiz aktarım yapıldı", musterisizMesaj.includes("aktarıldı"), musterisizMesaj);
+  kontrol(
+    "müşteri eksik uyarısı duruyor",
+    (await sayfa.locator('[data-test="musteri-eksik"]').count()) === 1,
+  );
+  kontrol(
+    "müşteri girilmeden de alış fiyatı alanı çıkıyor",
+    (await sayfa.locator('[data-test="fiyat-duzelt-ac"]').count()) >= 1,
+  );
+
+  // ===== 13) Aktarım ekranında listeden ürün ekleme
+  await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
+  await sayfa.selectOption("#kaynak", { label: "2 Nolu Mağaza" });
+  await sayfa.waitForTimeout(400);
+  kontrol(
+    "aktarım ekranında 'Ürün Listesinden Ekle' var",
+    (await sayfa.locator('[data-test="aktarim-liste-ac"]').count()) === 1,
+  );
+  await sayfa.locator('[data-test="aktarim-liste-ac"]').click();
+  await sayfa.waitForTimeout(300);
+  await sayfa.fill('[data-test="aktarim-urun-sorgu"]', "SatGeri");
+  await sayfa.locator('[data-test="aktarim-urun-bul"]').click();
+  await sayfa.waitForTimeout(1500);
+  const aktarimSatirlari = sayfa.locator('[data-test="aktarim-urun-satiri"]');
+  const bulunanAdet = await aktarimSatirlari.count();
+  kontrol("kaynak mağazanın stoğu listeleniyor", bulunanAdet > 0, `${bulunanAdet} satır`);
+
+  const oncekiSatir = await sayfa.locator("li").filter({ hasText: "→" }).count();
+  await aktarimSatirlari.first().click();
+  await sayfa.waitForTimeout(2500);
+  kontrol(
+    "listeden seçilen ürün aktarıldı",
+    ((await sayfa.locator("main").textContent()) ?? "").includes("Bu oturumda aktarılanlar"),
+    `önce ${oncekiSatir} satır`,
+  );
+
+  // Aktarılan cihaz listeden düşmeli: aynı cihaz iki kez aktarılamaz.
+  await sayfa.fill('[data-test="aktarim-urun-sorgu"]', "SatGeri");
+  await sayfa.locator('[data-test="aktarim-urun-bul"]').click();
+  await sayfa.waitForTimeout(1500);
+  kontrol(
+    "aktarılan cihaz listeden düştü",
+    (await aktarimSatirlari.count()) < bulunanAdet,
+    `${await aktarimSatirlari.count()} satır (önce ${bulunanAdet})`,
+  );
+
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
   kontrol("tarayıcı konsolunda hata yok", hatalar.length === 0, hatalar.slice(0, 3).join(" | "));
 } catch (hata) {
