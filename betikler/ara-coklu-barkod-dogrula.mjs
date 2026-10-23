@@ -21,6 +21,8 @@ const PAYLASILAN = `690${damga}0001`;
 // Tek cihazda kalan barkod: kısayol bunda bozulmamalı.
 const TEKIL = `690${damga}0002`;
 const IMEI = `35${damga}000001`.slice(0, 15);
+// İki ayrı depoya dağılmış, aynı barkodlu 3 cihaz (bildirilen ekrandaki hâl).
+const DAGINIK = `690${damga}0003`;
 
 const tarayici = await chromium.launch(
   process.env.CHROME_YOLU ? { executablePath: process.env.CHROME_YOLU } : {},
@@ -55,7 +57,7 @@ async function cihazSayisi() {
 }
 
 /** Aksesuar faturası: adet kadar cihaz, hepsi aynı barkodla. */
-async function aksesuarGir({ barkod, faturaNo, adet, marka, model }) {
+async function aksesuarGir({ barkod, faturaNo, adet, marka, model, magaza = "1 Nolu Mağaza" }) {
   await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
   await sayfa.fill("#okutma", barkod);
   await sayfa.press("#okutma", "Enter");
@@ -73,7 +75,7 @@ async function aksesuarGir({ barkod, faturaNo, adet, marka, model }) {
 
   await sayfa.selectOption("#tedarikciId", { index: 1 });
   await sayfa.fill("#faturaNo", faturaNo);
-  await sayfa.selectOption("#magazaId", { label: "1 Nolu Mağaza" });
+  await sayfa.selectOption("#magazaId", { label: magaza });
   await Promise.all([
     sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 30000 }),
     sayfa.click('button:has-text("Faturayı Kaydet")'),
@@ -108,6 +110,22 @@ async function telefonGir({ faturaNo, imei, marka, model }) {
   ]);
 }
 
+/** Tablodaki herhangi bir sütunun değerleri. */
+async function sutunDegerleri(baslik) {
+  const basliklar = await sayfa.locator("thead tr").first().locator("th").allTextContents();
+  const i = basliklar.findIndex((b) => b.replace(/[⇅▲▼\s]/g, "") === baslik);
+  // Sütun yoksa (ör. kısayol bizi detay sayfasına attıysa) boş dönülüyor:
+  // tek bir kontrolün çökmesi kalan bölümleri gizlememeli.
+  if (i < 0) return [];
+  return await sayfa.locator("tbody tr").evaluateAll(
+    (satirlar, k) =>
+      satirlar
+        .map((s) => s.querySelectorAll("td")[k]?.textContent?.trim() ?? "")
+        .filter((t) => t !== ""),
+    i,
+  );
+}
+
 /** Üst arama kutusuna yazıp Enter'a basar; sonra bulunduğu URL'yi döner. */
 async function araKutusunaYaz(sorgu) {
   await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
@@ -132,7 +150,7 @@ async function barkodSutunuAc() {
 async function barkodlar() {
   const basliklar = await sayfa.locator("thead tr").first().locator("th").allTextContents();
   const i = basliklar.findIndex((b) => b.replace(/[⇅▲▼\s]/g, "") === "Barkod");
-  if (i < 0) throw new Error(`Barkod sütunu yok: ${basliklar.join(", ")}`);
+  if (i < 0) return [];
   return await sayfa.locator("tbody tr").evaluateAll(
     (satirlar, k) =>
       satirlar
@@ -264,6 +282,51 @@ try {
     yetkiliImei,
   );
   await sayfa.screenshot({ path: `${cikti}-yetkili.png`, fullPage: true });
+
+  // ---- 7) Kullanıcının ekranındaki koşullar: Durum=Stokta + iki ayrı depo
+  // Bildirilen ekranda "Stokta" seçili ve cihazlar farklı depolara dağılmış
+  // (M1 REAL ANA DEPO, OPTİMUM AVM...). Kısayol kararı durum/depo
+  // filtrelerine bakmadan verildiği için bu birleşim ayrıca sayılıyor.
+  await giris("admin");
+  await aksesuarGir({
+    faturaNo: `ARA-D-${damga}`,
+    barkod: DAGINIK,
+    adet: 2,
+    marka: `ARAMARKA${damga}`,
+    model: "KULAKLIK DEPO A",
+    magaza: "1 Nolu Mağaza",
+  });
+  await aksesuarGir({
+    faturaNo: `ARA-D2-${damga}`,
+    barkod: DAGINIK,
+    adet: 1,
+    marka: `ARAMARKA${damga}`,
+    model: "KULAKLIK DEPO B",
+    magaza: "2 Nolu Mağaza",
+  });
+
+  await sayfa.goto(`${hedef}/cihazlar?durum=STOKTA&ara=${DAGINIK}`, {
+    waitUntil: "networkidle",
+  });
+  await sayfa.waitForTimeout(1500);
+  kontrol(
+    "Durum=Stokta etkinken çoklu barkod detaya atlamıyor",
+    !/\/cihazlar\/\d+/.test(sayfa.url()),
+    sayfa.url(),
+  );
+  const daginikSayi = await cihazSayisi();
+  kontrol(
+    "iki ayrı depodaki 3 cihazın hepsi listeleniyor",
+    daginikSayi === 3,
+    `${daginikSayi} cihaz (3 bekleniyor)`,
+  );
+  const depolar = await sutunDegerleri("Depo");
+  kontrol(
+    "liste iki depoyu birden kapsıyor",
+    new Set(depolar).size === 2,
+    [...new Set(depolar)].join(", ") || "(boş)",
+  );
+  await sayfa.screenshot({ path: `${cikti}-daginik.png`, fullPage: true });
 
   kontrol("konsolda hata yok", hatalar.length === 0, hatalar.slice(0, 3).join(" | "));
 } catch (e) {
