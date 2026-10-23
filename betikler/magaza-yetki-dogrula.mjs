@@ -129,11 +129,11 @@ try {
   // ------------------------------- 5) Personel gerçekten işlem yapabiliyor
   await giris("personel1");
   await sayfa.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
-  const sayimSecenek = await sayfa.locator('select[name="magazaId"] option').count();
+  const sayimSecenek = await sayfa.locator('[data-test="sayim-magaza-secimi"]').count();
   kontrol(
     "personel sayımda iki mağaza görüyor",
-    sayimSecenek === 3,
-    `${sayimSecenek} seçenek (Seçin… dahil)`,
+    sayimSecenek === 2,
+    `${sayimSecenek} kutu`,
   );
 
   await sayfa.goto(`${hedef}/sevkiyat/yeni`, { waitUntil: "networkidle" });
@@ -167,8 +167,8 @@ try {
 
   await giris("personel1");
   await sayfa.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
-  const sonSecenek = await sayfa.locator('select[name="magazaId"] option').count();
-  kontrol("personel yine tek mağaza görüyor", sonSecenek === 2, `${sonSecenek} seçenek`);
+  const sonSecenek = await sayfa.locator('[data-test="sayim-magaza-secimi"]').count();
+  kontrol("personel yine tek mağaza görüyor", sonSecenek === 1, `${sonSecenek} kutu`);
 
   // --------- 7) Kullanıcı ekranından verilen yetki mağaza ekranında görünür
   // Canlıda bildirilen hata buydu: ek mağaza yetkisi verilmiş kullanıcı,
@@ -214,8 +214,8 @@ try {
     personel2Sayfasi.click('button[type="submit"]'),
   ]);
   await personel2Sayfasi.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
-  const oncesi = await personel2Sayfasi.locator('select[name="magazaId"] option').count();
-  kontrol("personel2 giriş anında tek mağaza görüyor", oncesi === 2, `${oncesi} seçenek`);
+  const oncesi = await personel2Sayfasi.locator('[data-test="sayim-magaza-secimi"]').count();
+  kontrol("personel2 giriş anında tek mağaza görüyor", oncesi === 1, `${oncesi} kutu`);
 
   // Admin başka sekmede yetki verir; personel2 oturumunu KAPATMAZ.
   await sayfa.goto(`${hedef}/ayarlar/magazalar`, { waitUntil: "networkidle" });
@@ -227,11 +227,11 @@ try {
   await sayfa.waitForTimeout(1500);
 
   await personel2Sayfasi.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
-  const sonrasi = await personel2Sayfasi.locator('select[name="magazaId"] option').count();
+  const sonrasi = await personel2Sayfasi.locator('[data-test="sayim-magaza-secimi"]').count();
   kontrol(
     "yetki çıkış yapmadan anında geçerli oldu",
-    sonrasi === 3,
-    `${sonrasi} seçenek (yeniden giriş yapılmadı)`,
+    sonrasi === 2,
+    `${sonrasi} kutu (yeniden giriş yapılmadı)`,
   );
 
   // ------------- 9) Pasife alınan kullanıcı anında dışarı düşüyor mu?

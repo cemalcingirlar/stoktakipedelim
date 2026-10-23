@@ -13,6 +13,7 @@ import {
 } from "@/lib/sabitler";
 import { tarihSaatYaz } from "@/lib/tarih";
 import { gorebilirMi, gorunurMagazaIdleri } from "@/lib/gorunurluk";
+import { kapsamEtiketi, kapsamNotu } from "@/lib/sayimKapsami";
 import { magazadaIslemYapabilirMi, oturumGerekli } from "@/lib/yetki";
 import { SayimPaneli } from "./SayimPaneli";
 
@@ -136,6 +137,7 @@ export default async function SayimDetaySayfasi({ params }: PageProps<"/sayim/[i
     where: { id: sayimId },
     include: {
       magaza: true,
+      magazalar: { include: { magaza: { select: { ad: true } } } },
       baslatan: { select: { adSoyad: true } },
       kapatan: { select: { adSoyad: true } },
       kalemler: {
@@ -146,7 +148,12 @@ export default async function SayimDetaySayfasi({ params }: PageProps<"/sayim/[i
   });
   if (!sayim) notFound();
   // Başka mağazanın sayımı o mağazanın stok dökümüdür; kimliğiyle açılmasın.
-  if (!gorebilirMi(gorunurMagazaIdleri(oturum), sayim.magazaId)) notFound();
+  // Kapsamdaki mağazalardan biri bile görünürse sayım açılabilir: birlikte
+  // sayılan iki mağazadan yalnız birinde yetkili olan kişi de sonucu görmeli.
+  const gorunur = gorunurMagazaIdleri(oturum);
+  const kapsamIdleri = sayim.magazalar.map((m) => m.magazaId);
+  const kapsamAdlari = sayim.magazalar.map((m) => m.magaza.ad);
+  if (!kapsamIdleri.some((id) => gorebilirMi(gorunur, id))) notFound();
 
   const beklenenler = sayim.kalemler.filter((k) => k.beklenen);
   const sayilanlar = beklenenler.filter((k) => k.sayildi);
@@ -154,7 +161,10 @@ export default async function SayimDetaySayfasi({ params }: PageProps<"/sayim/[i
   const fazlalar = sayim.kalemler.filter((k) => !k.beklenen);
 
   const devamEdiyor = sayim.durum === SAYIM_DURUM.DEVAM;
-  const sayabilir = devamEdiyor && magazadaIslemYapabilirMi(oturum, sayim.magazaId);
+  // Okutmak için kapsamın TAMAMINDA yetki gerekiyor: sayım hepsinin stoğunu
+  // kapsıyor, birinde yetkisi olmayan kişi onu sayamamalı.
+  const sayabilir =
+    devamEdiyor && kapsamIdleri.every((id) => magazadaIslemYapabilirMi(oturum, id));
 
   const eksikDeger = eksikler.reduce((t, k) => t + (k.stokKalemi?.alisFiyatiKurus ?? 0), 0);
 
@@ -163,7 +173,14 @@ export default async function SayimDetaySayfasi({ params }: PageProps<"/sayim/[i
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold text-slate-900">{sayim.magaza.ad} Sayımı</h1>
+            <h1 className="text-xl font-semibold text-slate-900">
+              {kapsamEtiketi(kapsamAdlari)} Sayımı
+            </h1>
+            {kapsamNotu(kapsamAdlari) ? (
+              <p data-test="kapsam-notu" className="mt-0.5 text-xs text-slate-500">
+                {kapsamNotu(kapsamAdlari)}
+              </p>
+            ) : null}
             <Rozet
               ton={
                 sayim.durum === SAYIM_DURUM.DEVAM
@@ -212,7 +229,8 @@ export default async function SayimDetaySayfasi({ params }: PageProps<"/sayim/[i
         />
       ) : devamEdiyor ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Bu sayımı yalnızca <strong>{sayim.magaza.ad}</strong> kullanıcıları yürütebilir.
+          Bu sayımı yalnızca <strong>{kapsamEtiketi(kapsamAdlari)}</strong> kullanıcıları
+          yürütebilir.
         </div>
       ) : sayim.durum === SAYIM_DURUM.TAMAMLANDI ? (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

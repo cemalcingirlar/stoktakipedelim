@@ -32,8 +32,10 @@ try {
   // 1) personel1 başlangıçta yalnız kendi mağazasını görüyor
   await giris("personel1");
   await sayfa.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
-  const oncekiSecenek = await sayfa.locator('select[name="magazaId"] option').count();
-  kontrol("başlangıçta sayım için tek mağaza", oncekiSecenek === 2, `${oncekiSecenek} seçenek (Seçin… dahil)`);
+  const oncekiSecenek = await sayfa.locator('[data-test="sayim-magaza-secimi"]').count();
+  // Sayım artık tek seçimli açılır değil, kutu listesi: sayı doğrudan
+  // kullanıcının sayabileceği mağaza adedi ("Seçin…" satırı yok).
+  kontrol("başlangıçta sayım için tek mağaza", oncekiSecenek === 1, `${oncekiSecenek} kutu`);
 
   await sayfa.goto(`${hedef}/sevkiyat/yeni`, { waitUntil: "networkidle" });
   const oncekiKaynak = await sayfa.locator('#kaynak option').count();
@@ -68,8 +70,8 @@ try {
   kontrol("panelde iki mağaza yazıyor", panelMetni.split(",").length >= 2, panelMetni.trim());
 
   await sayfa.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
-  const sonrakiSecenek = await sayfa.locator('select[name="magazaId"] option').count();
-  kontrol("sayımda iki mağaza seçilebiliyor", sonrakiSecenek === 3, `${sonrakiSecenek} seçenek (Seçin… dahil)`);
+  const sonrakiSecenek = await sayfa.locator('[data-test="sayim-magaza-secimi"]').count();
+  kontrol("sayımda iki mağaza seçilebiliyor", sonrakiSecenek === 2, `${sonrakiSecenek} kutu`);
 
   await sayfa.goto(`${hedef}/sevkiyat/yeni`, { waitUntil: "networkidle" });
   const sonrakiKaynak = await sayfa.locator('#kaynak option').count();
@@ -98,8 +100,8 @@ try {
 
   await giris("personel1");
   await sayfa.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
-  const geriSecenek = await sayfa.locator('select[name="magazaId"] option').count();
-  kontrol("ek mağaza geri alınabiliyor", geriSecenek === 2, `${geriSecenek} seçenek (Seçin… dahil)`);
+  const geriSecenek = await sayfa.locator('[data-test="sayim-magaza-secimi"]').count();
+  kontrol("ek mağaza geri alınabiliyor", geriSecenek === 1, `${geriSecenek} kutu`);
 
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
 } catch (hata) {

@@ -5,6 +5,7 @@ import {
 } from "./aktarimSatisi";
 import { gorebilirMi, gorunurMagazalar, magazaKosulu, transferKosulu } from "./gorunurluk";
 import { prisma } from "./prisma";
+import { kapsamEtiketi } from "./sayimKapsami";
 import { SAYIM_DURUM, STOK_DURUM, TRANSFER_DURUM } from "./sabitler";
 import {
   donemKovalari,
@@ -303,11 +304,16 @@ export async function transferRaporu(aralik: RaporAraligi, gorunur: number[] | n
 /** Son sayımların eksik/fazla özeti. */
 export async function sayimRaporu(gorunur: number[] | null) {
   const sayimlar = await prisma.sayim.findMany({
-    where: { durum: SAYIM_DURUM.TAMAMLANDI, ...magazaKosulu(gorunur) },
+    // Kapsamındaki mağazalardan biri görünürse rapora giriyor; sayım birden
+    // çok mağazayı kapsayabildiği için tek alana bakmak yetmez.
+    where: {
+      durum: SAYIM_DURUM.TAMAMLANDI,
+      ...(gorunur === null ? {} : { magazalar: { some: { magazaId: { in: gorunur } } } }),
+    },
     orderBy: { bitisTarihi: "desc" },
     take: 20,
     include: {
-      magaza: { select: { ad: true } },
+      magazalar: { include: { magaza: { select: { ad: true } } } },
       kalemler: { select: { beklenen: true, sayildi: true } },
     },
   });
@@ -316,7 +322,7 @@ export async function sayimRaporu(gorunur: number[] | null) {
     const beklenen = s.kalemler.filter((k) => k.beklenen);
     return {
       id: s.id,
-      magaza: s.magaza.ad,
+      magaza: kapsamEtiketi(s.magazalar.map((m) => m.magaza.ad)),
       bitisTarihi: s.bitisTarihi,
       beklenen: beklenen.length,
       sayilan: beklenen.filter((k) => k.sayildi).length,

@@ -38,6 +38,7 @@ model Magaza {
   gonderilenTransfer Transfer[]      @relation("KaynakMagaza")
   alinanTransfer     Transfer[]      @relation("HedefMagaza")
   sayimlar           Sayim[]
+  sayimKapsamlari    SayimMagazasi[]
   kaynakHareketler   StokHareketi[]  @relation("KaynakMagazaHareket")
   hedefHareketler    StokHareketi[]  @relation("HedefMagazaHareket")
   aktarimSatislari   AktarimSatisi[]
@@ -359,9 +360,31 @@ model Sayim {
   baslatan Kullanici  @relation("SayimBaslatan", fields: [baslatanId], references: [id])
   kapatan  Kullanici? @relation("SayimKapatan", fields: [kapatanId], references: [id])
 
-  kalemler SayimKalemi[]
+  kalemler  SayimKalemi[]
+  /// Sayıma dahil mağazalar — `magazaId` dahil, her zaman en az bir satır.
+  magazalar SayimMagazasi[]
 
   @@index([magazaId, durum])
+}
+
+/// Bir sayıma dahil edilen mağazalar.
+///
+/// Aynı dükkânda duran kasa ve depo kayıtları fiziken iç içe: rafta duran
+/// cihazın hangi kayıtta olduğu sayım anında bilinmiyor. İkisini ayrı saymak,
+/// her birinde diğerinin cihazlarını "fazla" göstermek demekti. Bu yüzden bir
+/// sayım birden çok mağazayı kapsayabiliyor.
+///
+/// `Sayim.magazaId` baş mağaza olarak duruyor (ekranlarda ilk yazılan ve eski
+/// kayıtların bağlı olduğu); kapsamın tamamı bu tabloda.
+model SayimMagazasi {
+  sayimId  Int
+  magazaId Int
+
+  sayim  Sayim  @relation(fields: [sayimId], references: [id], onDelete: Cascade)
+  magaza Magaza @relation(fields: [magazaId], references: [id])
+
+  @@id([sayimId, magazaId])
+  @@index([magazaId])
 }
 
 model SayimKalemi {

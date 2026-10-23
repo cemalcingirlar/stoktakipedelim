@@ -6,6 +6,11 @@ import { logYaz } from "@/lib/log";
 import { kodNormalize } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
 import { LOG_ISLEM, SAYIM_DURUM, SAYIM_SONUC, STOK_DURUM } from "@/lib/sabitler";
+import {
+  kapsamEtiketi,
+  kapsamSorunu,
+  kapsamiDuzenle,
+} from "@/lib/sayimKapsami";
 import { YetkiHatasi, magazaIslemiZorunlu, oturumZorunlu } from "@/lib/yetki";
 
 export type SayimDurumu = { hata?: string; basari?: string };
@@ -13,45 +18,60 @@ export type SayimDurumu = { hata?: string; basari?: string };
 // ------------------------------------------------------------ Sayım başlatma
 
 /**
- * Seçilen mağaza için sayım açar ve o andaki stoğu fotoğraflar.
- * Yalnız o mağazadaki STOKTA cihazlar sayım listesine girer; başka mağazanın
- * stoğu bu sayımı hiç etkilemez.
+ * Seçilen mağaza(lar) için sayım açar ve o andaki stoğu fotoğraflar.
+ *
+ * Birden çok mağaza seçilebiliyor: aynı dükkânda duran kasa ve depo kayıtları
+ * fiziken iç içe ve ayrı sayıldığında her biri diğerinin cihazlarını "fazla"
+ * gösteriyordu. Kapsam dışındaki mağazaların stoğu bu sayımı hiç etkilemez.
  */
 export async function sayimBaslat(_onceki: SayimDurumu, form: FormData): Promise<SayimDurumu> {
   let yeniId: number;
 
   try {
     const oturum = await oturumZorunlu();
-    const magazaId = Number(form.get("magazaId"));
-    if (!Number.isInteger(magazaId) || magazaId <= 0) return { hata: "Mağaza seçin." };
-    magazaIslemiZorunlu(oturum, magazaId);
+    // Tek mağazalı eski form "magazaId", çoklu kutular "magazaIdleri" yolluyor.
+    const secilen = kapsamiDuzenle([
+      ...form.getAll("magazaIdleri").map((d) => Number(d)),
+      ...(form.get("magazaId") ? [Number(form.get("magazaId"))] : []),
+    ]);
+    if (secilen.length === 0) return { hata: "En az bir mağaza seçin." };
+    // Her mağazada ayrı ayrı yetki gerekiyor: yetkisi olmayan bir depoyu
+    // sayıma ekleyip oradaki cihazları görmek mümkün olmamalı.
+    for (const id of secilen) magazaIslemiZorunlu(oturum, id);
 
-    const magaza = await prisma.magaza.findUnique({
-      where: { id: magazaId },
-      select: { ad: true, aktif: true },
+    const magazalar = await prisma.magaza.findMany({
+      where: { id: { in: secilen } },
+      select: { id: true, ad: true, aktif: true },
     });
-    if (!magaza || !magaza.aktif) return { hata: "Mağaza bulunamadı veya pasif." };
+    const acikSayimlar = await prisma.sayimMagazasi.findMany({
+      where: { magazaId: { in: secilen }, sayim: { durum: SAYIM_DURUM.DEVAM } },
+      select: { magazaId: true },
+    });
+    const mesgul = new Set(acikSayimlar.map((a) => a.magazaId));
 
-    const acikSayim = await prisma.sayim.findFirst({
-      where: { magazaId, durum: SAYIM_DURUM.DEVAM },
-      select: { id: true },
-    });
-    if (acikSayim) {
-      return { hata: `${magaza.ad} için devam eden bir sayım zaten var.` };
-    }
+    const sorun = kapsamSorunu(
+      secilen,
+      magazalar.map((m) => ({ ...m, acikSayimVar: mesgul.has(m.id) })),
+    );
+    if (sorun) return { hata: sorun };
+
+    // Baş mağaza: ekranlarda ilk yazılan ve eski kayıtlarla aynı alan.
+    const basMagazaId = secilen[0];
+    const adlar = secilen.map((id) => magazalar.find((m) => m.id === id)?.ad ?? "");
 
     const sayim = await prisma.$transaction(async (tx) => {
       const stoktakiler = await tx.stokKalemi.findMany({
-        where: { magazaId, durum: STOK_DURUM.STOKTA },
+        where: { magazaId: { in: secilen }, durum: STOK_DURUM.STOKTA },
         select: { id: true },
       });
 
       const olusan = await tx.sayim.create({
         data: {
-          magazaId,
+          magazaId: basMagazaId,
           durum: SAYIM_DURUM.DEVAM,
           baslatanId: oturum.kullaniciId,
           beklenenAdet: stoktakiler.length,
+          magazalar: { create: secilen.map((id) => ({ magazaId: id })) },
         },
       });
 
@@ -73,7 +93,7 @@ export async function sayimBaslat(_onceki: SayimDurumu, form: FormData): Promise
       islem: LOG_ISLEM.SAYIM_BASLAT,
       hedefTip: "Sayim",
       hedefId: sayim.id,
-      detay: `${magaza.ad} · ${sayim.beklenenAdet} cihaz beklenen`,
+      detay: `${kapsamEtiketi(adlar)} · ${sayim.beklenenAdet} cihaz beklenen`,
     });
 
     revalidatePath("/sayim");
@@ -104,10 +124,12 @@ export async function sayimOkut(sayimId: number, kod: string): Promise<SayimOkut
 
     const sayim = await prisma.sayim.findUnique({
       where: { id: sayimId },
-      include: { magaza: { select: { ad: true } } },
+      include: { magazalar: { select: { magazaId: true } } },
     });
     if (!sayim) return { sonuc: "HATA", mesaj: "Sayım bulunamadı." };
-    magazaIslemiZorunlu(oturum, sayim.magazaId);
+    // Kapsamdaki her mağazada yetki aranıyor: sayım o mağazaların stoğunu
+    // gösteriyor, birinde yetkisi olmayan kişi onu görmemeli.
+    for (const m of sayim.magazalar) magazaIslemiZorunlu(oturum, m.magazaId);
 
     if (sayim.durum !== SAYIM_DURUM.DEVAM) {
       return { sonuc: "HATA", mesaj: "Bu sayım kapatılmış." };
@@ -235,10 +257,10 @@ export async function sayimKapat(_onceki: SayimDurumu, form: FormData): Promise<
 
     const sayim = await prisma.sayim.findUnique({
       where: { id: sayimId },
-      include: { magaza: { select: { ad: true } } },
+      include: { magazalar: { include: { magaza: { select: { ad: true } } } } },
     });
     if (!sayim) return { hata: "Sayım bulunamadı." };
-    magazaIslemiZorunlu(oturum, sayim.magazaId);
+    for (const m of sayim.magazalar) magazaIslemiZorunlu(oturum, m.magazaId);
     if (sayim.durum !== SAYIM_DURUM.DEVAM) return { hata: "Bu sayım zaten kapatılmış." };
 
     const sonuclar = await prisma.$transaction(async (tx) => {
@@ -265,7 +287,9 @@ export async function sayimKapat(_onceki: SayimDurumu, form: FormData): Promise<
       islem: LOG_ISLEM.SAYIM_KAPAT,
       hedefTip: "Sayim",
       hedefId: sayimId,
-      detay: `${sayim.magaza.ad} · ${sonuclar.sayilan} sayıldı, ${sonuclar.eksik} eksik, ${sonuclar.fazla} fazla`,
+      detay:
+        `${kapsamEtiketi(sayim.magazalar.map((m) => m.magaza.ad))} · ` +
+        `${sonuclar.sayilan} sayıldı, ${sonuclar.eksik} eksik, ${sonuclar.fazla} fazla`,
     });
 
     revalidatePath(`/sayim/${sayimId}`);
@@ -287,9 +311,12 @@ export async function sayimIptal(_onceki: SayimDurumu, form: FormData): Promise<
     const sayimId = Number(form.get("sayimId"));
     if (!Number.isInteger(sayimId) || sayimId <= 0) return { hata: "Sayım bulunamadı." };
 
-    const sayim = await prisma.sayim.findUnique({ where: { id: sayimId } });
+    const sayim = await prisma.sayim.findUnique({
+      where: { id: sayimId },
+      include: { magazalar: { select: { magazaId: true } } },
+    });
     if (!sayim) return { hata: "Sayım bulunamadı." };
-    magazaIslemiZorunlu(oturum, sayim.magazaId);
+    for (const m of sayim.magazalar) magazaIslemiZorunlu(oturum, m.magazaId);
     if (sayim.durum !== SAYIM_DURUM.DEVAM) return { hata: "Yalnızca devam eden sayım iptal edilebilir." };
 
     await prisma.sayim.update({
