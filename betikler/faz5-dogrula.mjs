@@ -2,6 +2,15 @@
 import { chromium } from "@playwright/test";
 import { readFileSync, existsSync, rmSync } from "node:fs";
 
+/** Tablodaki ilk satırın dördüncü hücresi; tablo boşsa çökmek yerine not döner.
+ *  Bu okuma yalnız ekrana bilgi basmak için; boş veritabanında satır
+ *  olmaması bir hata değil, betiği düşürmemeli. */
+async function ilkSatirMetni(sayfa) {
+  const hucre = sayfa.locator("tbody tr td:nth-child(4)").first();
+  if ((await hucre.count()) === 0) return "(kayıt yok)";
+  return ((await hucre.textContent()) ?? "").trim();
+}
+
 const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
 const cikti = process.env.CIKTI ?? "/tmp/faz5";
 const SIFRE = "Stok2026!";
@@ -94,7 +103,7 @@ await sayfa.selectOption("#islem", "SATIS_YAP");
 await sayfa.click('button:has-text("Filtrele")');
 await sayfa.waitForLoadState("networkidle");
 const satisLog = (await sayfa.locator("div.border-b", { hasText: "kayıt" }).first().textContent())?.trim();
-console.log("   satış filtresi:", satisLog, "| ilk kayıt:", (await sayfa.locator("tbody tr td:nth-child(4)").first().textContent())?.trim());
+console.log("   satış filtresi:", satisLog, "| ilk kayıt:", await ilkSatirMetni(sayfa));
 await sayfa.screenshot({ path: `${cikti}-loglar.png`, fullPage: true });
 
 // ------------------------------------------------- 8) Kullanıcı yönetimi
@@ -105,6 +114,8 @@ await sayfa.fill("#yeniAdSoyad", "Test Personeli");
 await sayfa.selectOption("#yeniRol", "MAGAZA_PERSONELI");
 await sayfa.selectOption("#yeniMagaza", { index: 1 });
 await sayfa.fill("#yeniSifre", "TestSifre123");
+// Form şifre teyidi de istiyor; sonradan eklendi.
+await sayfa.fill("#yeniSifreTeyit", "TestSifre123");
 await sayfa.click('button:has-text("Kullanıcı Ekle")');
 await sayfa.locator(`input[value="${kAdi}"]`).first().waitFor({ timeout: 15000 });
 console.log("8) kullanıcı eklendi:", kAdi, "✓");
@@ -115,6 +126,8 @@ await sayfa.fill("#yeniAdSoyad", "Mağazasız");
 await sayfa.selectOption("#yeniRol", "MAGAZA_PERSONELI");
 await sayfa.selectOption("#yeniMagaza", "");
 await sayfa.fill("#yeniSifre", "TestSifre123");
+// Form şifre teyidi de istiyor; sonradan eklendi.
+await sayfa.fill("#yeniSifreTeyit", "TestSifre123");
 await sayfa.click('button:has-text("Kullanıcı Ekle")');
 const magazaUyari = sayfa.locator('[role="alert"]', { hasText: "mağazaya bağlanmalı" }).first();
 await magazaUyari.waitFor({ timeout: 15000 });
@@ -125,7 +138,16 @@ await sayfa.fill("#yeniKullaniciAdi", `${kAdi}c`);
 await sayfa.fill("#yeniAdSoyad", "Kısa Şifre");
 await sayfa.selectOption("#yeniMagaza", { index: 1 });
 await sayfa.fill("#yeniSifre", "123");
-await sayfa.evaluate(() => document.querySelector("#yeniSifre").removeAttribute("minlength"));
+// Form şifre teyidi de istiyor; sonradan eklendi.
+await sayfa.fill("#yeniSifreTeyit", "123");
+// Sunucu tarafı kontrolünü görebilmek için tarayıcı doğrulaması devre dışı.
+// Teyit alanı sonradan eklendi; minlength yalnız şifreden kaldırılınca
+// gönderim teyit alanında takılıyor ve sunucu mesajı hiç çıkmıyordu.
+await sayfa.evaluate(() => {
+  for (const kimlik of ["#yeniSifre", "#yeniSifreTeyit"]) {
+    document.querySelector(kimlik)?.removeAttribute("minlength");
+  }
+});
 await sayfa.click('button:has-text("Kullanıcı Ekle")');
 const sifreUyari = sayfa.locator('[role="alert"]', { hasText: "en az 8" }).first();
 await sifreUyari.waitFor({ timeout: 15000 });

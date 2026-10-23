@@ -69,20 +69,26 @@ CHROME_YOLU="${CHROME_YOLU:-/opt/pw-browsers/chromium}" \
   timeout "${SUIT_ZAMAN_ASIMI:-420}" node "$BETIK" >"$CIKTI_DOSYA" 2>&1
 KOD=$?
 
+# İki tip betik var:
+#  - Yeni tip: kontrol() kullanır ve "N/M kontrol geçti" özeti basar.
+#  - Eski "gezinti" tipi (faz2..faz6, ayarlar, magaza): özet basmaz, beklenti
+#    tutmazsa fırlatıp çıkış kodunu bozar. Bu yüzden ASIL ölçüt çıkış kodu;
+#    özet satırı varsa ek bilgi olarak gösteriliyor. Önce yalnız özete
+#    bakılıyordu ve sorunsuz çalışan eski betikler "çöktü" sanılıyordu.
 OZET="$(grep -oE '[0-9]+/[0-9]+ kontrol geçti' "$CIKTI_DOSYA" | tail -1)"
-if [ -z "$OZET" ]; then
-  SEBEP="$(grep -iE 'error|timeout|exceeded' "$CIKTI_DOSYA" | head -1 | cut -c1-90)"
-  echo "$SUIT :: ÇÖKTÜ — ${SEBEP:-sebep bilinmiyor}"
-  [ "${AYRINTI:-0}" = "1" ] && sed 's/^/    /' "$CIKTI_DOSYA" | tail -25
-  exit 1
+
+if [ "$KOD" = "0" ]; then
+  echo "$SUIT :: ${OZET:-geçti (özet satırı yok — eski tip betik)}"
+  exit 0
 fi
 
-# Başarısız kontrolleri de göster.
-if [ "$KOD" != "0" ]; then
+if [ -n "$OZET" ]; then
   echo "$SUIT :: $OZET"
   grep -E '^  ✗' "$CIKTI_DOSYA" | head -8 | sed 's/^/  /'
   exit 1
 fi
 
-echo "$SUIT :: $OZET"
-exit 0
+SEBEP="$(grep -iE 'error|timeout|exceeded' "$CIKTI_DOSYA" | head -1 | cut -c1-90)"
+echo "$SUIT :: ÇÖKTÜ — ${SEBEP:-çıkış kodu $KOD}"
+[ "${AYRINTI:-0}" = "1" ] && sed 's/^/    /' "$CIKTI_DOSYA" | tail -25
+exit 1

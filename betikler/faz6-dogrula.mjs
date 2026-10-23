@@ -1,6 +1,15 @@
 // Faz 6 testi: yedekleme ekranı, yetki, hata bildirimi ve cron ucu.
 import { chromium } from "@playwright/test";
 
+/** Tablodaki ilk satırın dördüncü hücresi; tablo boşsa çökmek yerine not döner.
+ *  Bu okuma yalnız ekrana bilgi basmak için; boş veritabanında satır
+ *  olmaması bir hata değil, betiği düşürmemeli. */
+async function ilkSatirMetni(sayfa) {
+  const hucre = sayfa.locator("tbody tr td:nth-child(4)").first();
+  if ((await hucre.count()) === 0) return "(kayıt yok)";
+  return ((await hucre.textContent()) ?? "").trim();
+}
+
 const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
 const cikti = process.env.CIKTI ?? "/tmp/faz6";
 const SIFRE = "Stok2026!";
@@ -61,7 +70,7 @@ await sayfa.screenshot({ path: `${cikti}-yedekleme.png`, fullPage: true });
 // 6) Log kaydı düşmüş mü
 await sayfa.goto(`${hedef}/ayarlar/loglar?islem=YEDEK_AL`, { waitUntil: "networkidle" });
 const logAdet = (await sayfa.locator("div.border-b", { hasText: "kayıt" }).first().textContent())?.trim();
-console.log("6) yedekleme logu:", logAdet, "| ilk:", (await sayfa.locator("tbody tr td:nth-child(4)").first().textContent())?.trim().slice(0, 90));
+console.log("6) yedekleme logu:", logAdet, "| ilk:", await ilkSatirMetni(sayfa));
 
 // 7) Personel erişemez
 await giris("personel1");

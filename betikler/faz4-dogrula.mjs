@@ -76,9 +76,22 @@ console.log("0) hazırlık: 4 cihaz 3 Nolu Mağaza'ya girildi ✓");
 // ------------------------------------------------- 1) Sayım başlat
 await giris("sorumlu3");
 await sayfa.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
-// Seçenek metni "3 Nolu Mağaza — N cihaz" biçiminde; value üzerinden seçiyoruz.
-const magazaDeger = await sayfa.locator("#magazaId option", { hasText: "3 Nolu" }).first().getAttribute("value");
-await sayfa.selectOption("#magazaId", magazaDeger);
+// Mağaza seçimi açılır liste değil onay kutusu listesi: bir sayım birden çok
+// mağazayı kapsayabildiği için tek seçimli kutu yetmiyordu.
+const magazaKutulari = sayfa.locator('[data-test="sayim-magaza-secimi"]');
+let secildi = false;
+for (let i = 0; i < (await magazaKutulari.count()); i += 1) {
+  const etiket = magazaKutulari.nth(i);
+  if (((await etiket.textContent()) ?? "").includes("3 Nolu")) {
+    // Kullanıcının kendi mağazası zaten işaretli geliyor; işaretliyken
+    // check() çağırmak gereksiz ve kararsız davranıyor.
+    const kutu = etiket.locator('input[type="checkbox"]');
+    if (!(await kutu.isChecked())) await kutu.check();
+    secildi = true;
+    break;
+  }
+}
+if (!secildi) throw new Error("3 Nolu Mağaza sayım ekranında bulunamadı");
 await Promise.all([
   sayfa.waitForURL(/\/sayim\/\d+$/, { timeout: 20000 }),
   sayfa.click('button:has-text("Sayımı Başlat")'),
@@ -89,9 +102,22 @@ console.log("   sayaçlar:", await sayaclar());
 
 // ------------------------------------------------- 2) Aynı mağazaya ikinci sayım açılamaz
 await sayfa.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
-const secenekMetni = await sayfa.locator("#magazaId option", { hasText: "3 Nolu" }).textContent();
-const devreDisi = await sayfa.locator("#magazaId option", { hasText: "3 Nolu" }).isDisabled();
-console.log("2) ikinci sayım engeli:", secenekMetni?.trim(), "| devre dışı:", devreDisi ? "✓" : "✗");
+// Mağaza seçimi açılır liste değil onay kutusu listesi; devam eden sayımı
+// olan mağazanın kutusu kapalı geliyor.
+const ikinciKutular = sayfa.locator('[data-test="sayim-magaza-secimi"]');
+let secenekMetni = "(bulunamadı)";
+let devreDisi = false;
+for (let i = 0; i < (await ikinciKutular.count()); i += 1) {
+  const etiket = ikinciKutular.nth(i);
+  const metin = ((await etiket.textContent()) ?? "").replace(/\s+/g, " ").trim();
+  if (metin.includes("3 Nolu")) {
+    secenekMetni = metin;
+    devreDisi = await etiket.locator('input[type="checkbox"]').isDisabled();
+    break;
+  }
+}
+console.log("2) ikinci sayım engeli:", secenekMetni, "| devre dışı:", devreDisi ? "✓" : "✗");
+if (!devreDisi) throw new Error("devam eden sayımı olan mağaza ikinci kez seçilebiliyor");
 
 // ------------------------------------------------- 3) Okutma senaryoları
 await sayfa.goto(sayimUrl, { waitUntil: "networkidle" });
@@ -104,7 +130,11 @@ await sayfa.screenshot({ path: `${cikti}-sayim-ekrani.png`, fullPage: true });
 
 // Başka mağazanın cihazını okut (1 Nolu Mağaza'daki bir cihazın IMEI'sini bul)
 await sayfa.goto(`${hedef}/cihazlar?durum=STOKTA&magaza=1`, { waitUntil: "networkidle" });
-const baskaImei = (await sayfa.locator("tbody tr td:nth-child(4)").first().textContent())?.trim();
+// Liste boş olabilir (bu süit yalnız 3 Nolu Mağaza'ya cihaz giriyor);
+// aşağıdaki koşul zaten bunu karşılıyor, okuma da çökmemeli.
+const baskaHucre = sayfa.locator("tbody tr td:nth-child(4)").first();
+const baskaImei =
+  (await baskaHucre.count()) > 0 ? ((await baskaHucre.textContent()) ?? "").trim() : "";
 await sayfa.goto(sayimUrl, { waitUntil: "networkidle" });
 if (baskaImei && baskaImei !== "—") {
   console.log("   başka mağaza cihazı:", await okut(baskaImei));
@@ -117,7 +147,17 @@ console.log("   sayaçlar:", await sayaclar());
 await giris("sorumlu2");
 await sayfa.goto(sayimUrl, { waitUntil: "networkidle" });
 console.log("4) 2 Nolu kullanıcı okutma kutusu:", (await sayfa.locator("#okutmaKutusu").count()) === 0 ? "✓ yok" : "✗ var");
-console.log("   uyarı:", (await sayfa.locator("text=yalnızca").first().textContent())?.replace(/\s+/g, " ").trim());
+// Mağaza görünürlüğü eklendikten sonra yetkisiz kullanıcı uyarı metni yerine
+// "kayıt bulunamadı" ekranını görüyor; ikisini de kabul edip ne görüldüğünü
+// yazıyoruz.
+{
+  const govde = ((await sayfa.locator("main").textContent()) ?? "").replace(/\s+/g, " ").trim();
+  const bulunamadi = (await sayfa.locator('[data-test="bulunamadi-ekrani"]').count()) > 0;
+  console.log("   yetkisiz kullanıcı:", bulunamadi ? "bulunamadı ekranı ✓" : govde.slice(0, 80));
+  if (!bulunamadi && !/yalnızca/i.test(govde)) {
+    throw new Error("yetkisiz kullanıcı sayıma erişebiliyor");
+  }
+}
 
 // ------------------------------------------------- 5) Sayımı kapat
 await giris("sorumlu3");
