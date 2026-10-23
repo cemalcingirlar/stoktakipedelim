@@ -224,6 +224,101 @@ try {
     (await sayfa.locator('[data-test="fatura-urun-sonuc-yok"]').count()) === 1,
   );
 
+  // ===== 6) Seri no zorunlu olmayan kategoride de seri girilebilmeli
+  // Aksesuarların çoğunda seri no yok ve adet doğru; ama Apple şarj
+  // adaptörü gibi bazılarında var ve takip edilmek isteniyor. Kategoriyi
+  // değiştirmek zorunda kalmadan bu ürün için seri girilebiliyor.
+  const SERI_A = `SN${damga}A`;
+  const SERI_B = `SN${damga}B`;
+
+  await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
+  await sayfa.fill("#okutma", `${BARKOD}X`);
+  await sayfa.press("#okutma", "Enter");
+  await sayfa.waitForTimeout(1400);
+
+  const seriKart = sayfa.locator("section.space-y-3 > div.rounded-xl").first();
+  await seriKart.locator("select").first().selectOption({ label: "Aksesuar" });
+  await seriKart.locator("select").nth(1).selectOption({ label: "Kablo / Şarj" });
+  const seriAlanlar = seriKart.locator('input[type="text"], input:not([type])');
+  await seriAlanlar.nth(1).fill("APPLE");
+  await seriAlanlar.nth(2).fill("35W ADAPTER");
+  await seriKart.locator('input[inputmode="decimal"]').fill("1.400,00");
+
+  kontrol(
+    "aksesuarda önce adet alanı geliyor",
+    (await seriKart.locator('input[id^="adet-"]').count()) === 1,
+  );
+  kontrol(
+    "seri moduna geçiş düğmesi var",
+    (await seriKart.locator('[data-test="seri-moduna-gec"]').count()) === 1,
+  );
+
+  await seriKart.locator('[data-test="seri-moduna-gec"]').click();
+  await sayfa.waitForTimeout(400);
+  kontrol(
+    "seri moduna geçince IMEI kutusu açıldı",
+    (await seriKart.locator('input[id^="imei-"]').count()) === 1,
+  );
+  kontrol(
+    "adet alanı yerini seri kutusuna bıraktı",
+    (await seriKart.locator('input[id^="adet-"]').count()) === 0,
+  );
+  kontrol(
+    "adete dönüş seçeneği duruyor",
+    (await seriKart.locator('[data-test="adete-geri-don"]').count()) === 1,
+  );
+
+  // Geri dönüş gerçekten çalışmalı: yanlışlıkla açan kullanıcı sıkışmasın.
+  await seriKart.locator('[data-test="adete-geri-don"]').click();
+  await sayfa.waitForTimeout(400);
+  kontrol(
+    "adete dönülebiliyor",
+    (await seriKart.locator('input[id^="adet-"]').count()) === 1,
+  );
+  await seriKart.locator('[data-test="seri-moduna-gec"]').click();
+  await sayfa.waitForTimeout(400);
+
+  const seriKutusu = seriKart.locator('input[id^="imei-"]').first();
+  for (const no of [SERI_A, SERI_B]) {
+    await seriKutusu.fill(no);
+    await seriKutusu.press("Enter");
+    await sayfa.waitForTimeout(500);
+  }
+  const altBant = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "iki seri okutulunca cihaz sayısı 2 oldu",
+    /2 cihaz/.test(altBant),
+    (altBant.match(/\d+ ürün · \d+ cihaz/) ?? ["(bulunamadı)"])[0],
+  );
+
+  await sayfa.selectOption("#tedarikciId", { index: 1 });
+  await sayfa.fill("#faturaNo", `FUL-S-${damga}`);
+  await sayfa.selectOption("#magazaId", { label: "1 Nolu Mağaza" });
+  await Promise.all([
+    sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 30000 }),
+    sayfa.click('button:has-text("Faturayı Kaydet")'),
+  ]);
+  const seriFatura = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "aksesuarın seri numaraları faturaya yazıldı",
+    seriFatura.includes(SERI_A) && seriFatura.includes(SERI_B),
+    `${SERI_A} / ${SERI_B}`,
+  );
+
+  // Asıl ölçüm: cihaz kaydında seri no gerçekten duruyor mu?
+  await sayfa.goto(`${hedef}/cihazlar?ara=${SERI_A}`, { waitUntil: "networkidle" });
+  kontrol(
+    "seri numarasıyla cihaz bulunuyor",
+    /\/cihazlar\/\d+$/.test(sayfa.url()),
+    sayfa.url(),
+  );
+  const seriKunye = sayfa.locator('dt:has-text("Seri No / IMEI") + dd').first();
+  kontrol(
+    "cihaz künyesinde seri no yazıyor",
+    ((await seriKunye.textContent().catch(() => "")) ?? "").trim() === SERI_A,
+    ((await seriKunye.textContent().catch(() => "")) ?? "").trim(),
+  );
+
   kontrol("tarayıcı konsolunda hata yok", hatalar.length === 0, hatalar.slice(0, 3).join(" | "));
 } catch (hata) {
   kontrol("betik tamamlandı", false, String(hata).slice(0, 300));
