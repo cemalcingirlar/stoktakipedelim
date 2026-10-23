@@ -114,7 +114,9 @@ async function telefonGir({ faturaNo, imei, marka, model }) {
 async function sutunDegerleri(baslik) {
   const basliklar = await sayfa.locator("thead tr").first().locator("th").allTextContents();
   const i = basliklar.findIndex((b) => b.replace(/[⇅▲▼\s]/g, "") === baslik);
-  if (i < 0) throw new Error(`${baslik} sütunu yok: ${basliklar.join(", ")}`);
+  // Sütun yoksa (ör. kısayol bizi detay sayfasına attıysa) boş dönülüyor:
+  // tek bir kontrolün çökmesi kalan bölümleri gizlememeli.
+  if (i < 0) return [];
   return await sayfa.locator("tbody tr").evaluateAll(
     (satirlar, k) =>
       satirlar
@@ -148,7 +150,7 @@ async function barkodSutunuAc() {
 async function barkodlar() {
   const basliklar = await sayfa.locator("thead tr").first().locator("th").allTextContents();
   const i = basliklar.findIndex((b) => b.replace(/[⇅▲▼\s]/g, "") === "Barkod");
-  if (i < 0) throw new Error(`Barkod sütunu yok: ${basliklar.join(", ")}`);
+  if (i < 0) return [];
   return await sayfa.locator("tbody tr").evaluateAll(
     (satirlar, k) =>
       satirlar
