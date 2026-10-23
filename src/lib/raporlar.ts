@@ -349,7 +349,7 @@ export async function hareketRaporu(
   const [girisler, satislar, aktarimlar] = await Promise.all([
     prisma.stokKalemi.findMany({
       where: { girisTarihi: { gte: baslangic }, ...magaza },
-      select: { girisTarihi: true },
+      select: { girisTarihi: true, alisFiyatiKurus: true },
     }),
     prisma.stokKalemi.findMany({
       where: { durum: STOK_DURUM.SATILDI, satisTarihi: { gte: baslangic }, ...magaza },
@@ -368,13 +368,17 @@ export async function hareketRaporu(
     etiket: k.etiket,
     giris: 0,
     satis: 0,
+    girisKurus: 0,
     ciroKurus: 0,
   }));
   const harita = new Map(satirlar.map((a) => [a.anahtar, a]));
 
   for (const g of girisler) {
     const a = harita.get(kovaAnahtari(g.girisTarihi, donem.kova));
-    if (a) a.giris += 1;
+    if (a) {
+      a.giris += 1;
+      a.girisKurus += g.alisFiyatiKurus ?? 0;
+    }
   }
   for (const s of [...satislar, ...aktarimlar]) {
     if (!s.satisTarihi) continue;

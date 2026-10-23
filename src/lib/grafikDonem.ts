@@ -24,11 +24,46 @@ export type GrafikDonemi = {
 };
 
 export const GRAFIK_DONEMLERI: GrafikDonemi[] = [
-  { anahtar: "1h", etiket: "1 Hafta", baslik: "Son 1 Hafta", kova: "gun", gun: 7, ay: null },
-  { anahtar: "1a", etiket: "1 Ay", baslik: "Son 1 Ay", kova: "gun", gun: 30, ay: null },
-  { anahtar: "3a", etiket: "3 Ay", baslik: "Son 3 Ay", kova: "hafta", gun: 90, ay: null },
-  { anahtar: "6a", etiket: "6 Ay", baslik: "Son 6 Ay", kova: "ay", gun: null, ay: 6 },
-  { anahtar: "12a", etiket: "12 Ay", baslik: "Son 12 Ay", kova: "ay", gun: null, ay: 12 },
+  {
+    anahtar: "1h",
+    etiket: "1 Hafta",
+    baslik: "Son 1 Hafta",
+    kova: "gun",
+    gun: 7,
+    ay: null,
+  },
+  {
+    anahtar: "1a",
+    etiket: "1 Ay",
+    baslik: "Son 1 Ay",
+    kova: "gun",
+    gun: 30,
+    ay: null,
+  },
+  {
+    anahtar: "3a",
+    etiket: "3 Ay",
+    baslik: "Son 3 Ay",
+    kova: "hafta",
+    gun: 90,
+    ay: null,
+  },
+  {
+    anahtar: "6a",
+    etiket: "6 Ay",
+    baslik: "Son 6 Ay",
+    kova: "ay",
+    gun: null,
+    ay: 6,
+  },
+  {
+    anahtar: "12a",
+    etiket: "12 Ay",
+    baslik: "Son 12 Ay",
+    kova: "ay",
+    gun: null,
+    ay: 12,
+  },
 ];
 
 export const VARSAYILAN_DONEM = "12a";
@@ -64,7 +99,8 @@ function ikiHane(sayi: number): string {
  * atabilirdi.
  */
 export function kovaAnahtari(tarih: Date, tur: KovaTuru): string {
-  if (tur === "ay") return `${tarih.getFullYear()}-${ikiHane(tarih.getMonth() + 1)}`;
+  if (tur === "ay")
+    return `${tarih.getFullYear()}-${ikiHane(tarih.getMonth() + 1)}`;
   const temel = tur === "hafta" ? haftaBasi(tarih) : gunBasina(tarih);
   return `${temel.getFullYear()}-${ikiHane(temel.getMonth() + 1)}-${ikiHane(temel.getDate())}`;
 }
@@ -76,7 +112,10 @@ function gunEtiketi(tarih: Date): string {
 /** Kovanın ekranda görünen etiketi. */
 export function kovaEtiketi(baslangic: Date, tur: KovaTuru): string {
   if (tur === "ay") {
-    return baslangic.toLocaleDateString("tr-TR", { month: "short", year: "2-digit" });
+    return baslangic.toLocaleDateString("tr-TR", {
+      month: "short",
+      year: "2-digit",
+    });
   }
   if (tur === "hafta") {
     const bitis = new Date(baslangic);
@@ -100,10 +139,18 @@ export function donemKovalari(
   const kovalar: Kova[] = [];
 
   if (donem.kova === "ay") {
-    const ilk = new Date(bugun.getFullYear(), bugun.getMonth() - (donem.ay! - 1), 1);
+    const ilk = new Date(
+      bugun.getFullYear(),
+      bugun.getMonth() - (donem.ay! - 1),
+      1,
+    );
     for (let i = 0; i < donem.ay!; i++) {
       const t = new Date(ilk.getFullYear(), ilk.getMonth() + i, 1);
-      kovalar.push({ anahtar: kovaAnahtari(t, "ay"), etiket: kovaEtiketi(t, "ay"), baslangic: t });
+      kovalar.push({
+        anahtar: kovaAnahtari(t, "ay"),
+        etiket: kovaEtiketi(t, "ay"),
+        baslangic: t,
+      });
     }
     return { baslangic: ilk, kovalar };
   }
@@ -130,23 +177,105 @@ export function donemKovalari(
   for (let i = 0; i < donem.gun!; i++) {
     const t = new Date(ilk);
     t.setDate(t.getDate() + i);
-    kovalar.push({ anahtar: kovaAnahtari(t, "gun"), etiket: kovaEtiketi(t, "gun"), baslangic: t });
+    kovalar.push({
+      anahtar: kovaAnahtari(t, "gun"),
+      etiket: kovaEtiketi(t, "gun"),
+      baslangic: t,
+    });
   }
   return { baslangic: ilk, kovalar };
 }
 
-/** Grafikte bir sütun: kova etiketi + o kovadaki giriş/satış sayıları. */
+/**
+ * Grafikte bir sütun: kova etiketi + o kovadaki adetler ve tutarlar.
+ *
+ * Hem adet hem tutar taşınıyor: ölçü değiştirmek yeni sorgu gerektirmesin,
+ * ipucu metni de her iki ölçüde ikisini birden gösterebilsin.
+ */
 export type GrafikKovasi = {
   anahtar: string;
   etiket: string;
   giris: number;
   satis: number;
+  /** Giren cihazların alış tutarı toplamı. */
+  girisKurus: number;
+  /** Satılan cihazların satış tutarı toplamı. */
   ciroKurus: number;
 };
 
+/**
+ * Grafiğin ölçüsü: adet mi, para mı?
+ *
+ * Tek eksende iki birim gösterilemez — "3 satış" ile "45.000 TL" aynı ölçeğe
+ * oturmaz. Bu yüzden ölçü değiştiğinde iki çubuk birden paraya dönüyor:
+ * giriş alış tutarını, satış ciroyu gösteriyor. Böylece grafik "para girdi /
+ * para çıktı" karşılaştırmasına dönüşüyor.
+ */
+export type GrafikOlcusu = "adet" | "ciro";
+
+export const GRAFIK_OLCULERI: { anahtar: GrafikOlcusu; etiket: string }[] = [
+  { anahtar: "adet", etiket: "Adet" },
+  { anahtar: "ciro", etiket: "Ciro" },
+];
+
+/** Varsayılan adet: grafiğin bugüne kadarki anlamı bu, kimsenin alışkanlığı bozulmasın. */
+export const VARSAYILAN_OLCU: GrafikOlcusu = "adet";
+
+/** URL parametresini ölçüye çevirir; tanınmayan değer varsayılana düşer. */
+export function olcuyuCoz(deger: unknown): GrafikOlcusu {
+  return deger === "ciro" ? "ciro" : VARSAYILAN_OLCU;
+}
+
+/** Seçili ölçüde bir kovanın çizilecek iki değeri. */
+export function kovaDegerleri(
+  kova: GrafikKovasi,
+  olcu: GrafikOlcusu,
+): { giris: number; satis: number } {
+  if (olcu === "ciro") return { giris: kova.girisKurus, satis: kova.ciroKurus };
+  return { giris: kova.giris, satis: kova.satis };
+}
+
+/** Çubukların ve başlığın seçili ölçüdeki adları. */
+export function olcuEtiketleri(olcu: GrafikOlcusu): {
+  giris: string;
+  satis: string;
+  baslik: string;
+} {
+  if (olcu === "ciro") {
+    return { giris: "Alış Tutarı", satis: "Ciro", baslik: "Alış ve Ciro" };
+  }
+  return { giris: "Giriş", satis: "Satış", baslik: "Giriş ve Satış" };
+}
+
+/**
+ * Grafikte gösterilecek veri var mı?
+ *
+ * Adet ve tutar ayrı ayrı sorgulanıyor: tutarı sıfır olan bir satış (bedelsiz
+ * verilen cihaz) adet ölçüsünde görünür olmalı, ciro ölçüsünde ise grafiğin
+ * tamamı boşsa "kayıt yok" denmeli.
+ */
+export function veriVarMi(
+  kovalar: GrafikKovasi[],
+  olcu: GrafikOlcusu,
+): boolean {
+  return kovalar.some((k) => {
+    const { giris, satis } = kovaDegerleri(k, olcu);
+    return giris !== 0 || satis !== 0;
+  });
+}
+
 /** Grafikteki en yüksek sütun değeri; ölçek bununla kuruluyor. */
-export function enYuksekDeger(kovalar: GrafikKovasi[]): number {
-  return Math.max(1, ...kovalar.map((k) => Math.max(k.giris, k.satis)));
+export function enYuksekDeger(
+  kovalar: GrafikKovasi[],
+  olcu: GrafikOlcusu,
+): number {
+  return Math.max(
+    1,
+    ...kovalar.map((k) => {
+      const { giris, satis } = kovaDegerleri(k, olcu);
+      return Math.max(giris, satis);
+    }),
+  );
 }
 
 /**
@@ -160,4 +289,23 @@ export function cubukYuzdesi(deger: number, enYuksek: number): number {
   if (deger <= 0) return 0;
   if (enYuksek <= 0) return 0;
   return Math.max(2, (deger / enYuksek) * 100);
+}
+
+/**
+ * Panel adresini seçimleri koruyarak kurar.
+ *
+ * Üç ayrı düğme kümesi (dönem, satış dönemi, ölçü) aynı adrese yazıyor. Her
+ * biri adresi elle kursaydı birinde bir parametre unutulur ve o düğmeye
+ * basınca diğer seçim sessizce varsayılana dönerdi.
+ */
+export function panelAdresi(
+  secimler: { donem: string; satisDonem: string; olcu: GrafikOlcusu },
+  capa: string,
+): string {
+  const sorgu = new URLSearchParams({
+    donem: secimler.donem,
+    satisDonem: secimler.satisDonem,
+    olcu: secimler.olcu,
+  });
+  return `/panel?${sorgu.toString()}#${capa}`;
 }
