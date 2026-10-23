@@ -126,23 +126,17 @@ try {
     );
   }
 
-  // ------------------------------ 4) Yükleniyor iskeleti
+  // --------- 4) Hata ekranları normal gezinmeyi bozmuyor
+  // Yükleniyor iskeletleri denendi ve geri alındı: akışlı render sırasında
+  // tablo içeren her sayfaya boş gizli tablolar bırakıyorlardı (/cihazlar'da
+  // 1 tablo yerine 5). Burada kalan kontrol, eklenen hata sınırlarının
+  // olağan gezinmeyi etkilemediğini sabitliyor.
   await giris("admin");
   await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
-  const iskeletGoruldu = await sayfa
-    .goto(`${hedef}/panel`, { waitUntil: "commit" })
-    .then(async () => {
-      for (let i = 0; i < 40; i++) {
-        if ((await sayfa.locator('[data-test="yukleniyor"]').count()) > 0) return true;
-        await sayfa.waitForTimeout(25);
-      }
-      return false;
-    })
-    .catch(() => false);
-  // Hızlı makinede iskelet hiç görünmeyebilir; bu bir hata değil.
-  console.log(`  (bilgi) panel iskeleti yakalandı mı: ${iskeletGoruldu ? "evet" : "hayır — sayfa çok hızlı geldi"}`);
-  await sayfa.waitForLoadState("networkidle");
-  kontrol("panel iskeletten sonra gerçekten yüklendi", sayfa.url().includes("/panel"), sayfa.url());
+  const cihazTablosu = await sayfa.locator("table").count();
+  kontrol("cihaz listesinde tek tablo var", cihazTablosu === 1, `${cihazTablosu} tablo`);
+  await sayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
+  kontrol("panel normal yükleniyor", sayfa.url().includes("/panel"), sayfa.url());
 
   kontrol("sayfa hatası yok", hatalar.length === 0, hatalar.slice(0, 2).join(" | "));
 } catch (e) {

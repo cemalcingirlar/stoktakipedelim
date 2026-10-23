@@ -91,9 +91,12 @@ export default async function AyarlarSayfasi() {
         </p>
       </div>
 
+      {/* Banda bilerek ARIA rolü verilmiyor. Sayfa açılışında zaten duruyor,
+          dinamik bir duyuru değil; ekran okuyucu belge sırasında okuyor.
+          role="alert" ya da role="status" verildiğinde sayfadaki ilk canlı
+          bölge o oluyor ve formların hata/başarı mesajlarını gölgeliyordu. */}
       {saatUyarisi ? (
         <div
-          role="alert"
           data-test="saat-dilimi-uyarisi"
           className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
         >
