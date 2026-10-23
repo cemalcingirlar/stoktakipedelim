@@ -299,13 +299,14 @@ export function cubukYuzdesi(deger: number, enYuksek: number): number {
  * basınca diğer seçim sessizce varsayılana dönerdi.
  */
 export function panelAdresi(
-  secimler: { donem: string; satisDonem: string; olcu: GrafikOlcusu },
+  secimler: { donem: string; satisDonem: string; olcu: GrafikOlcusu; urunDonem: string },
   capa: string,
 ): string {
   const sorgu = new URLSearchParams({
     donem: secimler.donem,
     satisDonem: secimler.satisDonem,
     olcu: secimler.olcu,
+    urunDonem: secimler.urunDonem,
   });
   return `/panel?${sorgu.toString()}#${capa}`;
 }

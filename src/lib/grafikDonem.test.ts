@@ -229,15 +229,16 @@ test("veri yokluğu ölçüye göre değerlendiriliyor", () => {
   assert.equal(veriVarMi([kova(0, 0, 0, 5_00)], "ciro"), true);
 });
 
-test("panel adresi üç seçimi birden koruyor", () => {
+test("panel adresi bütün seçimleri birden koruyor", () => {
   // Her düğme kümesi adresi elle kursaydı birinde bir parametre unutulurdu.
   const adres = panelAdresi(
-    { donem: "1a", satisDonem: "7g", olcu: "ciro" },
+    { donem: "1a", satisDonem: "7g", olcu: "ciro", urunDonem: "tum" },
     "grafik",
   );
   assert.match(adres, /donem=1a/);
   assert.match(adres, /satisDonem=7g/);
   assert.match(adres, /olcu=ciro/);
+  assert.match(adres, /urunDonem=tum/);
   assert.ok(adres.endsWith("#grafik"));
 });
 

@@ -9,12 +9,21 @@ import {
   olcuyuCoz,
   panelAdresi,
 } from "@/lib/grafikDonem";
+import {
+  PANEL_URUN_SAYISI,
+  URUN_DONEMLERI,
+  urunAdi,
+  urunDonemBaslangici,
+  urunDonemiCoz,
+} from "@/lib/urunSiralamasi";
 import { kurusuTLYaz, kurusuTLYazSembollu } from "@/lib/para";
 import { HAREKET_TIP_ETIKET, type HareketTip } from "@/lib/sabitler";
 import {
   hareketRaporu,
+  enCokSatanUrunler,
   kullaniciSatisRaporu,
   magazaSatisRaporu,
+  stoktaEnCokUrunler,
 } from "@/lib/raporlar";
 import {
   SATIS_DONEMLERI,
@@ -51,10 +60,14 @@ export default async function PanelSayfasi({
   const olcu = olcuyuCoz(
     Array.isArray(params.olcu) ? params.olcu[0] : params.olcu,
   );
+  const urunDonemi = urunDonemiCoz(
+    Array.isArray(params.urunDonem) ? params.urunDonem[0] : params.urunDonem,
+  );
   const secimler = {
     donem: donem.anahtar,
     satisDonem: satisDonemi.anahtar,
     olcu,
+    urunDonem: urunDonemi.anahtar,
   };
 
   // Tek kural: yönetici her mağazayı görür, diğer herkes yalnız yetkili
@@ -71,6 +84,8 @@ export default async function PanelSayfasi({
     kovalar,
     magazaSatislari,
     personelSatislari,
+    stoktakiUrunler,
+    satanUrunler,
   ] = await Promise.all([
     magazaStokOzeti(gorunur),
     vadesiGecenCihazSayisi(gorunur),
@@ -80,6 +95,12 @@ export default async function PanelSayfasi({
     hareketRaporu(donem, gorunur),
     magazaSatisRaporu(satisAraligi, gorunur),
     kullaniciSatisRaporu(satisAraligi, gorunur),
+    stoktaEnCokUrunler(gorunur, PANEL_URUN_SAYISI),
+    enCokSatanUrunler(
+      urunDonemBaslangici(urunDonemi),
+      gorunur,
+      PANEL_URUN_SAYISI,
+    ),
   ]);
 
   const magazaToplami = satisToplami(magazaSatislari);
@@ -501,6 +522,111 @@ export default async function PanelSayfasi({
           }
         >
           <HareketGrafigi kovalar={kovalar} olcu={olcu} />
+        </Kart>
+      </div>
+
+      {/* Stokta ve satışta öne çıkan ürünler. "Ürün" burada marka + model:
+          bir cihaz bir satır olduğu için soru ancak gruplanınca cevaplanıyor. */}
+      <div
+        id="urunler"
+        className="grid scroll-mt-4 grid-cols-1 gap-4 lg:grid-cols-2"
+      >
+        <Kart baslik="Stokta En Çok Bulunan Ürünler">
+          {stoktakiUrunler.length === 0 ? (
+            <p className="text-sm text-slate-500">Stokta cihaz yok.</p>
+          ) : (
+            <ol data-test="stokta-en-cok" className="space-y-2">
+              {stoktakiUrunler.map((u, sira) => (
+                <li
+                  key={`${u.marka}|${u.model}`}
+                  data-test="stokta-urun-satiri"
+                  className="flex items-baseline justify-between gap-3 text-sm"
+                >
+                  <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="w-4 shrink-0 text-xs text-slate-400">
+                      {sira + 1}.
+                    </span>
+                    <span className="truncate text-slate-700">
+                      {urunAdi(u)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 whitespace-nowrap text-slate-600">
+                    <span data-test="urun-adet" className="font-medium">
+                      {u.adet}
+                    </span>{" "}
+                    adet
+                    <span className="ml-2 text-xs text-slate-400">
+                      {kurusuTLYazSembollu(u.tutarKurus)}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Kart>
+
+        <Kart
+          baslik="En Çok Satan Ürünler"
+          eylem={
+            <div className="flex flex-wrap gap-1" data-test="urun-donem-secici">
+              {URUN_DONEMLERI.map((d) => (
+                <Link
+                  key={d.anahtar}
+                  href={panelAdresi(
+                    { ...secimler, urunDonem: d.anahtar },
+                    "urunler",
+                  )}
+                  data-test={`urun-donem-${d.anahtar}`}
+                  aria-current={
+                    d.anahtar === urunDonemi.anahtar ? "page" : undefined
+                  }
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                    d.anahtar === urunDonemi.anahtar
+                      ? "bg-slate-800 text-white"
+                      : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {d.etiket}
+                </Link>
+              ))}
+            </div>
+          }
+        >
+          {satanUrunler.length === 0 ? (
+            <p data-test="satan-urun-yok" className="text-sm text-slate-500">
+              {urunDonemi.baslik.charAt(0).toUpperCase() +
+                urunDonemi.baslik.slice(1)}{" "}
+              satış yok.
+            </p>
+          ) : (
+            <ol data-test="en-cok-satan" className="space-y-2">
+              {satanUrunler.map((u, sira) => (
+                <li
+                  key={`${u.marka}|${u.model}`}
+                  data-test="satan-urun-satiri"
+                  className="flex items-baseline justify-between gap-3 text-sm"
+                >
+                  <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="w-4 shrink-0 text-xs text-slate-400">
+                      {sira + 1}.
+                    </span>
+                    <span className="truncate text-slate-700">
+                      {urunAdi(u)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 whitespace-nowrap text-slate-600">
+                    <span data-test="urun-adet" className="font-medium">
+                      {u.adet}
+                    </span>{" "}
+                    adet
+                    <span className="ml-2 text-xs text-slate-400">
+                      {kurusuTLYazSembollu(u.tutarKurus)}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
         </Kart>
       </div>
 
