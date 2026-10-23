@@ -7,6 +7,7 @@ import { oturumAc, oturumKapat, oturumuOku } from "@/lib/oturum";
 import { oturumBilgisiKur } from "@/lib/oturumKur";
 import { logYaz } from "@/lib/log";
 import { LOG_ISLEM } from "@/lib/sabitler";
+import { guvenliHedef } from "@/lib/yonlendirme";
 
 export type GirisDurumu = {
   hata?: string;
@@ -38,13 +39,19 @@ export async function girisYap(
   });
 
   // Kullanıcı yok / şifre yanlış ayrımı yapılmaz: hesap taramasını zorlaştırır.
-  const gecerli = kullanici ? await sifreDogrula(sifre, kullanici.sifreHash) : false;
+  const gecerli = kullanici
+    ? await sifreDogrula(sifre, kullanici.sifreHash)
+    : false;
   if (!kullanici || !gecerli) {
     return { hata: "Kullanıcı adı veya şifre hatalı.", kullaniciAdi, deneme };
   }
 
   if (!kullanici.aktif) {
-    return { hata: "Bu hesap pasif durumda. Yönetici ile görüşün.", kullaniciAdi, deneme };
+    return {
+      hata: "Bu hesap pasif durumda. Yönetici ile görüşün.",
+      kullaniciAdi,
+      deneme,
+    };
   }
 
   await prisma.kullanici.update({
@@ -57,7 +64,9 @@ export async function girisYap(
   await oturumAc(oturum);
   await logYaz(oturum, { islem: LOG_ISLEM.GIRIS_YAP });
 
-  redirect(devam && devam.startsWith("/") ? devam : "/panel");
+  // Süzgeç yonlendirme.ts içinde: "/" ile başlamak yetmiyor, "//site" de
+  // "/" ile başlar ama tarayıcıyı dış siteye götürür.
+  redirect(guvenliHedef(devam));
 }
 
 export async function cikisYap(): Promise<void> {
