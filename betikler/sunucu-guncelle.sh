@@ -95,6 +95,23 @@ baslik "3/7  Servis durduruluyor"
 # Derleme sırasında çalışan süreç olmamalı.
 systemctl stop "$SERVIS"
 
+# Saat dilimi servis birimine sabitleniyor. Tüm gün/hafta/ay gruplaması
+# sunucunun yerel saatine göre yapılıyor; sunucu UTC'ye düşerse gece
+# 00:00-03:00 arası yapılan satışlar bir önceki güne yazılır. Kod içinden
+# ayarlamak denendi ve işe yaramadı: Next birden çok işçi süreçte çalışıyor
+# ve kanca her süreçte çalışmıyor, yani bazı istekler UTC kalıyordu.
+SAAT_DIZIN="/etc/systemd/system/${SERVIS}.service.d"
+SAAT_DOSYA="$SAAT_DIZIN/saat.conf"
+SAAT_ICERIK=$'[Service]\nEnvironment=TZ=Europe/Istanbul\n'
+if [ ! -f "$SAAT_DOSYA" ] || [ "$(cat "$SAAT_DOSYA")" != "$SAAT_ICERIK" ]; then
+  mkdir -p "$SAAT_DIZIN"
+  printf '%s' "$SAAT_ICERIK" > "$SAAT_DOSYA"
+  systemctl daemon-reload
+  echo "saat dilimi servis birimine yazıldı: Europe/Istanbul"
+else
+  echo "saat dilimi zaten ayarlı: Europe/Istanbul"
+fi
+
 baslik "4/7  Bağımlılıklar"
 sudo -u "$KULLANICI" npm ci
 

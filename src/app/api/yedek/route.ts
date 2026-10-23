@@ -22,13 +22,17 @@ export async function POST(istek: Request) {
   const beklenen = process.env.YEDEK_ANAHTARI;
   if (!beklenen || beklenen.length < 16) {
     return Response.json(
-      { hata: "YEDEK_ANAHTARI tanımlı değil veya çok kısa (en az 16 karakter)." },
+      {
+        hata: "YEDEK_ANAHTARI tanımlı değil veya çok kısa (en az 16 karakter).",
+      },
       { status: 503 },
     );
   }
 
-  const url = new URL(istek.url);
-  const gelen = istek.headers.get("x-yedek-anahtari") ?? url.searchParams.get("anahtar");
+  // Anahtar yalnız başlıktan okunuyor. Sorgu parametresi olarak da kabul
+  // ediliyordu; o değer erişim kayıtlarına, vekil sunucu loglarına ve tarayıcı
+  // geçmişine düşer, yani sır olmaktan çıkar.
+  const gelen = istek.headers.get("x-yedek-anahtari");
   if (!anahtarDogru(gelen, beklenen)) {
     return Response.json({ hata: "Yetkisiz." }, { status: 401 });
   }

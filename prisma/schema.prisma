@@ -409,6 +409,21 @@ model SayimKalemi {
 
 // ---------------------------------------------------------------- Sistem
 
+/// Giriş deneme sayacı. Bellekte değil veritabanında: uygulama birden çok
+/// işçi süreçte çalışıyor, bellekteki sayaç her süreçte ayrı olurdu.
+model GirisDenemesi {
+  kullaniciAdi String    @id
+  /// Penceredeki başarısız deneme sayısı.
+  basarisiz    Int       @default(0)
+  /// Penceredeki ilk başarısız denemenin anı.
+  pencereBasi  DateTime  @default(now())
+  /// Kilit bitişi; kilit yoksa null.
+  kilitBitis   DateTime?
+  guncellendi  DateTime  @updatedAt
+
+  @@index([kilitBitis])
+}
+
 model Log {
   id           Int      @id @default(autoincrement())
   kullaniciId  Int?

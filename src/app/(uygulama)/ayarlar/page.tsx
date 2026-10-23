@@ -5,11 +5,18 @@ import { EylemFormu } from "@/bilesenler/EylemFormu";
 import { Kart } from "@/bilesenler/Kart";
 import { prisma } from "@/lib/prisma";
 import { adminSayfasi } from "@/lib/yetki";
+import { saatDilimiDurumu, saatDilimiUyarisi } from "@/lib/saatDilimi";
 import { firmaAdiGuncelle } from "./eylemler";
 
 export const metadata = { title: "Ayarlar — Stok Takip" };
 
-type BolumProps = { baslik: string; aciklama: string; yol?: string; sayi?: string; faz?: string };
+type BolumProps = {
+  baslik: string;
+  aciklama: string;
+  yol?: string;
+  sayi?: string;
+  faz?: string;
+};
 
 function Bolum({ baslik, aciklama, yol, sayi, faz }: BolumProps) {
   const icerik = (
@@ -32,7 +39,11 @@ function Bolum({ baslik, aciklama, yol, sayi, faz }: BolumProps) {
   );
 
   if (!yol) {
-    return <div className="rounded-xl border border-slate-200 bg-white p-4 opacity-70">{icerik}</div>;
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-4 opacity-70">
+        {icerik}
+      </div>
+    );
   }
 
   return (
@@ -66,18 +77,49 @@ export default async function AyarlarSayfasi() {
     prisma.ayar.findUnique({ where: { anahtar: "firma_adi" } }),
   ]);
 
+  // Saat dilimi sunucu ayarı; yanlışsa gün sınırına yakın satışlar yanlış
+  // güne yazılır. Sessiz bir günlük satırı yerine yöneticinin göreceği yere
+  // konuyor, çünkü düzeltmesi gereken kişi o.
+  const saatUyarisi = saatDilimiUyarisi(saatDilimiDurumu());
+
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-semibold text-slate-900">Ayarlar</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Yalnızca yönetici erişebilir.</p>
+        <p className="mt-0.5 text-sm text-slate-500">
+          Yalnızca yönetici erişebilir.
+        </p>
       </div>
+
+      {/* Banda bilerek ARIA rolü verilmiyor. Sayfa açılışında zaten duruyor,
+          dinamik bir duyuru değil; ekran okuyucu belge sırasında okuyor.
+          role="alert" ya da role="status" verildiğinde sayfadaki ilk canlı
+          bölge o oluyor ve formların hata/başarı mesajlarını gölgeliyordu. */}
+      {saatUyarisi ? (
+        <div
+          data-test="saat-dilimi-uyarisi"
+          className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
+        >
+          <p className="font-semibold">Sunucu saat dilimi beklenenden farklı</p>
+          <p className="mt-1">{saatUyarisi}</p>
+          <p className="mt-2 text-xs">
+            Düzeltmek için sunucuda{" "}
+            <code className="rounded bg-amber-100 px-1">
+              sudo /opt/stok/app/betikler/sunucu-guncelle.sh
+            </code>{" "}
+            çalıştırın; betik saat dilimini servis birimine sabitler.
+          </p>
+        </div>
+      ) : null}
 
       <Kart baslik="Firma Adı">
         <EylemFormu eylem={firmaAdiGuncelle}>
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-[260px] flex-1">
-              <label htmlFor="firmaAdi" className="mb-1 block text-xs font-medium text-slate-600">
+              <label
+                htmlFor="firmaAdi"
+                className="mb-1 block text-xs font-medium text-slate-600"
+              >
                 Üst menüde ve sayfa başlıklarında görünen ad
               </label>
               <input
