@@ -1,16 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { OkutmaKutusu, type OkutmaGeriBildirimi } from "@/bilesenler/OkutmaKutusu";
 import { Rozet } from "@/bilesenler/Rozet";
 import { ayniDukkandakiler, type DukkanMagazasi } from "@/lib/dukkan";
 import { ODEME_TIPI, ODEME_TIPI_ETIKET, type OdemeTipi } from "@/lib/sabitler";
 import type { MusteriOzeti } from "../satis/eylemler";
-import { dukkanIciAktar } from "./eylemler";
+import { aktarimUrunleriniAra, dukkanIciAktar } from "./eylemler";
 import { FiyatDuzeltme } from "./FiyatDuzeltme";
 import { MusteriBlogu } from "./MusteriBlogu";
 import { inputTarih } from "@/lib/tarih";
+import {
+  aramaYeterliMi,
+  grupAciklamasi,
+  grupEtiketi,
+  grupFiyatMetni,
+  sonucYokMesaji,
+  type UrunGrubu,
+} from "@/lib/urunArama";
 import { SatGeriAl, type SatisBasligi } from "./SatGeriAl";
 
 type Magaza = DukkanMagazasi & { ad: string };
@@ -100,10 +108,15 @@ export function AktarimFormu({
     setElleHedefId(kaynak.id);
   }
 
-  async function okut(kod: string): Promise<OkutmaGeriBildirimi> {
+  /**
+   * Cihazı aktarır ve listeye ekler. `cihazId` verilirse kodla değil kimlikle
+   * aranır: listeden seçimde kullanıcının seçtiği cihaz gelmeli, aynı
+   * barkodtaki "ilk" cihaz değil.
+   */
+  async function aktarVeEkle(kod: string, cihazId?: number): Promise<OkutmaGeriBildirimi> {
     if (!kaynak || !hedef) return { tur: "hata", mesaj: "Önce mağazaları seçin." };
 
-    const sonuc = await dukkanIciAktar(kod, kaynak.id, hedef.id, not, islemTarihi);
+    const sonuc = await dukkanIciAktar(kod, kaynak.id, hedef.id, not, islemTarihi, cihazId);
     if (sonuc.durum === "HATA") return { tur: "hata", mesaj: sonuc.mesaj };
 
     setSatirlar((mevcut) => [
@@ -122,6 +135,50 @@ export function AktarimFormu({
       ...mevcut.filter((s) => s.anahtar !== sonuc.cihaz.id),
     ]);
     return { tur: "basari", mesaj: `${sonuc.mesaj} — aktarıldı` };
+  }
+
+  const okut = (kod: string) => aktarVeEkle(kod);
+
+  // Listeden seç: barkodu okutmak her zaman mümkün olmuyor, bazı ürünü adıyla
+  // bulmak daha kolay. Okutma yolunu kapatmıyor, yanına ekleniyor.
+  const [listeAcik, setListeAcik] = useState(false);
+  const [urunSorgu, setUrunSorgu] = useState("");
+  const [urunler, setUrunler] = useState<UrunGrubu[] | null>(null);
+  const [urunAraniyor, urunAramaBasla] = useTransition();
+  const [listeHatasi, setListeHatasi] = useState<string | null>(null);
+
+  function urunAramayiCalistir() {
+    const sorgu = urunSorgu.trim();
+    if (!kaynak || !aramaYeterliMi(sorgu)) {
+      setUrunler(null);
+      return;
+    }
+    urunAramaBasla(async () => {
+      setUrunler(
+        await aktarimUrunleriniAra(
+          sorgu,
+          kaynak.id,
+          satirlar.filter((s) => !s.geriAlindi).map((s) => s.anahtar),
+        ),
+      );
+    });
+  }
+
+  /** Listeden bir ürün seçildi: gruptaki ilk uygun cihaz aktarılır. */
+  function urunSec(grup: UrunGrubu) {
+    setListeHatasi(null);
+    urunAramaBasla(async () => {
+      const sonuc = await aktarVeEkle(
+        grup.barkod ?? `${grup.marka} ${grup.model}`,
+        grup.cihazIdleri[0],
+      );
+      if (sonuc?.tur === "hata") {
+        setListeHatasi(sonuc.mesaj);
+        return;
+      }
+      // Liste açık kalıyor: arka arkaya birkaç ürün aktarmak yaygın.
+      urunAramayiCalistir();
+    });
   }
 
   async function geriAl(satir: Satir) {
@@ -349,6 +406,101 @@ export function AktarimFormu({
           okut={okut}
           devreDisi={!kaynak || !hedef}
         />
+
+        {/* Listeden seç: barkodu okutmak her zaman mümkün olmuyor ve bazı
+            ürünü adıyla bulmak daha kolay. Kaynak mağazanın stoğunda arar. */}
+        <div className="mt-3">
+          <button
+            type="button"
+            data-test="aktarim-liste-ac"
+            disabled={!kaynak || !hedef}
+            onClick={() => {
+              const yeni = !listeAcik;
+              setListeAcik(yeni);
+              if (!yeni) {
+                setUrunSorgu("");
+                setUrunler(null);
+                setListeHatasi(null);
+              }
+            }}
+            className="text-sm font-medium text-blue-700 underline-offset-2 hover:underline disabled:opacity-50 disabled:no-underline"
+          >
+            {listeAcik ? "− Listeyi kapat" : "☰ Ürün Listesinden Ekle"}
+          </button>
+
+          {listeAcik ? (
+            <div className="mt-2 space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <input
+                  data-test="aktarim-urun-sorgu"
+                  value={urunSorgu}
+                  onChange={(e) => setUrunSorgu(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      urunAramayiCalistir();
+                    }
+                  }}
+                  placeholder="Ürün adı, marka veya model (en az 2 harf)"
+                  className={`min-w-0 flex-1 ${GIRDI_SINIFI}`}
+                />
+                <button
+                  type="button"
+                  data-test="aktarim-urun-bul"
+                  onClick={urunAramayiCalistir}
+                  disabled={urunAraniyor}
+                  className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:opacity-60"
+                >
+                  {urunAraniyor ? "Aranıyor…" : "Bul"}
+                </button>
+              </div>
+
+              {listeHatasi ? (
+                <p data-test="aktarim-liste-hatasi" role="alert" className="text-sm font-medium text-red-700">
+                  {listeHatasi}
+                </p>
+              ) : null}
+
+              {urunler === null ? (
+                <p className="text-xs text-slate-500">
+                  {kaynak?.ad} stoğunda arar. Aynı üründen birden çok varsa tek satırda
+                  toplanır; seçtiğinizde biri aktarılır.
+                </p>
+              ) : urunler.length === 0 ? (
+                <p data-test="aktarim-urun-sonuc-yok" className="text-sm text-slate-500">
+                  {sonucYokMesaji(urunSorgu)}
+                </p>
+              ) : (
+                <ul data-test="aktarim-urun-listesi" className="divide-y divide-slate-100">
+                  {urunler.map((g) => (
+                    <li key={g.anahtar}>
+                      <button
+                        type="button"
+                        data-test="aktarim-urun-satiri"
+                        onClick={() => urunSec(g)}
+                        disabled={urunAraniyor}
+                        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-2 py-2 text-left transition hover:bg-blue-50 disabled:opacity-50"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-slate-900">
+                            {grupEtiketi(g)}
+                          </span>
+                          <span className="block truncate text-xs text-slate-500">
+                            {grupAciklamasi(g)}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-right text-xs text-slate-600">
+                          <span className="block">alış {grupFiyatMetni(g)}</span>
+                          <span className="block font-medium text-blue-700">+ Aktar</span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {satirlar.length > 0 ? (
@@ -385,17 +537,21 @@ export function AktarimFormu({
                     {geriAlinan === s.anahtar ? "Geri alınıyor…" : "Geri al"}
                   </button>
                 ) : null}
-                {s.geriAlindi ? null : satisModu ? (
-                  musteriHazir ? (
-                    <SatGeriAl
-                      cihazId={s.anahtar}
-                      kaynakMagazaId={s.kaynakId}
-                      etiket={s.etiket}
-                      baslangicAlisKurus={s.alisFiyatiKurus}
-                      baslik={satisBasligi}
-                      not={not.trim() || null}
-                    />
-                  ) : null
+                {/* Satış modu açık ve müşteri girilmişse sat-geri al formu;
+                    aksi halde yalnız alış fiyatını düzeltme. Müşteri yokken
+                    hiçbir şey göstermemek, "alış fiyatını revize edeceğim"
+                    diye kutuyu işaretleyen kullanıcıyı fiyat alanı olmadan
+                    bırakıyordu — oysa satış için müşteri gerekir, fiyat
+                    düzeltmek için gerekmez. */}
+                {s.geriAlindi ? null : satisModu && musteriHazir ? (
+                  <SatGeriAl
+                    cihazId={s.anahtar}
+                    kaynakMagazaId={s.kaynakId}
+                    etiket={s.etiket}
+                    baslangicAlisKurus={s.alisFiyatiKurus}
+                    baslik={satisBasligi}
+                    not={not.trim() || null}
+                  />
                 ) : (
                   <FiyatDuzeltme
                     cihazId={s.anahtar}
