@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { logYaz } from "@/lib/log";
 import { excelBasliklari, excelUret, kurusuExcelSayisi, type ExcelSayfasi } from "@/lib/excel";
 import { gorebilirMi, gorunurMagazaIdleri } from "@/lib/gorunurluk";
+import { kapsamEtiketi } from "@/lib/sayimKapsami";
 import { prisma } from "@/lib/prisma";
 import {
   LOG_ISLEM,
@@ -42,6 +43,7 @@ export async function GET(_istek: Request, { params }: RouteContext<"/sayim/[id]
     where: { id: sayimId },
     include: {
       magaza: true,
+      magazalar: { include: { magaza: { select: { ad: true } } } },
       baslatan: { select: { adSoyad: true } },
       kapatan: { select: { adSoyad: true } },
       kalemler: {
@@ -60,7 +62,10 @@ export async function GET(_istek: Request, { params }: RouteContext<"/sayim/[id]
   });
   if (!sayim) notFound();
   // Dosya, ekranda görülemeyen bir sayımı da indirtmemeli.
-  if (!gorebilirMi(gorunurMagazaIdleri(oturum), sayim.magazaId)) notFound();
+  // Ekranda görülebilen sayım indirilebilmeli: kapsamdan biri yeterli.
+  const gorunur = gorunurMagazaIdleri(oturum);
+  const kapsamAdlari = sayim.magazalar.map((m) => m.magaza.ad);
+  if (!sayim.magazalar.some((m) => gorebilirMi(gorunur, m.magazaId))) notFound();
 
   if (sayim.durum === SAYIM_DURUM.DEVAM) {
     return new Response("Devam eden sayımın raporu alınamaz. Önce sayımı kapatın.", {
@@ -95,7 +100,7 @@ export async function GET(_istek: Request, { params }: RouteContext<"/sayim/[id]
   }
 
   const ustBilgiler = [
-    `${sayim.magaza.ad} — Stok Sayım Raporu`,
+    `${kapsamEtiketi(kapsamAdlari)} — Stok Sayım Raporu`,
     `Başlangıç: ${tarihSaatYaz(sayim.baslangicTarihi)} · Başlatan: ${sayim.baslatan.adSoyad}`,
     `Bitiş: ${sayim.bitisTarihi ? tarihSaatYaz(sayim.bitisTarihi) : "—"} · Kapatan: ${sayim.kapatan?.adSoyad ?? "—"}`,
     `Beklenen: ${beklenenler.length} · Sayılan: ${sayilanlar.length} · Eksik: ${eksikler.length} · Fazla: ${fazlalar.length}`,
@@ -114,7 +119,7 @@ export async function GET(_istek: Request, { params }: RouteContext<"/sayim/[id]
     islem: LOG_ISLEM.EXCEL_AKTAR,
     hedefTip: "Sayim",
     hedefId: sayim.id,
-    detay: `${sayim.magaza.ad} sayım raporu`,
+    detay: `${kapsamEtiketi(kapsamAdlari)} sayım raporu`,
   });
 
   const dosyaAdi = `sayim-${sayim.magaza.kod}-${tarihYaz(sayim.baslangicTarihi).replace(/\./g, "")}.xlsx`;

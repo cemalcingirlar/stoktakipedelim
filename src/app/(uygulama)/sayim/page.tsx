@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { SAYIM_DURUM, STOK_DURUM } from "@/lib/sabitler";
 import { tarihSaatYaz } from "@/lib/tarih";
 import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
+import { kapsamEtiketi } from "@/lib/sayimKapsami";
 import { SayimBaslatFormu } from "./SayimBaslatFormu";
 
 export const metadata = { title: "Stok Sayımı — Stok Takip" };
@@ -28,11 +29,16 @@ export default async function SayimSayfasi() {
       orderBy: { kod: "asc" },
     }),
     prisma.sayim.findMany({
-      where: magazaKosulu(gorunur),
+      // Kapsamındaki mağazalardan biri bile görünürse sayım listeleniyor:
+      // birlikte sayılan iki mağazadan yalnız birinde yetkili olan kişi de
+      // o sayımı görmeli, yoksa kendi stoğunun sonucunu bulamaz.
+      where:
+        gorunur === null ? {} : { magazalar: { some: { magazaId: { in: gorunur } } } },
       orderBy: [{ baslangicTarihi: "desc" }, { id: "desc" }],
       take: 50,
       include: {
         magaza: { select: { ad: true } },
+        magazalar: { include: { magaza: { select: { ad: true } } } },
         baslatan: { select: { adSoyad: true } },
         kapatan: { select: { adSoyad: true } },
         kalemler: { select: { beklenen: true, sayildi: true } },
@@ -46,8 +52,12 @@ export default async function SayimSayfasi() {
   ]);
 
   const stokHarita = new Map(stokGruplari.map((g) => [g.magazaId, g._count._all]));
+  // Devam eden sayımın kapsamındaki HER mağaza meşgul: biri ikinci bir
+  // sayıma girerse aynı cihaz iki sayımda birden beklenir.
   const acikSayimlar = new Set(
-    sayimlar.filter((s) => s.durum === SAYIM_DURUM.DEVAM).map((s) => s.magazaId),
+    sayimlar
+      .filter((s) => s.durum === SAYIM_DURUM.DEVAM)
+      .flatMap((s) => s.magazalar.map((m) => m.magazaId)),
   );
 
   function ozet(kalemler: { beklenen: boolean; sayildi: boolean }[]) {
@@ -79,7 +89,9 @@ export default async function SayimSayfasi() {
               return (
                 <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
                   <div>
-                    <div className="font-medium text-slate-800">{s.magaza.ad}</div>
+                    <div className="font-medium text-slate-800">
+                      {kapsamEtiketi(s.magazalar.map((m) => m.magaza.ad))}
+                    </div>
                     <div className="text-xs text-slate-500">
                       {o.sayilan}/{o.toplam} okutuldu · {o.fazla} fazla · {s.baslatan.adSoyad} ·{" "}
                       {tarihSaatYaz(s.baslangicTarihi)}
@@ -144,7 +156,7 @@ export default async function SayimSayfasi() {
                           href={`/sayim/${s.id}`}
                           className="font-medium text-blue-600 hover:underline"
                         >
-                          {s.magaza.ad}
+                          {kapsamEtiketi(s.magazalar.map((m) => m.magaza.ad))}
                         </Link>
                       </td>
                       <td className="py-2 pr-3">

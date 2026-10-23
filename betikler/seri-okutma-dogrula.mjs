@@ -90,11 +90,13 @@ try {
   // =================================================== 1) SAYIM EKRANI
   await giris("sorumlu1");
   await sayfa.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
-  const magazaDeger = await sayfa
-    .locator("#magazaId option", { hasText: "1 Nolu" })
+  // Sayım kapsamı artık kutu listesi: sayılacak mağaza(lar) işaretleniyor.
+  await sayfa
+    .locator('[data-test="sayim-magaza-secimi"]')
+    .filter({ hasText: "1 Nolu" })
     .first()
-    .getAttribute("value");
-  await sayfa.selectOption("#magazaId", magazaDeger);
+    .locator('input[type="checkbox"]')
+    .check();
   await Promise.all([
     sayfa.waitForURL(/\/sayim\/\d+$/, { timeout: 20000 }),
     sayfa.click('button:has-text("Sayımı Başlat")'),
