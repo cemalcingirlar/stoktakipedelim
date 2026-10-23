@@ -51,6 +51,15 @@ type Urun = {
   not: string;
   imeiler: string[];
   adet: string;
+  /**
+   * Seri no zorunlu OLMAYAN kategoride kullanıcı yine de seri no girmeyi
+   * seçti mi?
+   *
+   * Aksesuarların çoğunda seri no yok ve adet yazmak doğru; ama bazılarında
+   * (Apple şarj adaptörü, kulaklık) var ve takip edilmek isteniyor. Kategoriyi
+   * değiştirmek yerine bu ürün için seri girmeyi açmak yeterli.
+   */
+  seriGirilecek: boolean;
   /** Barkod sorgusundan gelen bilgi notu ("en son ... girilmiş"). */
   bilgi: string;
 };
@@ -71,6 +80,7 @@ function bosUrun(kalip?: Partial<Urun>): Urun {
     not: "",
     imeiler: [],
     adet: "1",
+    seriGirilecek: false,
     bilgi: "",
     ...kalip,
   };
@@ -110,6 +120,13 @@ export function FaturaFormu({
         if (alan === "kategoriId") return { ...u, kategoriId: deger, altKategoriId: "" };
         return { ...u, [alan]: deger };
       }),
+    );
+  }
+
+  /** Seri no zorunlu olmayan kategoride seri girme modunu açar/kapatır. */
+  function seriModunuDegistir(anahtar: number, deger: boolean) {
+    setUrunler((mevcut) =>
+      mevcut.map((u) => (u.anahtar === anahtar ? { ...u, seriGirilecek: deger } : u)),
     );
   }
 
@@ -225,7 +242,9 @@ export function FaturaFormu({
   function satirlariUret(): FaturaSatiriGirdisi[] {
     return urunler.flatMap<FaturaSatiriGirdisi>((u) => {
       const kategori = kategoriler.find((k) => String(k.id) === u.kategoriId);
-      const seriGerekli = kategori?.seriNoZorunlu ?? true;
+      // Kategori zorunlu kılıyorsa ya da kullanıcı bu ürün için seri girmeyi
+      // seçtiyse cihazlar seri numaralarından açılıyor.
+      const seriGerekli = (kategori?.seriNoZorunlu ?? true) || u.seriGirilecek;
       const ortak = {
         kategoriId: Number(u.kategoriId) || 0,
         altKategoriId: Number(u.altKategoriId) || null,
@@ -510,6 +529,7 @@ export function FaturaFormu({
               urunSil={urunSil}
               imeiEkle={imeiEkle}
               imeiSil={imeiSil}
+              seriModunuDegistir={seriModunuDegistir}
             />
           ))
         )}
@@ -537,6 +557,7 @@ function UrunKarti({
   urunSil,
   imeiEkle,
   imeiSil,
+  seriModunuDegistir,
 }: {
   urun: Urun;
   sira: number;
@@ -545,10 +566,14 @@ function UrunKarti({
   urunSil: (anahtar: number) => void;
   imeiEkle: (anahtar: number, kod: string) => void;
   imeiSil: (anahtar: number, kod: string) => void;
+  seriModunuDegistir: (anahtar: number, deger: boolean) => void;
 }) {
   const [imei, setImei] = useState("");
   const kategori = kategoriler.find((k) => String(k.id) === urun.kategoriId);
-  const seriGerekli = kategori?.seriNoZorunlu ?? true;
+  // Kategori zorunlu kılıyor mu, yoksa kullanıcı mı seçti? İkisi ayrı: ilkinde
+  // adete dönüş yok, ikincisinde var.
+  const kategoriZorunlu = kategori?.seriNoZorunlu ?? true;
+  const seriGerekli = kategoriZorunlu || urun.seriGirilecek;
   const adet = seriGerekli ? urun.imeiler.length : Number(urun.adet) || 0;
   const birimKurus = tlyiKurusaCevir(urun.alisFiyati) ?? 0;
 
@@ -689,9 +714,23 @@ function UrunKarti({
       <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
         {seriGerekli ? (
           <>
-            <label htmlFor={`imei-${urun.anahtar}`} className="mb-1 block text-xs font-medium text-blue-900">
-              IMEI / Seri No okutun — bu barkoda ait tüm cihazları arka arkaya okutabilirsiniz
-            </label>
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <label htmlFor={`imei-${urun.anahtar}`} className="block text-xs font-medium text-blue-900">
+                IMEI / Seri No okutun — bu barkoda ait tüm cihazları arka arkaya okutabilirsiniz
+              </label>
+              {/* Kategori zorunlu kılmıyorsa seçim geri alınabilir olmalı:
+                  yanlışlıkla açan kullanıcı adete dönebilsin. */}
+              {kategoriZorunlu ? null : (
+                <button
+                  type="button"
+                  data-test="adete-geri-don"
+                  onClick={() => seriModunuDegistir(urun.anahtar, false)}
+                  className="text-xs font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900"
+                >
+                  Adetle devam et
+                </button>
+              )}
+            </div>
             <div className="flex flex-wrap gap-2">
               <input
                 id={`imei-${urun.anahtar}`}
@@ -760,9 +799,22 @@ function UrunKarti({
                 className={`w-28 text-right tabular-nums ${GIRDI_SINIFI}`}
               />
             </div>
-            <p className="text-xs text-blue-800">
-              {kategori?.ad} kategorisinde seri no zorunlu değil; adet kadar kayıt açılır.
-            </p>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-blue-800">
+                {kategori?.ad} kategorisinde seri no zorunlu değil; adet kadar kayıt açılır.
+              </p>
+              {/* Bazı aksesuarın seri numarası var ve takip edilmek isteniyor.
+                  Kategoriyi değiştirmek yerine bu ürün için seri girmeyi
+                  açmak yeterli. */}
+              <button
+                type="button"
+                data-test="seri-moduna-gec"
+                onClick={() => seriModunuDegistir(urun.anahtar, true)}
+                className="mt-1 text-xs font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900"
+              >
+                Bu üründe seri numarası gireceğim
+              </button>
+            </div>
           </div>
         )}
       </div>
