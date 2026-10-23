@@ -1,10 +1,21 @@
 import Link from "next/link";
 import { HareketGrafigi } from "@/bilesenler/HareketGrafigi";
 import { Kart, SayiKarti } from "@/bilesenler/Kart";
-import { GRAFIK_DONEMLERI, donemiCoz } from "@/lib/grafikDonem";
+import {
+  GRAFIK_DONEMLERI,
+  GRAFIK_OLCULERI,
+  donemiCoz,
+  olcuEtiketleri,
+  olcuyuCoz,
+  panelAdresi,
+} from "@/lib/grafikDonem";
 import { kurusuTLYaz, kurusuTLYazSembollu } from "@/lib/para";
 import { HAREKET_TIP_ETIKET, type HareketTip } from "@/lib/sabitler";
-import { hareketRaporu, kullaniciSatisRaporu, magazaSatisRaporu } from "@/lib/raporlar";
+import {
+  hareketRaporu,
+  kullaniciSatisRaporu,
+  magazaSatisRaporu,
+} from "@/lib/raporlar";
 import {
   SATIS_DONEMLERI,
   satisDonemAraligi,
@@ -24,15 +35,27 @@ import { oturumGerekli } from "@/lib/yetki";
 
 export const metadata = { title: "Panel — Stok Takip" };
 
-export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">) {
+export default async function PanelSayfasi({
+  searchParams,
+}: PageProps<"/panel">) {
   const oturum = await oturumGerekli();
 
   const params = await searchParams;
-  const donem = donemiCoz(Array.isArray(params.donem) ? params.donem[0] : params.donem);
+  const donem = donemiCoz(
+    Array.isArray(params.donem) ? params.donem[0] : params.donem,
+  );
   const satisDonemi = satisDonemiCoz(
     Array.isArray(params.satisDonem) ? params.satisDonem[0] : params.satisDonem,
   );
   const satisAraligi = satisDonemAraligi(satisDonemi);
+  const olcu = olcuyuCoz(
+    Array.isArray(params.olcu) ? params.olcu[0] : params.olcu,
+  );
+  const secimler = {
+    donem: donem.anahtar,
+    satisDonem: satisDonemi.anahtar,
+    olcu,
+  };
 
   // Tek kural: yönetici her mağazayı görür, diğer herkes yalnız yetkili
   // olduklarını. Panelin bütün kartları, dökümleri ve grafiği aynı kısıttan
@@ -83,15 +106,25 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <SayiKarti etiket="Toplam Stok" deger={`${toplamAdet}`} altBilgi="adet cihaz" />
-        <SayiKarti etiket="Stok Değeri" deger={kurusuTLYazSembollu(toplamDeger)} altBilgi="alış fiyatı üzerinden" />
+        <SayiKarti
+          etiket="Toplam Stok"
+          deger={`${toplamAdet}`}
+          altBilgi="adet cihaz"
+        />
+        <SayiKarti
+          etiket="Stok Değeri"
+          deger={kurusuTLYazSembollu(toplamDeger)}
+          altBilgi="alış fiyatı üzerinden"
+        />
         <SayiKarti
           etiket="Bugün Satılan"
           deger={`${bugun.adet}`}
           altBilgi={
             bugun.adet > 0
               ? `${kurusuTLYazSembollu(bugun.ciroKurus)} ciro${
-                  bugun.aktarimAdedi > 0 ? ` · ${bugun.aktarimAdedi} sat-geri al` : ""
+                  bugun.aktarimAdedi > 0
+                    ? ` · ${bugun.aktarimAdedi} sat-geri al`
+                    : ""
                 }`
               : "bugün satış yok"
           }
@@ -127,7 +160,9 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
               className="rounded-lg border border-slate-200 p-3 transition hover:border-blue-300 hover:bg-blue-50"
             >
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-slate-800">{o.ad}</span>
+                <span className="text-sm font-medium text-slate-800">
+                  {o.ad}
+                </span>
                 <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
                   {o.kod}
                 </span>
@@ -148,8 +183,13 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
           eylem={
             bugun.adet > 0 ? (
               <span className="text-xs text-slate-500">
-                {bugun.adet} cihaz · {kurusuTLYazSembollu(bugun.ciroKurus)} ciro ·{" "}
-                <span className={bugun.karKurus >= 0 ? "text-emerald-700" : "text-red-600"}>
+                {bugun.adet} cihaz · {kurusuTLYazSembollu(bugun.ciroKurus)} ciro
+                ·{" "}
+                <span
+                  className={
+                    bugun.karKurus >= 0 ? "text-emerald-700" : "text-red-600"
+                  }
+                >
                   {kurusuTLYazSembollu(bugun.karKurus)} kâr
                 </span>
               </span>
@@ -157,13 +197,17 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
           }
         >
           {bugun.adet === 0 ? (
-            <p className="text-sm text-slate-500">Bugün henüz satış yapılmadı.</p>
+            <p className="text-sm text-slate-500">
+              Bugün henüz satış yapılmadı.
+            </p>
           ) : (
             <ul className="divide-y divide-slate-100">
               {bugun.kalemler.slice(0, 10).map((k) => (
                 <li
                   key={k.anahtar}
-                  data-test={k.aktarimMi ? "bugun-aktarim-satisi" : "bugun-cihaz-satisi"}
+                  data-test={
+                    k.aktarimMi ? "bugun-aktarim-satisi" : "bugun-cihaz-satisi"
+                  }
                   className="flex items-center justify-between gap-3 py-2 text-sm"
                 >
                   <div className="min-w-0">
@@ -191,7 +235,9 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
                     <span className="block font-medium text-slate-800 tabular-nums">
                       {kurusuTLYazSembollu(k.satisFiyatiKurus)}
                     </span>
-                    <span className="block text-xs text-slate-500">{saatYaz(k.satisTarihi)}</span>
+                    <span className="block text-xs text-slate-500">
+                      {saatYaz(k.satisTarihi)}
+                    </span>
                   </span>
                 </li>
               ))}
@@ -206,25 +252,31 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
               >
                 stoktan çıkanların tamamını görün
               </Link>
-              . Sat-geri al işlemlerinde cihaz stokta kaldığı için o liste onları
-              içermiyor.
+              . Sat-geri al işlemlerinde cihaz stokta kaldığı için o liste
+              onları içermiyor.
             </p>
           ) : null}
         </Kart>
 
         <Kart baslik="Onay Bekleyen Sevkiyatlar">
           {bekleyen.length === 0 ? (
-            <p className="text-sm text-slate-500">Onay bekleyen sevkiyat yok.</p>
+            <p className="text-sm text-slate-500">
+              Onay bekleyen sevkiyat yok.
+            </p>
           ) : (
             <ul className="divide-y divide-slate-100">
               {bekleyen.slice(0, 8).map((t) => (
-                <li key={t.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <li
+                  key={t.id}
+                  className="flex items-center justify-between gap-3 py-2 text-sm"
+                >
                   <div className="min-w-0">
                     <div className="truncate font-medium text-slate-800">
                       {t.kaynakMagaza.ad} → {t.hedefMagaza.ad}
                     </div>
                     <div className="text-xs text-slate-500">
-                      {t.transferNo} · {t._count.kalemler} cihaz · {t.gonderen.adSoyad}
+                      {t.transferNo} · {t._count.kalemler} cihaz ·{" "}
+                      {t.gonderen.adSoyad}
                     </div>
                   </div>
                   <Link
@@ -251,7 +303,9 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
               <Link
                 key={d.anahtar}
                 href={`/panel?donem=${donem.anahtar}&satisDonem=${d.anahtar}#satislar`}
-                aria-current={d.anahtar === satisDonemi.anahtar ? "page" : undefined}
+                aria-current={
+                  d.anahtar === satisDonemi.anahtar ? "page" : undefined
+                }
                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
                   d.anahtar === satisDonemi.anahtar
                     ? "bg-slate-800 text-white"
@@ -270,11 +324,13 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
             eylem={
               personelToplami.adet > 0 ? (
                 <span className="text-xs text-slate-500">
-                  {personelToplami.adet} cihaz · {kurusuTLYazSembollu(personelToplami.satisKurus)}{" "}
-                  ·{" "}
+                  {personelToplami.adet} cihaz ·{" "}
+                  {kurusuTLYazSembollu(personelToplami.satisKurus)} ·{" "}
                   <span
                     className={
-                      personelToplami.karKurus >= 0 ? "text-emerald-700" : "text-red-600"
+                      personelToplami.karKurus >= 0
+                        ? "text-emerald-700"
+                        : "text-red-600"
                     }
                   >
                     {kurusuTLYazSembollu(personelToplami.karKurus)} kâr
@@ -295,16 +351,22 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
                       <th className="py-2 pr-3 font-medium">Personel</th>
                       <th className="py-2 pr-3 font-medium">Mağaza</th>
                       <th className="py-2 pr-3 text-right font-medium">Adet</th>
-                      <th className="py-2 pr-3 text-right font-medium">Satış</th>
+                      <th className="py-2 pr-3 text-right font-medium">
+                        Satış
+                      </th>
                       <th className="py-2 text-right font-medium">Kâr</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {personelSatislari.map((k) => (
                       <tr key={`${k.adSoyad}-${k.magaza}`}>
-                        <td className="py-2 pr-3 font-medium text-slate-800">{k.adSoyad}</td>
+                        <td className="py-2 pr-3 font-medium text-slate-800">
+                          {k.adSoyad}
+                        </td>
                         <td className="py-2 pr-3 text-slate-600">{k.magaza}</td>
-                        <td className="py-2 pr-3 text-right tabular-nums">{k.adet}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">
+                          {k.adet}
+                        </td>
                         <td className="py-2 pr-3 text-right tabular-nums">
                           {kurusuTLYaz(k.satisKurus)}
                         </td>
@@ -328,9 +390,14 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
             eylem={
               magazaToplami.adet > 0 ? (
                 <span className="text-xs text-slate-500">
-                  {magazaToplami.adet} cihaz · {kurusuTLYazSembollu(magazaToplami.satisKurus)} ·{" "}
+                  {magazaToplami.adet} cihaz ·{" "}
+                  {kurusuTLYazSembollu(magazaToplami.satisKurus)} ·{" "}
                   <span
-                    className={magazaToplami.karKurus >= 0 ? "text-emerald-700" : "text-red-600"}
+                    className={
+                      magazaToplami.karKurus >= 0
+                        ? "text-emerald-700"
+                        : "text-red-600"
+                    }
                   >
                     {kurusuTLYazSembollu(magazaToplami.karKurus)} kâr
                   </span>
@@ -349,15 +416,21 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
                     <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                       <th className="py-2 pr-3 font-medium">Mağaza</th>
                       <th className="py-2 pr-3 text-right font-medium">Adet</th>
-                      <th className="py-2 pr-3 text-right font-medium">Satış</th>
+                      <th className="py-2 pr-3 text-right font-medium">
+                        Satış
+                      </th>
                       <th className="py-2 text-right font-medium">Kâr</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {magazaSatislari.map((m) => (
                       <tr key={m.ad}>
-                        <td className="py-2 pr-3 font-medium text-slate-800">{m.ad}</td>
-                        <td className="py-2 pr-3 text-right tabular-nums">{m.adet}</td>
+                        <td className="py-2 pr-3 font-medium text-slate-800">
+                          {m.ad}
+                        </td>
+                        <td className="py-2 pr-3 text-right tabular-nums">
+                          {m.adet}
+                        </td>
                         <td className="py-2 pr-3 text-right tabular-nums">
                           {kurusuTLYaz(m.satisKurus)}
                         </td>
@@ -380,27 +453,54 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
 
       <div id="grafik" className="scroll-mt-4">
         <Kart
-          baslik={`${donem.baslik} — Giriş ve Satış`}
+          baslik={`${donem.baslik} — ${olcuEtiketleri(olcu).baslik}`}
           eylem={
-            <div className="flex flex-wrap gap-1" data-test="donem-secici">
-              {GRAFIK_DONEMLERI.map((d) => (
-                <Link
-                  key={d.anahtar}
-                  href={`/panel?donem=${d.anahtar}&satisDonem=${satisDonemi.anahtar}#grafik`}
-                  aria-current={d.anahtar === donem.anahtar ? "page" : undefined}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                    d.anahtar === donem.anahtar
-                      ? "bg-slate-800 text-white"
-                      : "border border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {d.etiket}
-                </Link>
-              ))}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap gap-1" data-test="olcu-secici">
+                {GRAFIK_OLCULERI.map((o) => (
+                  <Link
+                    key={o.anahtar}
+                    href={panelAdresi(
+                      { ...secimler, olcu: o.anahtar },
+                      "grafik",
+                    )}
+                    data-test={`olcu-${o.anahtar}`}
+                    aria-current={o.anahtar === olcu ? "page" : undefined}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                      o.anahtar === olcu
+                        ? "bg-emerald-600 text-white"
+                        : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {o.etiket}
+                  </Link>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1" data-test="donem-secici">
+                {GRAFIK_DONEMLERI.map((d) => (
+                  <Link
+                    key={d.anahtar}
+                    href={panelAdresi(
+                      { ...secimler, donem: d.anahtar },
+                      "grafik",
+                    )}
+                    aria-current={
+                      d.anahtar === donem.anahtar ? "page" : undefined
+                    }
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                      d.anahtar === donem.anahtar
+                        ? "bg-slate-800 text-white"
+                        : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {d.etiket}
+                  </Link>
+                ))}
+              </div>
             </div>
           }
         >
-          <HareketGrafigi kovalar={kovalar} />
+          <HareketGrafigi kovalar={kovalar} olcu={olcu} />
         </Kart>
       </div>
 
@@ -436,14 +536,18 @@ export default async function PanelSayfasi({ searchParams }: PageProps<"/panel">
                         {h.stokKalemi.marka} {h.stokKalemi.model}
                       </Link>
                       {h.stokKalemi.seriNo ? (
-                        <span className="ml-1 text-xs text-slate-400">{h.stokKalemi.seriNo}</span>
+                        <span className="ml-1 text-xs text-slate-400">
+                          {h.stokKalemi.seriNo}
+                        </span>
                       ) : null}
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap text-slate-600">
                       {h.kaynakMagaza?.ad ?? "—"}
                       {h.hedefMagaza ? ` → ${h.hedefMagaza.ad}` : ""}
                     </td>
-                    <td className="py-2 whitespace-nowrap text-slate-600">{h.kullanici.adSoyad}</td>
+                    <td className="py-2 whitespace-nowrap text-slate-600">
+                      {h.kullanici.adSoyad}
+                    </td>
                   </tr>
                 ))}
               </tbody>
