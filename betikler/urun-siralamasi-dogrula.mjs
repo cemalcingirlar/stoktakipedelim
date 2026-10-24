@@ -7,6 +7,7 @@
 // Kurgu kasıtlı: en çok STOKTA kalan ürün ile en çok SATAN ürün farklı.
 // İkisi aynı olsaydı iki kartın yer değiştirmesi testten kaçardı.
 import { chromium } from "@playwright/test";
+import { gunKaydir } from "./ortak-tarih.mjs";
 
 const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
 const cikti = process.env.CIKTI ?? "/tmp/urun-siralamasi";
@@ -76,11 +77,14 @@ async function faturaGir({ marka, model, imeiler, fiyat, magaza = "1 Nolu Mağaz
   ]);
 }
 
-/** input[type=date] biçimi. */
+/**
+ * input[type=date] biçimi, uygulamanın saat diliminde.
+ *
+ * Test süreci UTC'de; gece yarısından sonra kendi günü sunucununkinden
+ * farklı oluyor ve "son 7 gün" pencereleri kayıyordu.
+ */
 function tarihYaz(gunOnce) {
-  const t = new Date();
-  t.setDate(t.getDate() - gunOnce);
-  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+  return gunKaydir(-gunOnce);
 }
 
 async function sat(kod, fiyat, gunOnce = 0) {
