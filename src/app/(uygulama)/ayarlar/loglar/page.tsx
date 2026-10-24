@@ -3,6 +3,12 @@ import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { Rozet, type RozetTonu } from "@/bilesenler/Rozet";
 import { Sayfalama } from "@/bilesenler/Sayfalama";
 import { prisma } from "@/lib/prisma";
+import {
+  ARSIV_YIL_SECENEKLERI,
+  arsivOzeti,
+  arsivSiniri,
+} from "@/lib/logArsivi";
+import { LogArsivi } from "./LogArsivi";
 import { LOG_ISLEM } from "@/lib/sabitler";
 import { gunSonu, tarihSaatYaz } from "@/lib/tarih";
 import { adminSayfasi } from "@/lib/yetki";
@@ -30,6 +36,7 @@ const ISLEM_ETIKET: Record<string, string> = {
   DUKKAN_ICI_AKTARIM: "Dükkân içi aktarım yaptı",
   MUSTERI_DUZENLE: "Müşteri bilgisi düzeltti",
   MUSTERI_SIL: "Müşteri kaydı sildi",
+  LOG_ARSIVLE: "Log arşivledi",
 };
 
 const ISLEM_TONU: Record<string, RozetTonu> = {
@@ -48,6 +55,7 @@ const ISLEM_TONU: Record<string, RozetTonu> = {
   DUKKAN_ICI_AKTARIM: "mor",
   MUSTERI_DUZENLE: "mavi",
   MUSTERI_SIL: "kirmizi",
+  LOG_ARSIVLE: "sari",
 };
 
 function tarihCoz(deger: string | string[] | undefined): Date | null {
@@ -71,7 +79,10 @@ export default async function LoglarSayfasi({
 
   const where = {
     ...(islem ? { islem } : {}),
-    ...(kullaniciAdi ? { kullaniciAdi: { contains: kullaniciAdi } } : {}),
+    // Kullanıcı açılır listeden seçiliyor, yani değer tam ad. `contains`
+    // indeksi kullanamıyordu: 3 milyon kayıtta ölçülen en yavaş sorgu buydu
+    // (463 ms). Tam eşitlik kullaniciId/kullaniciAdi indeksinden geçiyor.
+    ...(kullaniciAdi ? { kullaniciAdi } : {}),
     ...(bas || bit
       ? {
           tarih: {
@@ -98,6 +109,15 @@ export default async function LoglarSayfasi({
   ]);
 
   const toplamSayfa = Math.max(1, Math.ceil(toplam / SAYFA_BOYUTU));
+
+  // Arşiv kartı: tabloda kaç kayıt var, kaçı arşivlenebilir yaşta.
+  // Ekranın yavaşlaması ölçüldü ve çıkmadı (3 milyon kayıtta 221–463 ms);
+  // asıl maliyet veritabanı dosyasının büyümesi, çünkü her gün yedekleniyor.
+  const varsayilanYil = ARSIV_YIL_SECENEKLERI[1];
+  const [tumKayit, arsivlenebilir] = await Promise.all([
+    prisma.log.count(),
+    prisma.log.count({ where: { tarih: { lt: arsivSiniri(varsayilanYil) } } }),
+  ]);
 
   return (
     <div className="space-y-5">
@@ -212,6 +232,13 @@ export default async function LoglarSayfasi({
           </div>
         </div>
       </form>
+
+      <LogArsivi
+        tumKayit={tumKayit}
+        tumKayitOzeti={arsivOzeti(tumKayit)}
+        varsayilanYil={varsayilanYil}
+        arsivlenebilir={arsivlenebilir}
+      />
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-4 py-2.5 text-sm font-medium text-slate-700">

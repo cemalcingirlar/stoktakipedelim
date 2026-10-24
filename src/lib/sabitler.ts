@@ -169,6 +169,7 @@ export const LOG_ISLEM = {
   AYAR_DEGISTIR: "AYAR_DEGISTIR",
   MUSTERI_DUZENLE: "MUSTERI_DUZENLE",
   MUSTERI_SIL: "MUSTERI_SIL",
+  LOG_ARSIVLE: "LOG_ARSIVLE",
   YEDEK_AL: "YEDEK_AL",
 } as const;
 export type LogIslem = (typeof LOG_ISLEM)[keyof typeof LOG_ISLEM];
