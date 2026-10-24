@@ -170,6 +170,7 @@ export const LOG_ISLEM = {
   MUSTERI_DUZENLE: "MUSTERI_DUZENLE",
   MUSTERI_SIL: "MUSTERI_SIL",
   LOG_ARSIVLE: "LOG_ARSIVLE",
+  SIFRE_DEGISTIR: "SIFRE_DEGISTIR",
   YEDEK_AL: "YEDEK_AL",
 } as const;
 export type LogIslem = (typeof LOG_ISLEM)[keyof typeof LOG_ISLEM];

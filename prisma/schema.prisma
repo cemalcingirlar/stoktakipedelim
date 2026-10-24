@@ -46,6 +46,9 @@ model Magaza {
   @@index([dukkanKodu])
 }
 
+/// Şifre değiştiğinde o kullanıcının eski oturumları düşer:
+/// sifreDegisikligi, jetonun üretilme anıyla karşılaştırılıyor
+/// (src/lib/oturumGecerlilik.ts).
 model Kullanici {
   id           Int     @id @default(autoincrement())
   kullaniciAdi String  @unique
@@ -58,6 +61,10 @@ model Kullanici {
 
   sonGiris  DateTime?
   createdAt DateTime  @default(now())
+
+  /// Şifrenin en son ne zaman değiştiği. Bu andan önce üretilmiş jetonlar
+  /// geçersiz sayılıyor; şifre sıfırlamak eski oturumları da kesiyor.
+  sifreDegisikligi DateTime?
 
   magaza Magaza? @relation(fields: [magazaId], references: [id])
 

@@ -784,6 +784,7 @@ export async function kullaniciEkle(
         rol: sonuc.data.rol,
         magazaId: anaMagazaId,
         sifreHash: await sifreHashle(sifre),
+        sifreDegisikligi: new Date(),
         ekMagazalar: { connect: ekMagazaIdleri.map((id) => ({ id })) },
       },
     });
@@ -1008,7 +1009,11 @@ export async function sifreSifirla(
 
     await prisma.kullanici.update({
       where: { id },
-      data: { sifreHash: await sifreHashle(sifre) },
+      data: {
+        sifreHash: await sifreHashle(sifre),
+        // Eski oturumlar düşsün: sıfırlamanın amacı zaten bu.
+        sifreDegisikligi: new Date(),
+      },
     });
 
     await logYaz(oturum, {

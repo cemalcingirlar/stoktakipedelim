@@ -37,6 +37,7 @@ const ISLEM_ETIKET: Record<string, string> = {
   MUSTERI_DUZENLE: "Müşteri bilgisi düzeltti",
   MUSTERI_SIL: "Müşteri kaydı sildi",
   LOG_ARSIVLE: "Log arşivledi",
+  SIFRE_DEGISTIR: "Şifresini değiştirdi",
 };
 
 const ISLEM_TONU: Record<string, RozetTonu> = {
@@ -56,6 +57,7 @@ const ISLEM_TONU: Record<string, RozetTonu> = {
   MUSTERI_DUZENLE: "mavi",
   MUSTERI_SIL: "kirmizi",
   LOG_ARSIVLE: "sari",
+  SIFRE_DEGISTIR: "mavi",
 };
 
 function tarihCoz(deger: string | string[] | undefined): Date | null {
