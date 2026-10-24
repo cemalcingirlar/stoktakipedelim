@@ -23,6 +23,9 @@ import {
 } from "@/lib/yetki";
 import {
   EN_COK_GRUP,
+  sonucuKisalt,
+  type AramaSonucu,
+  EN_COK_CIHAZ,
   aramaYeterliMi,
   gruplaUrunler,
   type UrunGrubu,
@@ -78,14 +81,19 @@ export async function dukkanIciAktar(
 
     // Tarih verilmediyse bugün; verildiyse okunabilir olmalı. Sessizce bugüne
     // düşmek, kullanıcının yazdığı tarihi yok saymak olurdu.
-    const islemTarihi = tarih === undefined || tarih === "" ? new Date() : formTarihiCevir(tarih);
-    if (islemTarihi === null) return { durum: "HATA", mesaj: "Aktarım tarihi geçersiz." };
+    const islemTarihi =
+      tarih === undefined || tarih === "" ? new Date() : formTarihiCevir(tarih);
+    if (islemTarihi === null)
+      return { durum: "HATA", mesaj: "Aktarım tarihi geçersiz." };
 
     // Not cihazın tarihçesine yazılıyor; neden taşındığı sonradan okunabilsin.
     const temizNot = not.trim().slice(0, 200);
 
     if (!Number.isInteger(kaynakMagazaId) || !Number.isInteger(hedefMagazaId)) {
-      return { durum: "HATA", mesaj: "Mağaza seçimi okunamadı. Sayfayı yenileyin." };
+      return {
+        durum: "HATA",
+        mesaj: "Mağaza seçimi okunamadı. Sayfayı yenileyin.",
+      };
     }
 
     const magazalar = await prisma.magaza.findMany({
@@ -95,8 +103,10 @@ export async function dukkanIciAktar(
     const kaynak = magazalar.find((m) => m.id === kaynakMagazaId);
     const hedef = magazalar.find((m) => m.id === hedefMagazaId);
 
-    if (!kaynak || !hedef) return { durum: "HATA", mesaj: "Mağaza bulunamadı." };
-    if (!hedef.aktif) return { durum: "HATA", mesaj: `${hedef.ad} pasif durumda.` };
+    if (!kaynak || !hedef)
+      return { durum: "HATA", mesaj: "Mağaza bulunamadı." };
+    if (!hedef.aktif)
+      return { durum: "HATA", mesaj: `${hedef.ad} pasif durumda.` };
 
     if (!dukkanIciAktarabilirMi(oturum, kaynak, hedef)) {
       return {
@@ -128,12 +138,22 @@ export async function dukkanIciAktar(
             include: { magaza: { select: { ad: true } } },
           });
 
-      if (!cihaz) return { durum: "HATA" as const, mesaj: `${aranan} sistemde kayıtlı değil.` };
+      if (!cihaz)
+        return {
+          durum: "HATA" as const,
+          mesaj: `${aranan} sistemde kayıtlı değil.`,
+        };
       if (cihaz.durum === STOK_DURUM.SATILDI) {
-        return { durum: "HATA" as const, mesaj: `${aranan} satılmış, aktarılamaz.` };
+        return {
+          durum: "HATA" as const,
+          mesaj: `${aranan} satılmış, aktarılamaz.`,
+        };
       }
       if (cihaz.durum === STOK_DURUM.TRANSFERDE) {
-        return { durum: "HATA" as const, mesaj: `${aranan} bir sevkiyatta, önce kabul edilmeli.` };
+        return {
+          durum: "HATA" as const,
+          mesaj: `${aranan} bir sevkiyatta, önce kabul edilmeli.`,
+        };
       }
       if (cihaz.durum !== STOK_DURUM.STOKTA) {
         return {
@@ -142,7 +162,10 @@ export async function dukkanIciAktar(
         };
       }
       if (cihaz.magazaId === hedefMagazaId) {
-        return { durum: "HATA" as const, mesaj: `${aranan} zaten ${hedef.ad} deposunda.` };
+        return {
+          durum: "HATA" as const,
+          mesaj: `${aranan} zaten ${hedef.ad} deposunda.`,
+        };
       }
       if (cihaz.magazaId !== kaynakMagazaId) {
         return {
@@ -153,7 +176,11 @@ export async function dukkanIciAktar(
 
       await tx.stokKalemi.update({
         where: { id: cihaz.id },
-        data: { magazaId: hedefMagazaId, durum: STOK_DURUM.STOKTA, cikisTarihi: null },
+        data: {
+          magazaId: hedefMagazaId,
+          durum: STOK_DURUM.STOKTA,
+          cikisTarihi: null,
+        },
       });
       await tx.stokHareketi.create({
         data: {
@@ -203,17 +230,25 @@ export async function dukkanIciAktar(
       cihaz: sonuc.cihaz,
     };
   } catch (hata) {
-    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
+    if (hata instanceof YetkiHatasi)
+      return { durum: "HATA", mesaj: hata.message };
     console.error("Dükkân içi aktarım başarısız:", hata);
-    return { durum: "HATA", mesaj: "Aktarım yapılamadı. Lütfen tekrar deneyin." };
+    return {
+      durum: "HATA",
+      mesaj: "Aktarım yapılamadı. Lütfen tekrar deneyin.",
+    };
   }
 }
-
 
 // -------------------------------------------------- Fiyat / not düzeltme
 
 export type FiyatDuzeltmeSonucu =
-  | { durum: "TAMAM"; mesaj: string; alisFiyatiKurus: number; not: string | null }
+  | {
+      durum: "TAMAM";
+      mesaj: string;
+      alisFiyatiKurus: number;
+      not: string | null;
+    }
   | { durum: "HATA"; mesaj: string };
 
 /**
@@ -298,7 +333,8 @@ export async function aktarilanCihaziDuzelt(
           `Alış fiyatı ${kurusuTLYaz(cihaz.alisFiyatiKurus)} → ${kurusuTLYaz(alisFiyatiKurus)} TL`,
         );
       }
-      if (notDegisti) parcalar.push(yeniNot ? `Not: ${yeniNot}` : "Not silindi");
+      if (notDegisti)
+        parcalar.push(yeniNot ? `Not: ${yeniNot}` : "Not silindi");
 
       await tx.stokHareketi.create({
         data: {
@@ -331,12 +367,12 @@ export async function aktarilanCihaziDuzelt(
       not: yeniNot,
     };
   } catch (hata) {
-    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
+    if (hata instanceof YetkiHatasi)
+      return { durum: "HATA", mesaj: hata.message };
     console.error("Aktarılan cihaz düzeltilemedi:", hata);
     return { durum: "HATA", mesaj: "Düzeltme kaydedilemedi. Tekrar deneyin." };
   }
 }
-
 
 // ------------------------------------------- Müşteriye satıp geri alma
 
@@ -379,7 +415,10 @@ const aktarimSatisSemasi = z
     satisFiyatiKurus: z.number().int().min(0).max(EN_YUKSEK_TUTAR_KURUS),
     yeniAlisFiyatiKurus: z.number().int().min(0).max(EN_YUKSEK_TUTAR_KURUS),
     satisTarihi: z.coerce.date({ message: "Satış tarihi geçersiz." }),
-    odemeTipi: z.enum(Object.values(ODEME_TIPI) as [string, ...string[]], "Ödeme tipi seçin."),
+    odemeTipi: z.enum(
+      Object.values(ODEME_TIPI) as [string, ...string[]],
+      "Ödeme tipi seçin.",
+    ),
     satanKullaniciId: z.number().int().positive().nullable(),
     musteriId: z.number().int().positive().nullable(),
     musteriAdSoyad: z.string().trim().max(80).nullable(),
@@ -402,29 +441,39 @@ export async function aktarimUrunleriniAra(
   sorgu: string,
   kaynakMagazaId: number,
   aktarilmisIdler: number[] = [],
-): Promise<UrunGrubu[]> {
+): Promise<AramaSonucu<UrunGrubu>> {
   try {
     const oturum = await oturumZorunlu();
-    if (!aramaYeterliMi(sorgu)) return [];
-    if (!Number.isInteger(kaynakMagazaId) || kaynakMagazaId <= 0) return [];
+    if (!aramaYeterliMi(sorgu)) return { gruplar: [], kesildi: false };
+    if (!Number.isInteger(kaynakMagazaId) || kaynakMagazaId <= 0)
+      return { gruplar: [], kesildi: false };
     // Kaynak mağazada yetkisi yoksa o mağazanın stoğunu listelemek sızıntı
     // olurdu; aktarımın kendisi de zaten reddedilirdi.
-    if (!magazadaIslemYapabilirMi(oturum, kaynakMagazaId)) return [];
+    if (!magazadaIslemYapabilirMi(oturum, kaynakMagazaId))
+      return { gruplar: [], kesildi: false };
 
     const cihazlar = await prisma.stokKalemi.findMany({
       where: {
         durum: STOK_DURUM.STOKTA,
         magazaId: kaynakMagazaId,
         aramaMetni: { contains: aramaNormalize(sorgu) },
-        ...(aktarilmisIdler.length > 0 ? { id: { notIn: aktarilmisIdler } } : {}),
+        ...(aktarilmisIdler.length > 0
+          ? { id: { notIn: aktarilmisIdler } }
+          : {}),
       },
-      include: { magaza: { select: { ad: true } }, kategori: { select: { ad: true } } },
-      take: 500,
+      include: {
+        magaza: { select: { ad: true } },
+        kategori: { select: { ad: true } },
+      },
+      // Sınıra dayanıldığını anlamak için bir fazlası çekiliyor.
+      take: EN_COK_CIHAZ + 1,
       orderBy: { id: "asc" },
     });
 
-    return gruplaUrunler(
-      cihazlar.map((c) => ({
+    const cihazKesildi = cihazlar.length > EN_COK_CIHAZ;
+
+    const tumGruplar = gruplaUrunler(
+      cihazlar.slice(0, EN_COK_CIHAZ).map((c) => ({
         id: c.id,
         marka: c.marka,
         model: c.model,
@@ -434,11 +483,12 @@ export async function aktarimUrunleriniAra(
         magazaAdi: c.magaza.ad,
         alisFiyatiKurus: c.alisFiyatiKurus,
       })),
-    ).slice(0, EN_COK_GRUP);
+    );
+    return sonucuKisalt(tumGruplar, EN_COK_GRUP, cihazKesildi);
   } catch (hata) {
-    if (hata instanceof YetkiHatasi) return [];
+    if (hata instanceof YetkiHatasi) return { gruplar: [], kesildi: false };
     console.error("Aktarım ürün araması başarısız:", hata);
-    return [];
+    return { gruplar: [], kesildi: false };
   }
 }
 
@@ -459,7 +509,8 @@ export async function aktarimSatisiKaydet(
     const oturum = await oturumZorunlu();
 
     const cozum = aktarimSatisSemasi.safeParse(kayit);
-    if (!cozum.success) return { durum: "HATA", mesaj: cozum.error.issues[0].message };
+    if (!cozum.success)
+      return { durum: "HATA", mesaj: cozum.error.issues[0].message };
     const veri = cozum.data;
 
     const sorun = aktarimSatisSorunu({
@@ -494,8 +545,12 @@ export async function aktarimSatisiKaydet(
         select: { id: true, ad: true, dukkanKodu: true },
       }),
     ]);
-    if (!kaynak || !mevcut) return { durum: "HATA", mesaj: "Mağaza bulunamadı." };
-    if (kaynak.id !== mevcut.id && !dukkanIciAktarabilirMi(oturum, kaynak, mevcut)) {
+    if (!kaynak || !mevcut)
+      return { durum: "HATA", mesaj: "Mağaza bulunamadı." };
+    if (
+      kaynak.id !== mevcut.id &&
+      !dukkanIciAktarabilirMi(oturum, kaynak, mevcut)
+    ) {
       return {
         durum: "HATA",
         mesaj: `${kaynak.ad} ile ${mevcut.ad} aynı dükkân değil ya da ikisinde de yetkiniz yok.`,
@@ -548,13 +603,19 @@ export async function aktarimSatisiKaydet(
         // Aynı telefonla kayıtlı müşteri varsa tekrar oluşturma.
         const telefon = veri.musteriTelefon?.replace(/\s/g, "") || null;
         const mevcut = telefon
-          ? await tx.musteri.findFirst({ where: { telefon }, select: { id: true } })
+          ? await tx.musteri.findFirst({
+              where: { telefon },
+              select: { id: true },
+            })
           : null;
         musteriId = mevcut
           ? mevcut.id
           : (
               await tx.musteri.create({
-                data: { adSoyad: veri.musteriAdSoyad ?? "İsimsiz Müşteri", telefon },
+                data: {
+                  adSoyad: veri.musteriAdSoyad ?? "İsimsiz Müşteri",
+                  telefon,
+                },
               })
             ).id;
       }
@@ -644,8 +705,10 @@ export async function aktarimSatisiKaydet(
       musteriAdi: sonuc.musteriAdi,
     };
   } catch (hata) {
-    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
-    if (hata instanceof Error && hata.message) return { durum: "HATA", mesaj: hata.message };
+    if (hata instanceof YetkiHatasi)
+      return { durum: "HATA", mesaj: hata.message };
+    if (hata instanceof Error && hata.message)
+      return { durum: "HATA", mesaj: hata.message };
     console.error("Aktarım satışı kaydedilemedi:", hata);
     return { durum: "HATA", mesaj: "Satış kaydedilemedi. Tekrar deneyin." };
   }

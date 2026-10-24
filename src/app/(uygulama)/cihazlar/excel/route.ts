@@ -1,10 +1,7 @@
 import { logYaz } from "@/lib/log";
-import {
-  CIHAZ_ICERIK,
-  filtredenWhere,
-  filtreyiCoz,
-} from "@/lib/cihazFiltre";
+import { CIHAZ_ICERIK, filtredenWhere, filtreyiCoz } from "@/lib/cihazFiltre";
 import { excelBasliklari, excelUret, kurusuExcelSayisi } from "@/lib/excel";
+import { EXCEL_EN_COK_SATIR, excelKesintiNotu } from "@/lib/excelSiniri";
 import { gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { oturumuTazeOku } from "@/lib/oturumTaze";
 import { prisma } from "@/lib/prisma";
@@ -33,7 +30,7 @@ export async function GET(istek: Request) {
   // Dosya ekrandaki listenin aynısı: aynı mağaza kısıtı burada da geçerli.
   const where = filtredenWhere(filtre, gorunurMagazaIdleri(oturum), bugun);
 
-  const [kullanici, satirlar] = await Promise.all([
+  const [kullanici, tumSatirlar] = await Promise.all([
     prisma.kullanici.findUnique({
       where: { id: oturum.kullaniciId },
       select: { sutunTercihi: true },
@@ -43,17 +40,23 @@ export async function GET(istek: Request) {
       include: CIHAZ_ICERIK,
       orderBy: [{ girisTarihi: "desc" }, { id: "desc" }],
       // Tek dosyada makul bir üst sınır; daha fazlası için filtre daraltılır.
-      take: 20000,
+      // Sınırın aşıldığını anlamak için bir fazlası çekiliyor.
+      take: EXCEL_EN_COK_SATIR + 1,
     }),
   ]);
+
+  const kesildi = tumSatirlar.length > EXCEL_EN_COK_SATIR;
+  const satirlar = tumSatirlar.slice(0, EXCEL_EN_COK_SATIR);
 
   const sutunlar = sutunlariSirala(sutunTercihiniCoz(kullanici?.sutunTercihi));
 
   const veriSatirlari = satirlar.map((satir) =>
     sutunlar.map((anahtar) => {
       if (PARASAL.has(anahtar)) {
-        if (anahtar === "alisFiyati") return kurusuExcelSayisi(satir.alisFiyatiKurus);
-        if (anahtar === "satisFiyati") return kurusuExcelSayisi(satir.satisFiyatiKurus);
+        if (anahtar === "alisFiyati")
+          return kurusuExcelSayisi(satir.alisFiyatiKurus);
+        if (anahtar === "satisFiyati")
+          return kurusuExcelSayisi(satir.satisFiyatiKurus);
         return kurusuExcelSayisi(karKurus(satir));
       }
       if (anahtar === "bekleme") return beklemeGunu(satir, bugun);
@@ -76,7 +79,10 @@ export async function GET(istek: Request) {
       ustBilgiler: [
         `Cihaz Listesi — ${satirlar.length} kayıt`,
         `Toplam alış değeri: ${(toplamAlis / 100).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL`,
-        filtreOzeti.length ? `Filtreler — ${filtreOzeti.join(" · ")}` : "Filtre uygulanmadı",
+        filtreOzeti.length
+          ? `Filtreler — ${filtreOzeti.join(" · ")}`
+          : "Filtre uygulanmadı",
+        ...(excelKesintiNotu(kesildi) ? [excelKesintiNotu(kesildi)!] : []),
       ],
       sutunlar: sutunlar.map((a) => ({
         baslik: SUTUNLAR[a].baslik,
@@ -90,7 +96,7 @@ export async function GET(istek: Request) {
   await logYaz(oturum, {
     islem: LOG_ISLEM.EXCEL_AKTAR,
     hedefTip: "StokKalemi",
-    detay: `${satirlar.length} cihaz · ${sutunlar.length} sütun`,
+    detay: `${satirlar.length} cihaz · ${sutunlar.length} sütun${kesildi ? " · sınıra takıldı" : ""}`,
   });
 
   const damga = new Date().toISOString().slice(0, 10).replace(/-/g, "");

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  EN_COK_CIHAZ,
+  EN_COK_GRUP,
   aramaYeterliMi,
+  kesintiUyarisi,
+  sonucuKisalt,
   grupAciklamasi,
   grupEtiketi,
   grupFiyatMetni,
@@ -15,7 +19,9 @@ import {
   type GecmisKayit,
 } from "./urunArama";
 
-function cihaz(ozel: Partial<AranabilirCihaz> & { id: number }): AranabilirCihaz {
+function cihaz(
+  ozel: Partial<AranabilirCihaz> & { id: number },
+): AranabilirCihaz {
   return {
     marka: "Samsung",
     model: "Galaxy A55",
@@ -36,7 +42,11 @@ test("arama en az iki karakter ister", () => {
 });
 
 test("aynı barkodtaki cihazlar tek satırda toplanır", () => {
-  const gruplar = gruplaUrunler([cihaz({ id: 1 }), cihaz({ id: 2 }), cihaz({ id: 3 })]);
+  const gruplar = gruplaUrunler([
+    cihaz({ id: 1 }),
+    cihaz({ id: 2 }),
+    cihaz({ id: 3 }),
+  ]);
   assert.equal(gruplar.length, 1, "20 adet aksesuar 20 satır dökmemeli");
   assert.equal(gruplar[0].adet, 3);
   assert.deepEqual(gruplar[0].cihazIdleri, [1, 2, 3]);
@@ -56,7 +66,11 @@ test("barkodsuz ürünler marka ve modele göre gruplanır", () => {
     cihaz({ id: 1, barkod: null, marka: "Ttec", model: "Kablo" }),
     cihaz({ id: 2, barkod: null, marka: "TTEC", model: "KABLO" }),
   ]);
-  assert.equal(gruplar.length, 1, "büyük/küçük harf farkı ayrı ürün sayılmamalı");
+  assert.equal(
+    gruplar.length,
+    1,
+    "büyük/küçük harf farkı ayrı ürün sayılmamalı",
+  );
   assert.equal(gruplar[0].adet, 2);
 });
 
@@ -66,7 +80,11 @@ test("gruplar ada göre sıralanır", () => {
     cihaz({ id: 2, barkod: "2", marka: "Anker", model: "Kablo" }),
     cihaz({ id: 3, barkod: "3", marka: "Çınar", model: "Kılıf" }),
   ]);
-  assert.deepEqual(gruplar.map(grupEtiketi), ["Anker Kablo", "Çınar Kılıf", "Zyxel Modem"]);
+  assert.deepEqual(gruplar.map(grupEtiketi), [
+    "Anker Kablo",
+    "Çınar Kılıf",
+    "Zyxel Modem",
+  ]);
 });
 
 test("seri numaralı cihazlar listede önce gelir", () => {
@@ -106,7 +124,10 @@ test("fiyatları farklı grupta aralık yazılır", () => {
 });
 
 test("açıklamada adet, kategori, mağaza ve barkod var", () => {
-  const gruplar = gruplaUrunler([cihaz({ id: 1 }), cihaz({ id: 2, magazaAdi: "OPTİMUM AVM" })]);
+  const gruplar = gruplaUrunler([
+    cihaz({ id: 1 }),
+    cihaz({ id: 2, magazaAdi: "OPTİMUM AVM" }),
+  ]);
   const metin = grupAciklamasi(gruplar[0]);
   assert.match(metin, /2 adet/);
   assert.match(metin, /Cep Telefonu/);
@@ -125,7 +146,10 @@ test("boş listeden grup çıkmaz", () => {
 });
 
 test("sonuç yok mesajı aranan metni söyler", () => {
-  assert.equal(sonucYokMesaji("  airpods "), '"airpods" için stokta ürün bulunamadı.');
+  assert.equal(
+    sonucYokMesaji("  airpods "),
+    '"airpods" için stokta ürün bulunamadı.',
+  );
 });
 
 test("seri numarasız özdeş ürünlerde seçim sorulmaz", () => {
@@ -140,7 +164,10 @@ test("seri numarasız özdeş ürünlerde seçim sorulmaz", () => {
 test("seri numaralı cihaz varsa seçim sorulur", () => {
   // IMEI'si olan cihazlarda hangisinin satıldığı önemli: maliyetleri farklı
   // olabiliyor ve müşteriye giden cihazın numarası kayda geçmeli.
-  assert.equal(secimSorulmali([{ seriNo: "350000000000001" }, { seriNo: null }]), true);
+  assert.equal(
+    secimSorulmali([{ seriNo: "350000000000001" }, { seriNo: null }]),
+    true,
+  );
   assert.equal(secimSorulmali([{ seriNo: "350000000000001" }]), true);
 });
 
@@ -169,9 +196,21 @@ test("kart bilgisi en son girişten alınır", () => {
   // Aynı barkod yıllar içinde farklı fiyatlarla girilebiliyor; kullanıcı en
   // güncel fiyatı bekler.
   const kartlar = gruplaGecmisUrunler([
-    gecmis({ alisFiyatiKurus: 100000, girisTarihi: new Date("2026-01-01"), model: "ESKİ" }),
-    gecmis({ alisFiyatiKurus: 958833, girisTarihi: new Date("2026-10-01"), model: "YENİ" }),
-    gecmis({ alisFiyatiKurus: 500000, girisTarihi: new Date("2026-05-01"), model: "ORTA" }),
+    gecmis({
+      alisFiyatiKurus: 100000,
+      girisTarihi: new Date("2026-01-01"),
+      model: "ESKİ",
+    }),
+    gecmis({
+      alisFiyatiKurus: 958833,
+      girisTarihi: new Date("2026-10-01"),
+      model: "YENİ",
+    }),
+    gecmis({
+      alisFiyatiKurus: 500000,
+      girisTarihi: new Date("2026-05-01"),
+      model: "ORTA",
+    }),
   ]);
   assert.equal(kartlar[0].sonAlisKurus, 958833);
   assert.equal(kartlar[0].model, "YENİ");
@@ -188,7 +227,10 @@ test("kartlar en son girilenden eskiye sıralanır", () => {
     gecmis({ barkod: "1", model: "ESKİ", girisTarihi: new Date("2026-01-01") }),
     gecmis({ barkod: "2", model: "YENİ", girisTarihi: new Date("2026-10-01") }),
   ]);
-  assert.deepEqual(kartlar.map((k) => k.model), ["YENİ", "ESKİ"]);
+  assert.deepEqual(
+    kartlar.map((k) => k.model),
+    ["YENİ", "ESKİ"],
+  );
 });
 
 test("geçmiş ürün açıklamasında kategori, barkod ve adet var", () => {
@@ -203,4 +245,59 @@ test("geçmiş ürün açıklamasında kategori, barkod ve adet var", () => {
 test("alt kategorisi olmayan üründe yalnız kategori yazılır", () => {
   const kartlar = gruplaGecmisUrunler([gecmis({ altKategoriAdi: null })]);
   assert.match(gecmisUrunAciklamasi(kartlar[0]), /^Aksesuar ·/);
+});
+
+test("sınırın altındaki sonuç kesilmemiş sayılır", () => {
+  const sonuc = sonucuKisalt([1, 2, 3], 5);
+  assert.deepEqual(sonuc.gruplar, [1, 2, 3]);
+  assert.equal(sonuc.kesildi, false);
+});
+
+test("sınıra tam oturan sonuç kesilmemiş sayılır", () => {
+  // Tam sınır kadar sonuç varsa gerçekten hepsi gösteriliyor; uyarı yanlış
+  // olurdu.
+  const sonuc = sonucuKisalt([1, 2, 3], 3);
+  assert.equal(sonuc.gruplar.length, 3);
+  assert.equal(sonuc.kesildi, false);
+});
+
+test("sınırı aşan sonuç kısaltılır ve kesildi işaretlenir", () => {
+  const sonuc = sonucuKisalt([1, 2, 3, 4], 3);
+  assert.deepEqual(sonuc.gruplar, [1, 2, 3]);
+  assert.equal(sonuc.kesildi, true);
+});
+
+test("sonucuKisalt varsayılan sınırı 30 ürün", () => {
+  const tumu = Array.from({ length: 31 }, (_, i) => i);
+  const sonuc = sonucuKisalt(tumu);
+  assert.equal(EN_COK_GRUP, 30);
+  assert.equal(sonuc.gruplar.length, 30);
+  assert.equal(sonuc.kesildi, true);
+});
+
+test("kesilmeyen sonuçta uyarı yok", () => {
+  assert.equal(kesintiUyarisi({ kesildi: false }), null);
+});
+
+test("kesilen sonuçta uyarı sınırı ve ne yapılacağını söyler", () => {
+  const uyari = kesintiUyarisi({ kesildi: true });
+  assert.ok(uyari);
+  assert.match(uyari, /30/);
+  assert.match(uyari, /daralt/i);
+});
+
+test("uyarı verilen sınırı kullanır", () => {
+  assert.match(kesintiUyarisi({ kesildi: true }, 500)!, /500/);
+});
+
+test("cihaz sınırına dayanıldıysa grup sayısı azken de kesildi sayılır", () => {
+  // 500 cihaz tek modele düşerse grup sayısı 1 olur; grup sınırına bakmak
+  // sonucun eksik olduğunu gizlerdi.
+  const sonuc = sonucuKisalt([1], EN_COK_GRUP, true);
+  assert.equal(sonuc.gruplar.length, 1);
+  assert.equal(sonuc.kesildi, true);
+});
+
+test("cihaz aramasında veritabanı sınırı 500 cihaz", () => {
+  assert.equal(EN_COK_CIHAZ, 500);
 });

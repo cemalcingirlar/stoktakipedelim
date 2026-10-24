@@ -9,6 +9,9 @@ import { prisma } from "@/lib/prisma";
 import { cihazSec, type AdayCihaz } from "@/lib/cihazSecimi";
 import {
   EN_COK_GRUP,
+  sonucuKisalt,
+  type AramaSonucu,
+  EN_COK_CIHAZ,
   aramaYeterliMi,
   gruplaUrunler,
   secimSorulmali,
@@ -93,13 +96,17 @@ export async function satisCihaziOkut(
     const oturum = await oturumZorunlu();
 
     const aranan = kodNormalize(kod);
-    if (aranan.length < 3) return { durum: "HATA", mesaj: "Geçerli bir seri no veya barkod girin." };
+    if (aranan.length < 3)
+      return { durum: "HATA", mesaj: "Geçerli bir seri no veya barkod girin." };
 
     // Barkod birden çok cihazda olabiliyor (seri numarası olmayan ürünler).
     // Hepsi çekiliyor; hangisinin işleme alınacağına cihazSec karar veriyor.
     const adaylar = await prisma.stokKalemi.findMany({
       where: { OR: [{ seriNo: aranan }, { barkod: aranan }] },
-      include: { magaza: { select: { ad: true } }, kategori: { select: { ad: true } } },
+      include: {
+        magaza: { select: { ad: true } },
+        kategori: { select: { ad: true } },
+      },
       orderBy: { id: "asc" },
     });
 
@@ -120,7 +127,14 @@ export async function satisCihaziOkut(
         ? adaylar.find((a) => a.id === secim.cihaz.id)!
         : (adaylar.find((a) => a.seriNo === aranan) ?? adaylar[0]);
 
-    if (!cihaz) return { durum: "HATA", mesaj: secim.durum === "YOK" ? secim.mesaj : `${aranan} sistemde kayıtlı değil.` };
+    if (!cihaz)
+      return {
+        durum: "HATA",
+        mesaj:
+          secim.durum === "YOK"
+            ? secim.mesaj
+            : `${aranan} sistemde kayıtlı değil.`,
+      };
     if (secim.durum === "YOK" && cihaz.durum !== STOK_DURUM.TRANSFERDE) {
       return { durum: "HATA", mesaj: secim.mesaj };
     }
@@ -134,7 +148,9 @@ export async function satisCihaziOkut(
         where: {
           stokKalemiId: cihaz.id,
           transfer: {
-            durum: { in: [TRANSFER_DURUM.BEKLIYOR, TRANSFER_DURUM.KISMI_KABUL] },
+            durum: {
+              in: [TRANSFER_DURUM.BEKLIYOR, TRANSFER_DURUM.KISMI_KABUL],
+            },
           },
         },
         orderBy: { id: "desc" },
@@ -163,7 +179,10 @@ export async function satisCihaziOkut(
       };
     }
     if (cihaz.durum !== STOK_DURUM.STOKTA) {
-      return { durum: "HATA", mesaj: `${aranan} satışa uygun değil (${cihaz.durum}).` };
+      return {
+        durum: "HATA",
+        mesaj: `${aranan} satışa uygun değil (${cihaz.durum}).`,
+      };
     }
     if (!magazadaIslemYapabilirMi(oturum, cihaz.magazaId)) {
       return {
@@ -189,7 +208,8 @@ export async function satisCihaziOkut(
       },
     };
   } catch (hata) {
-    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
+    if (hata instanceof YetkiHatasi)
+      return { durum: "HATA", mesaj: hata.message };
     console.error("Satış cihazı okutulamadı:", hata);
     return { durum: "HATA", mesaj: "Cihaz aranamadı. Tekrar deneyin." };
   }
@@ -205,7 +225,10 @@ export async function satisCihaziniSec(
 
     const cihaz = await prisma.stokKalemi.findUnique({
       where: { id: cihazId },
-      include: { magaza: { select: { ad: true } }, kategori: { select: { ad: true } } },
+      include: {
+        magaza: { select: { ad: true } },
+        kategori: { select: { ad: true } },
+      },
     });
     if (!cihaz) return { durum: "HATA", mesaj: "Cihaz bulunamadı." };
 
@@ -217,7 +240,10 @@ export async function satisCihaziniSec(
       secilmisIdler,
     });
     if (secim.durum !== "TEK") {
-      return { durum: "HATA", mesaj: secim.durum === "YOK" ? secim.mesaj : "Cihaz seçilemedi." };
+      return {
+        durum: "HATA",
+        mesaj: secim.durum === "YOK" ? secim.mesaj : "Cihaz seçilemedi.",
+      };
     }
 
     return {
@@ -237,7 +263,8 @@ export async function satisCihaziniSec(
       },
     };
   } catch (hata) {
-    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
+    if (hata instanceof YetkiHatasi)
+      return { durum: "HATA", mesaj: hata.message };
     console.error("Cihaz seçilemedi:", hata);
     return { durum: "HATA", mesaj: "Cihaz seçilemedi. Tekrar deneyin." };
   }
@@ -259,10 +286,10 @@ export async function satisCihaziniSec(
 export async function satisUrunleriniAra(
   sorgu: string,
   secilmisIdler: number[] = [],
-): Promise<UrunGrubu[]> {
+): Promise<AramaSonucu<UrunGrubu>> {
   try {
     const oturum = await oturumZorunlu();
-    if (!aramaYeterliMi(sorgu)) return [];
+    if (!aramaYeterliMi(sorgu)) return { gruplar: [], kesildi: false };
 
     const gorunur = adminMi(oturum) ? null : yetkiliMagazalar(oturum);
 
@@ -273,14 +300,20 @@ export async function satisUrunleriniAra(
         ...(gorunur === null ? {} : { magazaId: { in: gorunur } }),
         ...(secilmisIdler.length > 0 ? { id: { notIn: secilmisIdler } } : {}),
       },
-      include: { magaza: { select: { ad: true } }, kategori: { select: { ad: true } } },
+      include: {
+        magaza: { select: { ad: true } },
+        kategori: { select: { ad: true } },
+      },
       // Gruplama ekranda değil burada yapılıyor; makul bir üst sınır yeter.
-      take: 500,
+      // Sınıra dayanıldığını anlamak için bir fazlası çekiliyor.
+      take: EN_COK_CIHAZ + 1,
       orderBy: { id: "asc" },
     });
 
-    return gruplaUrunler(
-      cihazlar.map((c) => ({
+    const cihazKesildi = cihazlar.length > EN_COK_CIHAZ;
+
+    const tumGruplar = gruplaUrunler(
+      cihazlar.slice(0, EN_COK_CIHAZ).map((c) => ({
         id: c.id,
         marka: c.marka,
         model: c.model,
@@ -290,11 +323,12 @@ export async function satisUrunleriniAra(
         magazaAdi: c.magaza.ad,
         alisFiyatiKurus: c.alisFiyatiKurus,
       })),
-    ).slice(0, EN_COK_GRUP);
+    );
+    return sonucuKisalt(tumGruplar, EN_COK_GRUP, cihazKesildi);
   } catch (hata) {
-    if (hata instanceof YetkiHatasi) return [];
+    if (hata instanceof YetkiHatasi) return { gruplar: [], kesildi: false };
     console.error("Ürün araması başarısız:", hata);
-    return [];
+    return { gruplar: [], kesildi: false };
   }
 }
 
@@ -315,17 +349,25 @@ export async function satisUrunGrubunuSec(
   try {
     const oturum = await oturumZorunlu();
 
-    const idler = cihazIdleri.filter((id) => Number.isInteger(id) && id > 0).slice(0, 500);
-    if (idler.length === 0) return { durum: "HATA", mesaj: "Ürün seçimi okunamadı." };
+    const idler = cihazIdleri
+      .filter((id) => Number.isInteger(id) && id > 0)
+      .slice(0, 500);
+    if (idler.length === 0)
+      return { durum: "HATA", mesaj: "Ürün seçimi okunamadı." };
 
     const adaylar = await prisma.stokKalemi.findMany({
       where: { id: { in: idler } },
-      include: { magaza: { select: { ad: true } }, kategori: { select: { ad: true } } },
+      include: {
+        magaza: { select: { ad: true } },
+        kategori: { select: { ad: true } },
+      },
       orderBy: { id: "asc" },
     });
-    if (adaylar.length === 0) return { durum: "HATA", mesaj: "Seçilen ürün bulunamadı." };
+    if (adaylar.length === 0)
+      return { durum: "HATA", mesaj: "Seçilen ürün bulunamadı." };
 
-    const aranan = adaylar[0].barkod ?? `${adaylar[0].marka} ${adaylar[0].model}`;
+    const aranan =
+      adaylar[0].barkod ?? `${adaylar[0].marka} ${adaylar[0].model}`;
     const secim = cihazSec(adaylar.map(adayaCevir), {
       aranan,
       yetkiliMagazalar: adminMi(oturum) ? null : yetkiliMagazalar(oturum),
@@ -339,7 +381,8 @@ export async function satisUrunGrubunuSec(
     if (secim.durum === "SECIM" && secimSorulmali(secim.adaylar)) {
       return { durum: "SECIM", aranan, adaylar: secim.adaylar };
     }
-    const secilenId = secim.durum === "TEK" ? secim.cihaz.id : secim.adaylar[0].id;
+    const secilenId =
+      secim.durum === "TEK" ? secim.cihaz.id : secim.adaylar[0].id;
 
     const cihaz = adaylar.find((a) => a.id === secilenId)!;
     return {
@@ -359,7 +402,8 @@ export async function satisUrunGrubunuSec(
       },
     };
   } catch (hata) {
-    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
+    if (hata instanceof YetkiHatasi)
+      return { durum: "HATA", mesaj: hata.message };
     console.error("Listeden ürün seçilemedi:", hata);
     return { durum: "HATA", mesaj: "Ürün seçilemedi. Tekrar deneyin." };
   }
@@ -388,8 +432,12 @@ export async function musteriAra(sorgu: string): Promise<MusteriOzeti[]> {
         OR: [
           { adSoyad: { contains: temiz } },
           { adSoyad: { contains: aramaNormalize(temiz) } },
-          ...(rakamlar.length >= 4 ? [{ telefon: { contains: rakamlar } }] : []),
-          ...(rakamlar.length >= 4 ? [{ tcknVkn: { contains: rakamlar } }] : []),
+          ...(rakamlar.length >= 4
+            ? [{ telefon: { contains: rakamlar } }]
+            : []),
+          ...(rakamlar.length >= 4
+            ? [{ tcknVkn: { contains: rakamlar } }]
+            : []),
         ],
       },
       orderBy: { adSoyad: "asc" },
@@ -441,7 +489,10 @@ const satisSemasi = z
 
 export type SatisDurumu = { hata?: string };
 
-export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise<SatisDurumu> {
+export async function satisKaydet(
+  _onceki: SatisDurumu,
+  form: FormData,
+): Promise<SatisDurumu> {
   let gidilecekYol: string;
 
   try {
@@ -451,7 +502,9 @@ export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise
     try {
       cozulen = JSON.parse(String(form.get("veri") ?? ""));
     } catch {
-      return { hata: "Form verisi okunamadı. Sayfayı yenileyip tekrar deneyin." };
+      return {
+        hata: "Form verisi okunamadı. Sayfayı yenileyip tekrar deneyin.",
+      };
     }
 
     const sonuc = satisSemasi.safeParse(cozulen);
@@ -467,7 +520,8 @@ export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise
       where: { id: { in: idler } },
       include: { tedarikci: { select: { ad: true } } },
     });
-    if (cihazlar.length !== idler.length) return { hata: "Cihazlardan biri bulunamadı." };
+    if (cihazlar.length !== idler.length)
+      return { hata: "Cihazlardan biri bulunamadı." };
 
     for (const cihaz of cihazlar) {
       if (cihaz.durum !== STOK_DURUM.STOKTA) {
@@ -479,7 +533,9 @@ export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise
       magazaIslemiZorunlu(oturum, cihaz.magazaId);
     }
 
-    const fiyatHarita = new Map(veri.satirlar.map((s) => [s.cihazId, s.satisFiyatiKurus]));
+    const fiyatHarita = new Map(
+      veri.satirlar.map((s) => [s.cihazId, s.satisFiyatiKurus]),
+    );
 
     // Satışı yapan: seçilmişse o, değilse oturum sahibi. Seçilen kişinin
     // cihazların bulunduğu mağazalarda yetkili olması gerekiyor — başka
@@ -519,13 +575,19 @@ export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise
       let musteriId = veri.musteriId;
 
       if (musteriId) {
-        const varMi = await tx.musteri.findUnique({ where: { id: musteriId }, select: { id: true } });
+        const varMi = await tx.musteri.findUnique({
+          where: { id: musteriId },
+          select: { id: true },
+        });
         if (!varMi) throw new Error("Seçilen müşteri bulunamadı.");
       } else {
         // Aynı telefonla kayıtlı müşteri varsa tekrar oluşturma.
         const telefon = veri.musteriTelefon?.replace(/\s/g, "") || null;
         const mevcut = telefon
-          ? await tx.musteri.findFirst({ where: { telefon }, select: { id: true } })
+          ? await tx.musteri.findFirst({
+              where: { telefon },
+              select: { id: true },
+            })
           : null;
 
         if (mevcut) {
@@ -600,7 +662,10 @@ export async function satisKaydet(_onceki: SatisDurumu, form: FormData): Promise
       islem: LOG_ISLEM.SATIS_YAP,
       hedefTip: "StokKalemi",
       hedefId: cihazlar.length === 1 ? cihazlar[0].id : undefined,
-      detay: `${cihazlar.length} cihaz · ${satis.musteriAdi} · ${ozet}`.slice(0, 500),
+      detay: `${cihazlar.length} cihaz · ${satis.musteriAdi} · ${ozet}`.slice(
+        0,
+        500,
+      ),
     });
 
     revalidatePath("/cihazlar");

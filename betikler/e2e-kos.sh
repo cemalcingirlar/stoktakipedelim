@@ -98,7 +98,7 @@ fi
 
 if [ -n "$OZET" ]; then
   echo "$SUIT :: $OZET"
-  grep -E '^  ✗' "$CIKTI_DOSYA" | head -8 | sed 's/^/  /'
+  grep -E '^ *✗' "$CIKTI_DOSYA" | head -8 | sed 's/^/  /'
   exit 1
 fi
 

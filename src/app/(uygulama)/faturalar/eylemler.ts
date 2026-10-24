@@ -8,6 +8,9 @@ import { logYaz } from "@/lib/log";
 import { aramaNormalize, kodNormalize } from "@/lib/metin";
 import {
   EN_COK_GRUP,
+  sonucuKisalt,
+  type AramaSonucu,
+  EN_COK_CIHAZ,
   aramaYeterliMi,
   gruplaGecmisUrunler,
   type GecmisUrun,
@@ -176,10 +179,10 @@ export type SeriNoKontrolu = { kullanimda: boolean; aciklama?: string };
  */
 export async function faturaUrunleriniAra(
   sorgu: string,
-): Promise<GecmisUrun[]> {
+): Promise<AramaSonucu<GecmisUrun>> {
   try {
     await adminZorunlu();
-    if (!aramaYeterliMi(sorgu)) return [];
+    if (!aramaYeterliMi(sorgu)) return { gruplar: [], kesildi: false };
 
     const kayitlar = await prisma.stokKalemi.findMany({
       where: {
@@ -196,12 +199,15 @@ export async function faturaUrunleriniAra(
         altKategori: { select: { ad: true } },
       },
       // Gruplama burada yapılıyor; makul bir üst sınır yeter.
-      take: 500,
+      // Sınıra dayanıldığını anlamak için bir fazlası çekiliyor.
+      take: EN_COK_CIHAZ + 1,
       orderBy: { girisTarihi: "desc" },
     });
 
-    return gruplaGecmisUrunler(
-      kayitlar.map((k) => ({
+    const cihazKesildi = kayitlar.length > EN_COK_CIHAZ;
+
+    const tumGruplar = gruplaGecmisUrunler(
+      kayitlar.slice(0, EN_COK_CIHAZ).map((k) => ({
         barkod: k.barkod,
         marka: k.marka,
         model: k.model,
@@ -210,11 +216,12 @@ export async function faturaUrunleriniAra(
         alisFiyatiKurus: k.alisFiyatiKurus,
         girisTarihi: k.girisTarihi,
       })),
-    ).slice(0, EN_COK_GRUP);
+    );
+    return sonucuKisalt(tumGruplar, EN_COK_GRUP, cihazKesildi);
   } catch (hata) {
-    if (hata instanceof YetkiHatasi) return [];
+    if (hata instanceof YetkiHatasi) return { gruplar: [], kesildi: false };
     console.error("Fatura ürün araması başarısız:", hata);
-    return [];
+    return { gruplar: [], kesildi: false };
   }
 }
 
