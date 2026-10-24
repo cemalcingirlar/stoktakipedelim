@@ -66,6 +66,29 @@ export type Dogrulama = {
  * "Doğrulandı" ile "doğrulanamadı" ayrı tutuluyor: ikisini de başarı saymak,
  * hiç doğrulamamakla aynı yere çıkıyordu.
  */
+/**
+ * Yükleme hiç gerçekleşmediyse (Drive yapılandırılmamış, ağ hatası) yazılan
+ * özet.
+ *
+ * Bu durumda "yüklenen boyut okunamadı" demek yanıltıcı olurdu: ortada
+ * yüklenen bir dosya yok. Yine de bütünlük kontrolü sıkıştırmadan önce
+ * çalıştığı için sonucu biliniyor ve kaydediliyor — yedeğin kendisi
+ * sağlamsa, sorun yalnız yüklemede demektir.
+ */
+export function yuklenmeyenDogrulama(butunluk: string | null): Dogrulama {
+  if (butunluk === null) {
+    const metin = "Bütünlük kontrolü yapılamadı.";
+    return { tamam: false, metin, sorun: metin };
+  }
+  const sorun = butunlukSorunu(butunluk);
+  if (sorun) return { tamam: false, metin: sorun, sorun };
+  return {
+    tamam: false,
+    metin: "Bütünlük tamam; yedek yüklenemedi.",
+    sorun: null,
+  };
+}
+
 export function yedegiDogrula(girdi: DogrulamaGirdisi): Dogrulama {
   const butunluk =
     girdi.butunluk === null

@@ -19,8 +19,13 @@ import Database from "better-sqlite3";
  * bir varlık değildir. İşaret olmadan Turbopack tüm projeyi çıktıya izler ve
  * dağıtım gereksiz yere şişer.
  */
-export function veritabaniYolu(url = process.env.DATABASE_URL ?? "file:./dev.db"): string {
-  return path.resolve(/*turbopackIgnore: true*/ process.cwd(), url.replace(/^file:/, ""));
+export function veritabaniYolu(
+  url = process.env.DATABASE_URL ?? "file:./dev.db",
+): string {
+  return path.resolve(
+    /*turbopackIgnore: true*/ process.cwd(),
+    url.replace(/^file:/, ""),
+  );
 }
 
 /**
@@ -40,9 +45,43 @@ export function anlikGoruntuAl(kaynakYol: string, hedefYol: string): void {
   }
 }
 
+/**
+ * Yedek dosyasının bütünlüğünü sınar; SQLite'ın cevabını olduğu gibi döner
+ * ("ok" ya da sorunların dökümü).
+ *
+ * VACUUM INTO tutarlı bir dosya yazar ama diskte bozulma varsa onu da
+ * kopyalayabilir. Yedeğin bozuk olduğunu felaket günü öğrenmemek için her
+ * yedekte çalıştırılıyor.
+ *
+ * Dosya hiç açılamıyorsa (bozuk başlık, yarım yazılmış) hata fırlatmak
+ * yerine sebebi metin olarak dönüyor: çağıran taraf bunu doğrulama
+ * sonucuna yazıyor, yedekleme akışı tek bir try bloğunda kesilmiyor.
+ */
+export function butunlukKontrolu(yol: string): string {
+  let db: Database.Database | null = null;
+  try {
+    db = new Database(yol, { readonly: true, fileMustExist: true });
+    const satirlar = db.prepare("PRAGMA integrity_check").all() as {
+      integrity_check: string;
+    }[];
+    return satirlar.map((s) => s.integrity_check).join("\n");
+  } catch (hata) {
+    return hata instanceof Error ? hata.message : String(hata);
+  } finally {
+    db?.close();
+  }
+}
+
 /** Dosyayı gzip'ler ve oluşan dosyanın bayt cinsinden boyutunu döner. */
-export async function gziple(kaynakYol: string, hedefYol: string): Promise<number> {
-  await pipeline(createReadStream(kaynakYol), createGzip({ level: 9 }), createWriteStream(hedefYol));
+export async function gziple(
+  kaynakYol: string,
+  hedefYol: string,
+): Promise<number> {
+  await pipeline(
+    createReadStream(kaynakYol),
+    createGzip({ level: 9 }),
+    createWriteStream(hedefYol),
+  );
   return (await stat(hedefYol)).size;
 }
 

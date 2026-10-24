@@ -494,5 +494,14 @@ model Yedek {
   hata         String?
   tarih        DateTime @default(now())
 
+  /// Yedek alındıktan sonra sınandı mı: bütünlük kontrolü + yüklenen boyut.
+  /// Yedek almakla yedeği olmak aynı şey değil; doğrulanmamış yedek,
+  /// bozukluğu felaket günü anlaşılan yedektir.
+  dogrulandi Boolean @default(false)
+  /// Doğrulamanın insan okunur özeti ("Bütünlük ve yüklenen boyut doğrulandı").
+  dogrulama  String?
+  /// Drive'ın bildirdiği dosya boyutu; yereldekiyle aynı olmalı.
+  uzakBoyutBayt Int?
+
   @@index([tarih])
 }

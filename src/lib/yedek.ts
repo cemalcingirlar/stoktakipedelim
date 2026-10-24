@@ -5,7 +5,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { google } from "googleapis";
 import { prisma } from "./prisma";
-import { anlikGoruntuAl, gziple, veritabaniYolu, yedekDosyaAdi } from "./sqliteAnlik";
+import {
+  anlikGoruntuAl,
+  butunlukKontrolu,
+  gziple,
+  veritabaniYolu,
+  yedekDosyaAdi,
+} from "./sqliteAnlik";
+import {
+  yedegiDogrula,
+  yuklenmeyenDogrulama,
+  type Dogrulama,
+} from "./yedekDogrulama";
 
 export { veritabaniYolu };
 
@@ -22,6 +33,10 @@ export type YedekSonucu = {
   hata?: string;
   /** Rotasyonda silinen eski yedek sayısı. */
   silinen?: number;
+  /** Bütünlük ve yüklenen boyut sınaması; src/lib/yedekDogrulama.ts. */
+  dogrulama?: Dogrulama;
+  /** Drive'ın bildirdiği dosya boyutu. */
+  uzakBoyutBayt?: number | null;
 };
 
 /** Saklanacak yedek sayısı; daha eskiler rotasyonda silinir. */
@@ -108,11 +123,15 @@ export async function yedekAl(
 
   // Hata durumunda da kaydedilebilmesi için try bloğunun dışında tutulur.
   let boyut = 0;
+  let butunluk: string | null = null;
   let sonuc: YedekSonucu = { basarili: false, dosyaAdi, boyutBayt: 0 };
 
   try {
     await mkdir(gecici, { recursive: true });
     anlikGoruntuAl(veritabaniYolu(), anlikYol);
+    // Bütünlük SIKIŞTIRMADAN ÖNCE, anlık görüntü üzerinde sınanıyor: bozuk
+    // bir dosyayı sıkıştırıp yüklemenin anlamı yok.
+    butunluk = butunlukKontrolu(anlikYol);
     boyut = await gziple(anlikYol, gzipYol);
 
     const ayar = yedekAyariniOku();
@@ -129,6 +148,40 @@ export async function yedekAl(
       supportsAllDrives: true,
     });
 
+    // Drive boyutu metin olarak döner; sayıya çevrilemiyorsa "bilinmiyor".
+    const uzakHam = yukleme.data.size;
+    const uzakBoyut =
+      uzakHam === null || uzakHam === undefined || uzakHam === ""
+        ? null
+        : Number(uzakHam);
+    const dogrulama = yedegiDogrula({
+      butunluk,
+      yerelBayt: boyut,
+      uzakBayt: Number.isFinite(uzakBoyut) ? uzakBoyut : null,
+    });
+
+    // Doğrulamayı geçemeyen yedek Drive'da bırakılmıyor: rotasyon 14 slotla
+    // sınırlı, bozuk dosya orada durursa sağlam bir eski yedeği düşürür ve
+    // felaket günü elde bozuk yedek kalır.
+    if (dogrulama.sorun) {
+      if (yukleme.data.id) {
+        try {
+          await drive.files.delete({
+            fileId: yukleme.data.id,
+            supportsAllDrives: true,
+          });
+        } catch (silmeHatasi) {
+          console.error(
+            "Doğrulanamayan yedek Drive'dan silinemedi:",
+            silmeHatasi,
+          );
+        }
+      }
+      throw new Error(dogrulama.sorun);
+    }
+
+    // Rotasyon ancak doğrulanmış yedekten sonra: eski yedekleri silmeden
+    // önce yenisinin sağlam olduğundan emin olmak gerekiyor.
     const silinen = await eskiYedekleriSil(saklama);
 
     sonuc = {
@@ -137,11 +190,19 @@ export async function yedekAl(
       boyutBayt: boyut,
       driveDosyaId: yukleme.data.id ?? undefined,
       silinen,
+      dogrulama,
+      uzakBoyutBayt: Number.isFinite(uzakBoyut) ? uzakBoyut : null,
     };
   } catch (hata) {
     const mesaj = hata instanceof Error ? hata.message : String(hata);
     console.error("Yedekleme başarısız:", hata);
-    sonuc = { basarili: false, dosyaAdi, boyutBayt: boyut, hata: mesaj };
+    sonuc = {
+      basarili: false,
+      dosyaAdi,
+      boyutBayt: boyut,
+      hata: mesaj,
+      dogrulama: yuklenmeyenDogrulama(butunluk),
+    };
   } finally {
     await rm(gecici, { recursive: true, force: true });
   }
@@ -155,6 +216,9 @@ export async function yedekAl(
           driveDosyaId: sonuc.driveDosyaId ?? null,
           durum: sonuc.basarili ? "BASARILI" : "HATA",
           hata: sonuc.hata ?? null,
+          dogrulandi: sonuc.dogrulama?.tamam ?? false,
+          dogrulama: sonuc.dogrulama?.metin ?? null,
+          uzakBoyutBayt: sonuc.uzakBoyutBayt ?? null,
         },
       });
     } catch (hata) {
@@ -205,7 +269,10 @@ async function eskiYedekleriSil(saklama: number): Promise<number> {
 }
 
 /** Drive bağlantısını yedek almadan sınar. */
-export async function baglantiyiSina(): Promise<{ basarili: boolean; mesaj: string }> {
+export async function baglantiyiSina(): Promise<{
+  basarili: boolean;
+  mesaj: string;
+}> {
   try {
     const ayar = yedekAyariniOku();
     if (ayar.yontem === "YOK") {
@@ -229,10 +296,15 @@ export async function baglantiyiSina(): Promise<{ basarili: boolean; mesaj: stri
       };
     }
 
-    await drive.files.list({ pageSize: 1, fields: "files(id)", supportsAllDrives: true });
+    await drive.files.list({
+      pageSize: 1,
+      fields: "files(id)",
+      supportsAllDrives: true,
+    });
     return {
       basarili: true,
-      mesaj: "Bağlantı tamam. Hedef klasör belirtilmedi; yedekler Drive köküne yüklenir.",
+      mesaj:
+        "Bağlantı tamam. Hedef klasör belirtilmedi; yedekler Drive köküne yüklenir.",
     };
   } catch (hata) {
     const mesaj = hata instanceof Error ? hata.message : String(hata);

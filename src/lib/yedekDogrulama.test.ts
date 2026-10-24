@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { boyutSorunu, butunlukSorunu, yedegiDogrula } from "./yedekDogrulama";
+import {
+  boyutSorunu,
+  butunlukSorunu,
+  yedegiDogrula,
+  yuklenmeyenDogrulama,
+} from "./yedekDogrulama";
 
 test("integrity_check 'ok' derse sorun yok", () => {
   assert.equal(butunlukSorunu("ok"), null);
@@ -90,4 +95,22 @@ test("boyut okunamadıysa doğrulanmış sayılmaz ama hata da değil", () => {
   assert.equal(sonuc.tamam, false);
   assert.equal(sonuc.sorun, null);
   assert.match(sonuc.metin, /okunamadı/);
+});
+
+test("yükleme hiç olmadıysa bütünlük sonucu yazılıyor", () => {
+  const sonuc = yuklenmeyenDogrulama("ok");
+  assert.equal(sonuc.tamam, false);
+  assert.equal(sonuc.sorun, null);
+  assert.match(sonuc.metin, /Bütünlük tamam/);
+  assert.match(sonuc.metin, /yüklenemedi/);
+});
+
+test("yükleme olmadıysa ve veritabanı bozuksa sorun bildiriliyor", () => {
+  const sonuc = yuklenmeyenDogrulama("*** in database main ***");
+  assert.equal(sonuc.tamam, false);
+  assert.ok(sonuc.sorun);
+});
+
+test("yükleme olmadıysa ve bütünlük hiç bakılmadıysa söyleniyor", () => {
+  assert.match(yuklenmeyenDogrulama(null).metin, /yapılamadı/);
 });
