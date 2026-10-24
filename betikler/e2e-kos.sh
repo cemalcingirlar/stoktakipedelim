@@ -45,8 +45,21 @@ VT="$CALISMA/test.db"
 GUNLUK="$CALISMA/sunucu.log"
 SUNUCU_PID=""
 
+# Sunucu KENDİ süreç grubunda başlatılıyor (setsid) ve temizlikte grubun
+# tamamı öldürülüyor.
+#
+# Neden: `npm start` bir sarmalayıcı; asıl sunucu onun çocuğu ve Next üretimde
+# ayrıca işçi süreçler açıyor. Yalnız npm'in PID'ini öldürmek çocukları öksüz
+# bırakıyordu. Ölçüldü: art arda koşturmalardan sonra 47 artık next-server
+# süreci kalmıştı ve bellek 15 GB'ın 13'ünü yemişti; sonraki süitler
+# "Target crashed" / zaman aşımıyla SAHTE başarısızlık veriyordu.
 temizle() {
-  [ -n "$SUNUCU_PID" ] && kill -9 "$SUNUCU_PID" 2>/dev/null
+  if [ -n "$SUNUCU_PID" ]; then
+    # Önce gruba nazik bitirme, sonra kalanlara kesin.
+    kill -TERM "-$SUNUCU_PID" 2>/dev/null
+    sleep 0.5
+    kill -9 "-$SUNUCU_PID" 2>/dev/null
+  fi
   rm -rf "$CALISMA"
 }
 trap temizle EXIT
@@ -60,7 +73,9 @@ export YEDEK_ANAHTARI="${YEDEK_ANAHTARI:-e2e-test-anahtari-0123456789}"
 npx prisma migrate deploy >/dev/null 2>&1 || { echo "$SUIT :: MIGRATE HATASI"; exit 2; }
 npx tsx prisma/seed.ts >/dev/null 2>&1 || { echo "$SUIT :: SEED HATASI"; exit 2; }
 
-PORT="$PORT" npm start >"$GUNLUK" 2>&1 &
+# setsid: süreç grubu lideri olsun ki yukarıdaki temizlik bütün çocukları
+# tek seferde alabilsin.
+setsid env PORT="$PORT" npm start >"$GUNLUK" 2>&1 &
 SUNUCU_PID=$!
 
 HAZIR=0
