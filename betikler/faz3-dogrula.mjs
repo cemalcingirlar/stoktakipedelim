@@ -10,8 +10,28 @@ const tarayici = await chromium.launch(
 );
 const sayfa = await tarayici.newPage({ viewport: { width: 1500, height: 1000 }, locale: "tr-TR" });
 const hatalar = [];
-sayfa.on("console", (m) => { if (m.type() === "error") hatalar.push(m.text()); });
+sayfa.on("console", (m) => {
+  // Test bilerek 404 bir sayfaya gidiyor (ilgisiz mağaza sevkiyatı
+  // göremiyor); tarayıcının bunu konsola yazması hata değil.
+  if (m.type() === "error" && !/status of 404/.test(m.text())) hatalar.push(m.text());
+});
 sayfa.on("pageerror", (e) => hatalar.push(String(e)));
+
+// Betik eskiden hiçbir beklentiyi saymıyordu: bir kontrol ✗ yazsa bile
+// çıkış kodu 0 kalıyor, süit "geçti" görünüyordu.
+/** Cihaz listesindeki kayıt sayısı — başlıktaki "N cihaz"; boş listede 0. */
+async function cihazSayisi() {
+  const kutu = sayfa.locator("text=/^\\d+ cihaz/").first();
+  if ((await kutu.count()) === 0) return 0;
+  const metin = (await kutu.textContent()) ?? "";
+  return Number((metin.match(/(\d+)/) ?? [0, "0"])[1]);
+}
+
+const sonuclar = [];
+function kontrol(ad, gecti, ek = "") {
+  sonuclar.push({ ad, gecti, ek });
+  console.log(`${gecti ? "✓" : "✗"} ${ad}${ek ? ` — ${ek}` : ""}`);
+}
 
 async function giris(kullanici) {
   await sayfa.context().clearCookies();
@@ -56,17 +76,22 @@ for (const kod of imei) {
 }
 await sayfa.click('button:has-text("Faturayı Kaydet")');
 await sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 20000 });
-console.log("0) hazırlık: 3 cihaz 1 Nolu Mağaza'ya girildi ✓");
+kontrol("hazırlık: 3 cihaz 1 Nolu Mağaza'ya girildi", /\/faturalar\/\d+$/.test(sayfa.url()), sayfa.url());
 
 // ------------------------------------------------- 1) Sevkiyat gönderimi
 await giris("sorumlu1");
 await sayfa.goto(`${hedef}/sevkiyat/yeni`, { waitUntil: "networkidle" });
 await sayfa.selectOption("#hedef", { label: "2 Nolu Mağaza" });
-for (const kod of imei) console.log("   okutma:", await okut(kod));
+for (const kod of imei) {
+  const mesaj = await okut(kod);
+  kontrol(`cihaz sevkiyata eklendi (${kod.slice(-5)})`, /eklendi|listeye/i.test(mesaj ?? ""), mesaj);
+}
 // Aynı cihazı tekrar okut
-console.log("1) tekrar okutma uyarısı:", await okut(imei[0]));
-// Başka mağazadaki cihazı okut (2 Nolu'da olan yok, sistemde olmayan kod deneyelim)
-console.log("   kayıtsız kod:", await okut("000000000000000"));
+const tekrarMesaji = await okut(imei[0]);
+kontrol("aynı cihaz ikinci kez eklenmiyor", /zaten/i.test(tekrarMesaji ?? ""), tekrarMesaji);
+// Sistemde olmayan kod
+const kayitsizMesaj = await okut("000000000000000");
+kontrol("kayıtsız kod reddediliyor", /bulunamadı|kayıtlı değil/i.test(kayitsizMesaj ?? ""), kayitsizMesaj);
 await sayfa.screenshot({ path: `${cikti}-sevkiyat-formu.png`, fullPage: true });
 
 await Promise.all([
@@ -74,13 +99,22 @@ await Promise.all([
   sayfa.click('button:has-text("Sevkiyatı Gönder")'),
 ]);
 const sevkUrl = sayfa.url();
-console.log("2) sevkiyat gönderildi ->", new URL(sevkUrl).pathname, "✓");
-console.log("   durum:", (await sayfa.locator("h1 ~ * , h1").first().textContent())?.trim(),
-            "|", (await sayfa.locator("header ~ * span", { hasText: "Onay Bekliyor" }).first().textContent())?.trim());
+kontrol(
+  "sevkiyat gönderildi",
+  /\/sevkiyat\/\d+$/.test(new URL(sevkUrl).pathname),
+  new URL(sevkUrl).pathname,
+);
+const bekliyorRozeti = await sayfa
+  .locator("span", { hasText: "Onay Bekliyor" })
+  .first()
+  .textContent()
+  .catch(() => null);
+kontrol("sevkiyat onay bekliyor durumunda", Boolean(bekliyorRozeti), bekliyorRozeti?.trim() ?? "(yok)");
 
 // Cihazlar artık transferde olmalı
 await sayfa.goto(`${hedef}/cihazlar?durum=TRANSFERDE`, { waitUntil: "networkidle" });
-console.log("3) transferdeki cihaz sayısı:", await sayfa.locator("tbody tr").count(), "(beklenen 3) ✓");
+const transferdeki = await cihazSayisi();
+kontrol("üç cihaz da transferde", transferdeki === 3, `${transferdeki} cihaz (beklenen 3)`);
 
 // ------------------------------------------- 2) Yanlış mağaza kabul edemez
 // Mağaza bazlı görünürlükten sonra ilgisiz mağaza bu sevkiyatı hiç görmüyor:
@@ -88,26 +122,35 @@ console.log("3) transferdeki cihaz sayısı:", await sayfa.locator("tbody tr").c
 // sayfa 404. Kabul edemediğinin daha güçlü kanıtı bu.
 await giris("sorumlu3");
 const ilgisizYanit = await sayfa.goto(sevkUrl, { waitUntil: "networkidle" });
-console.log(
-  "4) 3 Nolu Mağaza sevkiyatı hiç göremiyor:",
-  ilgisizYanit?.status() === 404 ? "✓ 404" : `✗ HTTP ${ilgisizYanit?.status()}`,
+kontrol(
+  "ilgisiz mağaza sevkiyatı hiç göremiyor (404)",
+  ilgisizYanit?.status() === 404,
+  `HTTP ${ilgisizYanit?.status()}`,
 );
-console.log("   okutma kutusu var mı:", (await sayfa.locator("#okutmaKutusu").count()) === 0 ? "✓ yok" : "✗ var");
+kontrol(
+  "ilgisiz mağazaya okutma kutusu verilmiyor",
+  (await sayfa.locator("#okutmaKutusu").count()) === 0,
+);
 
 // ------------------------------------------------- 3) Kısmi kabul
 await giris("sorumlu2");
 await sayfa.goto(sevkUrl, { waitUntil: "networkidle" });
-console.log("5) hedef mağaza kabul ekranı açıldı, sayaçlar:",
-  (await sayfa.locator(".grid.grid-cols-3").first().textContent())?.replace(/\s+/g, " ").trim());
-console.log("   1. cihaz:", await okut(imei[0]));
-console.log("   1. cihaz tekrar:", await okut(imei[0]));
+kontrol(
+  "hedef mağaza kabul ekranını açabiliyor",
+  (await sayfa.locator("#okutmaKutusu").count()) === 1,
+  sayfa.url(),
+);
+const kabulMesaji = await okut(imei[0]);
+kontrol("kabul ekranında cihaz okutuldu", /kabul edildi/i.test(kabulMesaji ?? ""), kabulMesaji);
+const kabulTekrar = await okut(imei[0]);
+kontrol("kabulde aynı cihaz iki kez sayılmıyor", /zaten/i.test(kabulTekrar ?? ""), kabulTekrar);
 await sayfa.waitForTimeout(600);
-console.log("   sayaçlar:", (await sayfa.locator(".grid.grid-cols-3").first().textContent())?.replace(/\s+/g, " ").trim());
 await sayfa.screenshot({ path: `${cikti}-kabul-ekrani.png`, fullPage: true });
 
 await sayfa.click('button:has-text("Kabulü Tamamla")');
 await sayfa.locator('[role="status"]', { hasText: "cihaz alındı" }).first().waitFor({ timeout: 15000 });
-console.log("6) kısmi kabul:", (await sayfa.locator('[role="status"]', { hasText: "cihaz alındı" }).first().textContent())?.trim(), "✓");
+const kismiMesaj = (await sayfa.locator('[role="status"]', { hasText: "cihaz alındı" }).first().textContent())?.trim() ?? "";
+kontrol("kısmi kabul tamamlandı", /1 cihaz alındı/.test(kismiMesaj), kismiMesaj);
 
 // ------------------------------------------------- 4) Kalanları reddet
 await sayfa.reload({ waitUntil: "networkidle" });
@@ -116,27 +159,45 @@ await sayfa.fill("#redNedeni", "Paketten çıkmadı");
 await sayfa.click('button:has-text("Reddet ve Geri Gönder")');
 const redBildirimi = sayfa.locator("text=Kısmi kabul:").first();
 await redBildirimi.waitFor({ timeout: 15000 });
-console.log("7) red:", (await redBildirimi.textContent())?.replace(/\s+/g, " ").trim(), "✓");
+const redMesaji = (await redBildirimi.textContent())?.replace(/\s+/g, " ").trim() ?? "";
+kontrol("okutulmayanlar reddedildi", redMesaji.includes("Kısmi kabul"), redMesaji);
 
 // Dağılımı doğrula: 1 cihaz 2 Nolu'da, 2 cihaz 1 Nolu'da, hiçbiri transferde değil.
 // Reddedilenler 1 Nolu'ya döndüğü için sorumlu2 onları artık göremiyor; dağılımı
 // her mağazayı gören yönetici sayıyor.
 await giris("admin");
 await sayfa.goto(`${hedef}/cihazlar?durum=TRANSFERDE`, { waitUntil: "networkidle" });
-console.log("8) transferde kalan:", await sayfa.locator("tbody tr").count(), "(beklenen 0) ✓");
+// Boş listede tablo "kayıt yok" satırı basıyor; satır saymak 0 yerine 1
+// verir. Sayı başlıktaki "N cihaz"tan okunuyor.
+const kalanTransfer = await cihazSayisi();
+kontrol("transferde cihaz kalmadı", kalanTransfer === 0, `${kalanTransfer} cihaz`);
+// Dağılım: kabul edilen cihaz 2 Nolu'da, reddedilen ikisi 1 Nolu'da.
+const depolar = [];
 for (const kod of imei) {
   await sayfa.goto(`${hedef}/cihazlar?ara=${kod}`, { waitUntil: "networkidle" });
-  const depo = await sayfa.locator("dt:has-text('Bulunduğu Depo') + dd").textContent();
-  console.log(`   ${kod} -> ${depo?.trim()}`);
+  const depo = (await sayfa.locator("dt:has-text('Bulunduğu Depo') + dd").textContent())?.trim() ?? "";
+  depolar.push(depo);
 }
+kontrol("kabul edilen cihaz hedef mağazaya geçti", depolar[0].includes("2 Nolu"), depolar[0]);
+kontrol(
+  "reddedilen cihazlar kaynak mağazaya döndü",
+  depolar[1].includes("1 Nolu") && depolar[2].includes("1 Nolu"),
+  depolar.slice(1).join(" | "),
+);
 
 // ------------------------------------------------- 5) Satış
 await giris("personel2");
 await sayfa.goto(`${hedef}/satis`, { waitUntil: "networkidle" });
 // 1 Nolu Mağaza'da kalan cihazı okutmayı dene (başka mağaza -> reddedilmeli)
-console.log("9) başka mağazanın cihazını satma:", await okut(imei[1]));
+const baskaMagazaMesaji = await okut(imei[1]);
+kontrol(
+  "personel başka mağazanın cihazını satamıyor",
+  /yetkili olmadığınız|yetkiniz|bulunamadı/i.test(baskaMagazaMesaji ?? ""),
+  baskaMagazaMesaji,
+);
 // 2 Nolu Mağaza'ya gelen cihazı sat
-console.log("   kendi cihazı:", await okut(imei[0]));
+const kendiMesaji = await okut(imei[0]);
+kontrol("kendi mağazasının cihazı sepete eklendi", /eklendi/i.test(kendiMesaji ?? ""), kendiMesaji);
 // Satış fiyatı artık cihaz başına: sepetteki ilk satırın kutusu.
 await sayfa.locator('[data-test="sepet-fiyat"]').first().fill("7.500,50");
 await sayfa.selectOption("#odemeTipi", "KREDI_KARTI");
@@ -150,21 +211,37 @@ await Promise.all([
   sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 20000 }),
   sayfa.click('button:has-text("Satışı Kaydet")'),
 ]);
-console.log("10) satış kaydedildi ->", new URL(sayfa.url()).pathname, "✓");
-const kar = await sayfa.locator("dt:has-text('Kâr') + dd").textContent();
-const musteri = await sayfa.locator("dt:has-text('Müşteri') + dd").first().textContent();
-console.log("    kâr:", kar?.trim(), "| müşteri:", musteri?.trim());
-console.log("    tarihçe kayıt sayısı:", await sayfa.locator("ol li").count(), "(giriş + sevk + kabul + satış = 4)");
+kontrol(
+  "satış kaydedildi ve cihaz detayına gidildi",
+  /\/cihazlar\/\d+$/.test(new URL(sayfa.url()).pathname),
+  new URL(sayfa.url()).pathname,
+);
+const kar = (await sayfa.locator("dt:has-text('Kâr') + dd").textContent())?.trim() ?? "";
+const musteri = (await sayfa.locator("dt:has-text('Müşteri') + dd").first().textContent())?.trim() ?? "";
+// 7.500,50 satış − 5.000,00 alış = 2.500,50 kâr.
+kontrol("satış kârı doğru hesaplandı", kar.includes("2.500,50"), kar);
+kontrol("satış müşteriye bağlandı", musteri.includes("Ayşe Yılmaz"), musteri);
+const tarihce = await sayfa.locator("ol li").count();
+kontrol(
+  "tarihçede giriş + sevk + kabul + satış var",
+  tarihce >= 4,
+  `${tarihce} kayıt`,
+);
 await sayfa.screenshot({ path: `${cikti}-cihaz-tarihce.png`, fullPage: true });
 
 // Aynı cihaz ikinci kez satılamaz
 await sayfa.goto(`${hedef}/satis`, { waitUntil: "networkidle" });
-console.log("11) satılmış cihazı tekrar satma:", await okut(imei[0]));
+const tekrarSatis = await okut(imei[0]);
+kontrol(
+  "satılmış cihaz tekrar satılamıyor",
+  /satıl|stokta değil|bulunamadı/i.test(tekrarSatis ?? ""),
+  tekrarSatis,
+);
 
 // ------------------------------------------------- 6) Müşteri kaydı
 await sayfa.goto(`${hedef}/musteriler?ara=Ayşe`, { waitUntil: "networkidle" });
-console.log("12) müşteri araması:", (await sayfa.locator("li .font-medium").first().textContent())?.trim(),
-  "|", (await sayfa.locator("li >> text=cihaz").first().textContent())?.replace(/\s+/g, " ").trim());
+const musteriAdi = (await sayfa.locator("li .font-medium").first().textContent())?.trim() ?? "";
+kontrol("müşteri adıyla bulunuyor", musteriAdi.includes("Ayşe"), musteriAdi);
 await sayfa.screenshot({ path: `${cikti}-musteriler.png`, fullPage: true });
 
 // ------------------------------------------------- 7) Geri çekme
@@ -180,17 +257,23 @@ await sayfa.click('button:has-text("Sevkiyatı Geri Çek")');
 // İşlem sonrası buton kaybolur; kalıcı bildirim sunucudan gelir.
 const iptalBildirimi = sayfa.locator("text=gönderen tarafından geri çekildi").first();
 await iptalBildirimi.waitFor({ timeout: 15000 });
-console.log("13) geri çekme:", (await iptalBildirimi.textContent())?.replace(/\s+/g, " ").trim(), "✓");
+const geriCekme = (await iptalBildirimi.textContent())?.replace(/\s+/g, " ").trim() ?? "";
+kontrol("sevkiyat geri çekilebiliyor", geriCekme.includes("geri çekildi"), geriCekme);
 await sayfa.goto(`${hedef}/cihazlar?ara=${imei[1]}`, { waitUntil: "networkidle" });
-console.log("    cihaz geri döndü ->", (await sayfa.locator("dt:has-text('Bulunduğu Depo') + dd").textContent())?.trim());
+const donenDepo = (await sayfa.locator("dt:has-text('Bulunduğu Depo') + dd").textContent())?.trim() ?? "";
+kontrol("geri çekilen cihaz kaynak mağazaya döndü", donenDepo.includes("1 Nolu"), donenDepo);
 
 // ------------------------------------------------- 8) Mobil
 await sayfa.setViewportSize({ width: 390, height: 844 });
 for (const yol of ["/sevkiyat", "/satis", "/musteriler"]) {
   await sayfa.goto(`${hedef}${yol}`, { waitUntil: "networkidle" });
   const tasma = await sayfa.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-  console.log(`14) 390px ${yol}:`, tasma ? "✗ taşma" : "✓");
+  kontrol(`390px ${yol} ekranında yatay taşma yok`, !tasma);
 }
 
-console.log("konsol hataları:", hatalar.length ? hatalar : "yok");
+kontrol("tarayıcı konsolunda hata yok", hatalar.length === 0, hatalar.slice(0, 3).join(" | "));
 await tarayici.close();
+
+const gecen = sonuclar.filter((s) => s.gecti).length;
+console.log(`\n${gecen}/${sonuclar.length} kontrol geçti`);
+if (gecen !== sonuclar.length) process.exit(1);

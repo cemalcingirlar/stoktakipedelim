@@ -1,5 +1,11 @@
 // Faz 2 uçtan uca testi: alış faturası girişi, cihaz listesi, filtre, IMEI arama, vade rengi.
-// Kullanım: npm run dev  &&  node betikler/faz2-dogrula.mjs
+//
+// Betik eskiden yalnız ✓/✗ yazdırıyor, hiçbir beklenti tutmadığında da
+// sıfır çıkış koduyla bitiyordu: bir kontrol aylarca ✗ yazıp "geçti"
+// sayılabiliyordu. Artık her kontrol kontrol() ile sayılıyor ve bir tanesi
+// bile tutmazsa betik düşüyor.
+//
+// Kullanım: betikler/e2e-kos.sh faz2
 import { chromium } from "@playwright/test";
 
 const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
@@ -15,6 +21,12 @@ const hatalar = [];
 sayfa.on("console", (m) => { if (m.type() === "error") hatalar.push(m.text()); });
 sayfa.on("pageerror", (e) => hatalar.push(String(e)));
 
+const sonuclar = [];
+function kontrol(ad, gecti, ek = "") {
+  sonuclar.push({ ad, gecti, ek });
+  console.log(`${gecti ? "✓" : "✗"} ${ad}${ek ? ` — ${ek}` : ""}`);
+}
+
 async function giris(kullanici) {
   await sayfa.goto(`${hedef}/giris`, { waitUntil: "networkidle" });
   await sayfa.fill("#kullaniciAdi", kullanici);
@@ -28,7 +40,7 @@ async function giris(kullanici) {
 const imei = [`3510${Date.now()}`.slice(0, 15), `3520${Date.now() + 1}`.slice(0, 15)];
 
 await giris("admin");
-console.log("1) admin girişi ✓");
+kontrol("admin girişi yapıldı", sayfa.url().endsWith("/panel"), sayfa.url());
 
 // --- Vadeli fatura: vadesi çoktan geçmiş bir tarih seçilir ki satır kırmızı olsun
 const faturaNo = `TEST-${Date.now()}`;
@@ -77,14 +89,21 @@ await urunEkle(barkod[0], "Samsung", "Galaxy A50", "12.500,50", imei[0]);
 await urunEkle(barkod[1], "Samsung", "Galaxy A51", "9.750", imei[1]);
 
 const sayacMetni = (await sayfa.locator('h2:has-text("Cihazlar")').textContent()) ?? "";
-console.log("2) ürün/cihaz sayacı:", sayacMetni.replace(/\s+/g, " ").trim(),
-  sayacMetni.includes("2 ürün") && sayacMetni.includes("2 cihaz") ? "✓" : "✗");
+kontrol(
+  "ürün/cihaz sayacı 2 ürün 2 cihaz gösteriyor",
+  sayacMetni.includes("2 ürün") && sayacMetni.includes("2 cihaz"),
+  sayacMetni.replace(/\s+/g, " ").trim(),
+);
 
 await sayfa.screenshot({ path: `${cikti}-fatura-formu.png`, fullPage: true });
 
 await sayfa.click('button:has-text("Faturayı Kaydet")');
 await sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 20000 });
-console.log("3) fatura kaydedildi ->", new URL(sayfa.url()).pathname, "✓");
+kontrol(
+  "fatura kaydedildi ve detayına gidildi",
+  /\/faturalar\/\d+$/.test(new URL(sayfa.url()).pathname),
+  new URL(sayfa.url()).pathname,
+);
 await sayfa.screenshot({ path: `${cikti}-fatura-detay.png`, fullPage: true });
 
 // --- Aynı IMEI ikinci kez okutulamaz (okutma anında engellenir)
@@ -95,8 +114,12 @@ await sayfa.selectOption("#magazaId", { index: 1 });
 const kartB = await urunEkle(barkod[0], "Samsung", "Galaxy A50", "1000", imei[0]);
 const imeiSayisi = await kartB.locator("ul li").count();
 const uyariMetni = (await sayfa.locator('[role="alert"]').allTextContents()).join(" ");
-console.log("4) tekrarlı IMEI reddi:", imeiSayisi === 0 ? "✓ eklenmedi" : "✗ eklendi",
-  "|", uyariMetni.trim().slice(0, 80));
+kontrol("tekrarlı IMEI listeye eklenmedi", imeiSayisi === 0, `${imeiSayisi} IMEI`);
+kontrol(
+  "tekrarlı IMEI için uyarı gösterildi",
+  uyariMetni.trim().length > 0,
+  uyariMetni.trim().slice(0, 80),
+);
 
 // --- Seri no zorunluluğu: IMEI okutulmayan ürün faturaya girmez
 await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
@@ -105,20 +128,33 @@ await sayfa.fill("#faturaNo", `${faturaNo}-C`);
 await sayfa.selectOption("#magazaId", { index: 1 });
 const kartC = await urunEkle(`BR3${Date.now()}`.slice(0, 14), "Apple", "iPhone 15", "50000", null);
 const kartUyarisi = (await kartC.locator("p.text-amber-800").textContent().catch(() => "")) ?? "";
-console.log("5) IMEI'siz ürün uyarısı:", kartUyarisi.trim() || "(yok)",
-  kartUyarisi.includes("faturaya eklenmez") ? "✓" : "✗");
+kontrol(
+  "IMEI'siz ürün için uyarı çıkıyor",
+  kartUyarisi.includes("faturaya eklenmez"),
+  kartUyarisi.trim() || "(yok)",
+);
 await sayfa.click('button:has-text("Faturayı Kaydet")');
 await sayfa.waitForSelector('[role="alert"]', { timeout: 15000 });
-console.log("   sunucu reddi:", (await sayfa.textContent('[role="alert"] p'))?.trim(), "✓");
+const sunucuReddi = (await sayfa.textContent('[role="alert"] p'))?.trim() ?? "";
+kontrol("IMEI'siz ürün sunucuda da reddediliyor", sunucuReddi.length > 0, sunucuReddi);
 
 // --- Cihaz listesi
 await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
 const satirlar = await sayfa.locator("tbody tr").count();
 const kirmiziSatir = await sayfa.locator("tbody tr.bg-red-50").count();
-console.log("6) liste satırı:", satirlar, "| vadesi geçen (kırmızı):", kirmiziSatir, kirmiziSatir >= 2 ? "✓" : "✗");
+kontrol("cihaz listesinde satır var", satirlar >= 2, `${satirlar} satır`);
+kontrol(
+  "vadesi geçen iki cihaz kırmızı boyandı",
+  kirmiziSatir >= 2,
+  `${kirmiziSatir} kırmızı satır`,
+);
 const sonrakiToplam = await toplamAlisDegeri();
 const artis = Number((sonrakiToplam - oncekiToplam).toFixed(2));
-console.log("   toplam alış değeri artışı:", artis, "TL", artis === 22250.5 ? "✓" : "✗ (beklenen 22250.5)");
+kontrol(
+  "toplam alış değeri faturanın tutarı kadar arttı",
+  artis === 22250.5,
+  `${artis} TL (beklenen 22250.5)`,
+);
 await sayfa.screenshot({ path: `${cikti}-cihaz-listesi.png`, fullPage: true });
 
 // --- IMEI araması doğrudan detaya gitmeli
@@ -127,33 +163,56 @@ await Promise.all([
   sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 20000 }),
   sayfa.click('button:has-text("Filtrele")'),
 ]);
-console.log("7) IMEI araması ->", new URL(sayfa.url()).pathname, "✓");
-console.log("   başlık:", (await sayfa.textContent("h1"))?.trim());
+kontrol(
+  "IMEI araması doğrudan cihaz detayına gidiyor",
+  /\/cihazlar\/\d+$/.test(new URL(sayfa.url()).pathname),
+  new URL(sayfa.url()).pathname,
+);
 const tarihceAdedi = await sayfa.locator("ol li").count();
-console.log("   hareket tarihçesi kaydı:", tarihceAdedi);
+kontrol("cihazın hareket tarihçesi dolu", tarihceAdedi >= 1, `${tarihceAdedi} kayıt`);
 await sayfa.screenshot({ path: `${cikti}-cihaz-detay.png`, fullPage: true });
 
 // --- Türkçe karakter duyarsız arama
 await sayfa.goto(`${hedef}/cihazlar?ara=GALAXY`, { waitUntil: "networkidle" });
-console.log("8) 'GALAXY' araması sonuç:", await sayfa.locator("tbody tr").count());
+const galaxySayisi = await sayfa.locator("tbody tr").count();
+// Türkçe karakter ve büyük/küçük harf duyarsız arama: "GALAXY" iki cihazı
+// da bulmalı (Galaxy A50 ve A51).
+kontrol("büyük harfle 'GALAXY' araması cihazları buluyor", galaxySayisi >= 2, `${galaxySayisi} satır`);
 
 // --- Durum + vade filtresi
 await sayfa.goto(`${hedef}/cihazlar?durum=STOKTA&vade=gecen`, { waitUntil: "networkidle" });
-console.log("9) stokta + vadesi geçen:", await sayfa.locator("tbody tr").count());
+const filtreliSayi = await sayfa.locator("tbody tr").count();
+kontrol(
+  "durum + vade filtresi birlikte çalışıyor",
+  filtreliSayi >= 2,
+  `${filtreliSayi} satır`,
+);
 
 // --- Personel giriş yapamaz
 await giris("personel1");
 await sayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
-console.log("10) personel /faturalar/yeni ->", new URL(sayfa.url()).pathname, sayfa.url().endsWith("/panel") ? "✓" : "✗");
+kontrol(
+  "personel alış faturası ekranına giremiyor",
+  sayfa.url().endsWith("/panel"),
+  new URL(sayfa.url()).pathname,
+);
 await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
 const uyari = await sayfa.textContent("main span.text-xs").catch(() => null);
-console.log("    personel cihazlar uyarısı:", uyari?.trim());
+kontrol(
+  "personele mağaza kısıtı yazısı gösteriliyor",
+  Boolean(uyari && uyari.trim().length > 0),
+  uyari?.trim() ?? "(yok)",
+);
 
 // --- Mobil
 await sayfa.setViewportSize({ width: 390, height: 844 });
 await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
 const tasma = await sayfa.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-console.log("11) 390px sayfa taşması:", tasma ? "✗ VAR" : "✓ yok");
+kontrol("390px genişlikte yatay taşma yok", !tasma);
 
-console.log("konsol hataları:", hatalar.length ? hatalar : "yok");
+kontrol("tarayıcı konsolunda hata yok", hatalar.length === 0, hatalar.slice(0, 3).join(" | "));
 await tarayici.close();
+
+const gecen = sonuclar.filter((s) => s.gecti).length;
+console.log(`\n${gecen}/${sonuclar.length} kontrol geçti`);
+if (gecen !== sonuclar.length) process.exit(1);

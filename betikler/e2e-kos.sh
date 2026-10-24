@@ -83,16 +83,20 @@ CHROME_YOLU="${CHROME_YOLU:-/opt/pw-browsers/chromium}" \
   timeout "${SUIT_ZAMAN_ASIMI:-420}" node "$BETIK" >"$CIKTI_DOSYA" 2>&1
 KOD=$?
 
-# İki tip betik var:
-#  - Yeni tip: kontrol() kullanır ve "N/M kontrol geçti" özeti basar.
-#  - Eski "gezinti" tipi (faz2..faz6, ayarlar, magaza): özet basmaz, beklenti
-#    tutmazsa fırlatıp çıkış kodunu bozar. Bu yüzden ASIL ölçüt çıkış kodu;
-#    özet satırı varsa ek bilgi olarak gösteriliyor. Önce yalnız özete
-#    bakılıyordu ve sorunsuz çalışan eski betikler "çöktü" sanılıyordu.
+# Her betik kontrol() kullanıp "N/M kontrol geçti" özeti basar ve bir kontrol
+# tutmazsa çıkış kodunu bozar. Eskiden bir kısmı (faz2..faz6, ayarlar, magaza)
+# yalnız ✓/✗ yazdırıyor, hiçbir beklentiyi saymıyordu: ✗ yazan bir kontrol
+# aylarca "geçti" görünebiliyordu. O yüzden özet satırının YOKLUĞU da artık
+# bir hata — betik yarıda ölmüş ya da eski tipte kalmış demektir.
 OZET="$(grep -oE '[0-9]+/[0-9]+ kontrol geçti' "$CIKTI_DOSYA" | tail -1)"
 
 if [ "$KOD" = "0" ]; then
-  echo "$SUIT :: ${OZET:-geçti (özet satırı yok — eski tip betik)}"
+  if [ -z "$OZET" ]; then
+    echo "$SUIT :: ÖZET YOK — betik kontrol() kullanmıyor ya da yarıda bitti"
+    [ "${AYRINTI:-0}" = "1" ] && sed 's/^/    /' "$CIKTI_DOSYA" | tail -25
+    exit 1
+  fi
+  echo "$SUIT :: $OZET"
   exit 0
 fi
 
