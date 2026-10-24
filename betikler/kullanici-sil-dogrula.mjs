@@ -6,6 +6,9 @@ const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
 const cikti = process.env.CIKTI ?? "/tmp/kullanicisil";
 const SIFRE = "Stok2026!";
 const YENI = `deneme${Date.now().toString().slice(-6)}`;
+// Şifre politikasına uyan bir şifre: en az 10 karakter, harf + rakam,
+// kullanıcı adını içermiyor.
+const YENI_SIFRE = "KasaMavi7Defter";
 
 const tarayici = await chromium.launch(
   process.env.CHROME_YOLU ? { executablePath: process.env.CHROME_YOLU } : {},
@@ -46,15 +49,17 @@ try {
   // 2) geçmişi olmayan yeni kullanıcı oluştur
   await sayfa.fill("#yeniKullaniciAdi", YENI);
   await sayfa.fill("#yeniAdSoyad", "Silinecek Deneme");
-  await sayfa.fill("#yeniSifre", SIFRE);
-  await sayfa.fill("#yeniSifreTeyit", SIFRE);
+  // Tohum şifresi ("Stok2026!") 9 karakter; şifre politikası en az 10
+  // istiyor. Yeni kullanıcıya politikaya uyan ayrı bir şifre veriliyor.
+  await sayfa.fill("#yeniSifre", YENI_SIFRE);
+  await sayfa.fill("#yeniSifreTeyit", YENI_SIFRE);
   await sayfa.selectOption("#yeniMagaza", { index: 1 });
   await sayfa.click('button:has-text("Kullanıcı Ekle")');
   await sayfa.waitForTimeout(1500);
   kontrol("yeni kullanıcı eklendi", (await kart(YENI).count()) === 1, YENI);
 
   // 3) giriş yapsın — log oluşsun, ama işlem kaydı oluşmasın
-  await giris(YENI);
+  await giris(YENI, YENI_SIFRE);
   kontrol("yeni kullanıcı giriş yapabiliyor", sayfa.url().includes("/panel"), sayfa.url());
 
   // 4) admin bu hesabı silsin — loglar silmeyi engellememeli

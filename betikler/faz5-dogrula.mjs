@@ -19,6 +19,11 @@ function kontrol(ad, gecti, ek = "") {
   console.log(`${gecti ? "✓" : "✗"} ${ad}${ek ? ` — ${ek}` : ""}`);
 }
 
+// Şifre politikası kişinin adını içeren şifreyi reddediyor; "Test Personeli"
+// için YENI_KULLANICI_SIFRESI artık geçmiyor (doğru davranış). Politikaya uyan,
+// adla ilgisiz bir şifre kullanılıyor.
+const YENI_KULLANICI_SIFRESI = "KasaMavi7Defter";
+
 const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
 const cikti = process.env.CIKTI ?? "/tmp/faz5";
 const SIFRE = "Stok2026!";
@@ -145,9 +150,9 @@ await sayfa.fill("#yeniKullaniciAdi", kAdi);
 await sayfa.fill("#yeniAdSoyad", "Test Personeli");
 await sayfa.selectOption("#yeniRol", "MAGAZA_PERSONELI");
 await sayfa.selectOption("#yeniMagaza", { index: 1 });
-await sayfa.fill("#yeniSifre", "TestSifre123");
+await sayfa.fill("#yeniSifre", YENI_KULLANICI_SIFRESI);
 // Form şifre teyidi de istiyor; sonradan eklendi.
-await sayfa.fill("#yeniSifreTeyit", "TestSifre123");
+await sayfa.fill("#yeniSifreTeyit", YENI_KULLANICI_SIFRESI);
 await sayfa.click('button:has-text("Kullanıcı Ekle")');
 await sayfa.locator(`input[value="${kAdi}"]`).first().waitFor({ timeout: 15000 });
 kontrol(
@@ -161,9 +166,9 @@ await sayfa.fill("#yeniKullaniciAdi", `${kAdi}b`);
 await sayfa.fill("#yeniAdSoyad", "Mağazasız");
 await sayfa.selectOption("#yeniRol", "MAGAZA_PERSONELI");
 await sayfa.selectOption("#yeniMagaza", "");
-await sayfa.fill("#yeniSifre", "TestSifre123");
+await sayfa.fill("#yeniSifre", YENI_KULLANICI_SIFRESI);
 // Form şifre teyidi de istiyor; sonradan eklendi.
-await sayfa.fill("#yeniSifreTeyit", "TestSifre123");
+await sayfa.fill("#yeniSifreTeyit", YENI_KULLANICI_SIFRESI);
 await sayfa.click('button:has-text("Kullanıcı Ekle")');
 const magazaUyari = sayfa.locator('[role="alert"]', { hasText: "mağazaya bağlanmalı" }).first();
 await magazaUyari.waitFor({ timeout: 15000 });
@@ -186,14 +191,14 @@ await sayfa.evaluate(() => {
   }
 });
 await sayfa.click('button:has-text("Kullanıcı Ekle")');
-const sifreUyari = sayfa.locator('[role="alert"]', { hasText: "en az 8" }).first();
+const sifreUyari = sayfa.locator('[role="alert"]', { hasText: "en az 10" }).first();
 await sifreUyari.waitFor({ timeout: 15000 });
 const sifreMesaji = (await sifreUyari.textContent())?.trim() ?? "";
-kontrol("kısa şifre sunucuda reddediliyor", /en az 8/.test(sifreMesaji), sifreMesaji);
+kontrol("kısa şifre sunucuda reddediliyor", /en az 10/.test(sifreMesaji), sifreMesaji);
 await sayfa.screenshot({ path: `${cikti}-kullanicilar.png`, fullPage: true });
 
 // Yeni kullanıcı gerçekten giriş yapabilmeli
-await giris(kAdi, "TestSifre123");
+await giris(kAdi, YENI_KULLANICI_SIFRESI);
 kontrol(
   "yeni kullanıcı giriş yapabiliyor",
   sayfa.url().endsWith("/panel"),
@@ -226,7 +231,7 @@ kontrol("kullanıcı pasife alınabiliyor", pasifMesaji.length > 0, pasifMesaji)
 await sayfa.context().clearCookies();
 await sayfa.goto(`${hedef}/giris`, { waitUntil: "networkidle" });
 await sayfa.fill("#kullaniciAdi", kAdi);
-await sayfa.fill("#sifre", "TestSifre123");
+await sayfa.fill("#sifre", YENI_KULLANICI_SIFRESI);
 await sayfa.click('button[type="submit"]');
 await sayfa.locator('p[role="alert"]').waitFor({ timeout: 15000 });
 const pasifGiris = (await sayfa.textContent('p[role="alert"]'))?.trim() ?? "";

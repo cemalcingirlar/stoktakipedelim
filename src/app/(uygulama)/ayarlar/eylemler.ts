@@ -12,6 +12,7 @@ import {
 } from "@/lib/saatDilimiAyari";
 import { saatDilimiCoz } from "@/lib/saatDilimi";
 import { sifreHashle } from "@/lib/sifre";
+import { sifreSorunu } from "@/lib/sifrePolitikasi";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
 
 export type AyarDurumu = { hata?: string; basari?: string };
@@ -752,7 +753,14 @@ export async function kullaniciEkle(
 
     const sifre = String(form.get("sifre") ?? "");
     const sifreTekrar = String(form.get("sifreTekrar") ?? "");
-    if (sifre.length < 8) return { hata: "Şifre en az 8 karakter olmalı." };
+    // Kurallar src/lib/sifrePolitikasi.ts'te; kullanıcı adı ve ad soyad da
+    // veriliyor, çünkü "ahmet2026" gibi şifreler ilk denemede kırılıyor.
+    const sifreHatasi = sifreSorunu(
+      sifre,
+      sonuc.data.kullaniciAdi,
+      sonuc.data.adSoyad,
+    );
+    if (sifreHatasi) return { hata: sifreHatasi };
     // Yazım hatası kullanıcıyı kilitler; hatanın ne olduğu da anlaşılmaz.
     if (sifre !== sifreTekrar)
       return { hata: "Şifreler eşleşmiyor. İki alana da aynı şifreyi yazın." };
@@ -980,15 +988,23 @@ export async function sifreSifirla(
     const sifreTekrar = String(form.get("yeniSifreTekrar") ?? "");
     if (!Number.isInteger(id) || id <= 0)
       return { hata: "Kullanıcı bulunamadı." };
-    if (sifre.length < 8) return { hata: "Şifre en az 8 karakter olmalı." };
     if (sifre !== sifreTekrar)
       return { hata: "Şifreler eşleşmiyor. İki alana da aynı şifreyi yazın." };
 
     const kullanici = await prisma.kullanici.findUnique({
       where: { id },
-      select: { kullaniciAdi: true },
+      select: { kullaniciAdi: true, adSoyad: true },
     });
     if (!kullanici) return { hata: "Kullanıcı bulunamadı." };
+
+    // Kural kontrolü kullanıcı okunduktan sonra: adını içeren şifreyi
+    // reddedebilmek için adını bilmek gerekiyor.
+    const sifreHatasi = sifreSorunu(
+      sifre,
+      kullanici.kullaniciAdi,
+      kullanici.adSoyad,
+    );
+    if (sifreHatasi) return { hata: sifreHatasi };
 
     await prisma.kullanici.update({
       where: { id },
