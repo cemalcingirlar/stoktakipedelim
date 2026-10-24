@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Kart } from "@/bilesenler/Kart";
 import { Rozet } from "@/bilesenler/Rozet";
+import { provaYasi } from "@/lib/yedekProvasi";
+import { provaKaydiniOku } from "./eylemler";
 import { prisma } from "@/lib/prisma";
 import { tarihSaatYaz } from "@/lib/tarih";
 import { adminSayfasi } from "@/lib/yetki";
@@ -37,6 +39,7 @@ export default async function YedeklemeSayfasi() {
   const ayar = yedekAyariniOku();
   const yapilandirildi = ayar.yontem !== "YOK";
 
+  const prova = await provaKaydiniOku();
   const [yedekler, sonBasarili, hataSayisi, dogrulanmamis] = await Promise.all([
     prisma.yedek.findMany({ orderBy: { id: "desc" }, take: 30 }),
     prisma.yedek.findFirst({
@@ -135,6 +138,12 @@ export default async function YedeklemeSayfasi() {
                 <Rozet ton={hataSayisi > 0 ? "kirmizi" : "nötr"}>
                   {hataSayisi}
                 </Rozet>
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3 border-b border-slate-100 pb-2">
+              <dt className="text-slate-500">Geri yükleme provası</dt>
+              <dd className="text-right text-sm" data-test="prova-yasi">
+                {provaYasi(prova)}
               </dd>
             </div>
             <div className="flex justify-between gap-3">

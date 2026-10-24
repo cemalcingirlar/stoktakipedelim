@@ -118,7 +118,31 @@ try {
 
   await sayfa.screenshot({ path: `${cikti}-yedekleme.png`, fullPage: true });
 
-  // =============================== 3) Personel bu ekranı göremez
+  // =============== 3) Sistem durumu ve geri yükleme provası
+  await sayfa.goto(`${hedef}/ayarlar`, { waitUntil: "networkidle" });
+  const sistem = sayfa.locator('[data-test="sistem-durumu"]');
+  kontrol("ayarlarda sistem durumu kartı var", (await sistem.count()) === 1);
+  const sistemMetni = ((await sistem.textContent()) ?? "").replace(/\s+/g, " ").trim();
+  kontrol("disk doluluğu yazıyor", /Disk/.test(sistemMetni) && /%\d+ dolu/.test(sistemMetni), sistemMetni.slice(0, 90));
+  kontrol("veritabanı boyutu yazıyor", /Veritabanı/.test(sistemMetni) && /(KB|MB|GB)/.test(sistemMetni));
+  // Test ortamında hiç başarılı yedek yok: bu kritik olarak işaretlenmeli,
+  // sessizce "iyi" görünmemeli.
+  kontrol(
+    "yedeksiz sistemde durum kritik işaretleniyor",
+    (await sistem.getAttribute("data-siddet")) === "kritik",
+    (await sistem.getAttribute("data-siddet")) ?? "(yok)",
+  );
+  kontrol("son yedek satırı 'hiç alınmamış' diyor", /hiç alınmamış/.test(sistemMetni));
+
+  await sayfa.goto(`${hedef}/ayarlar/yedekleme`, { waitUntil: "networkidle" });
+  kontrol(
+    "geri yükleme provası düğmesi var",
+    (await sayfa.locator('[data-test="prova-formu"]').count()) === 1,
+  );
+  const provaYasiMetni = ((await sayfa.locator('[data-test="prova-yasi"]').textContent()) ?? "").trim();
+  kontrol("prova yaşı gösteriliyor", /Hiç prova yapılmamış/.test(provaYasiMetni), provaYasiMetni);
+
+  // =============================== 4) Personel bu ekranı göremez
   await giris("personel1");
   await sayfa.goto(`${hedef}/ayarlar/yedekleme`, { waitUntil: "networkidle" });
   kontrol(

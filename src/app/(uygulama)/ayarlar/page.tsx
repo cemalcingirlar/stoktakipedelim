@@ -13,6 +13,7 @@ import {
   saatDilimiUyarisi,
 } from "@/lib/saatDilimi";
 import { secilenSaatDilimi } from "@/lib/saatDilimiAyari";
+import { sistemOlcumu } from "@/lib/sistemOlcumu";
 import { firmaAdiGuncelle, saatDiliminiGuncelle } from "./eylemler";
 
 export const metadata = { title: "Ayarlar — Stok Takip" };
@@ -91,6 +92,10 @@ export default async function AyarlarSayfasi() {
   // Durum, sürecin o an kullandığı dilimi SEÇİLENLE karşılaştırıyor: ikisi
   // ayrıysa seçim sürece uygulanamamış demektir (uygulama src/lib/
   // saatDilimiAyari.ts, istek başında).
+  // Disk, veritabanı boyutu ve yedek yaşı hiçbir yerde görünmüyordu. Disk
+  // dolduğunda SQLite yazamaz ve bu, satış ekranında sebebi yazmayan bir
+  // "işlem tamamlanamadı" olarak çıkar.
+  const sistem = await sistemOlcumu();
   const secilen = await secilenSaatDilimi();
   const saatDurumu = saatDilimiDurumu(mevcutSaatDilimi(), secilen);
   const saatUyarisi = saatDilimiUyarisi(saatDurumu);
@@ -151,6 +156,53 @@ export default async function AyarlarSayfasi() {
           </p>
         </div>
       ) : null}
+
+      <Kart baslik="Sistem Durumu">
+        <ul
+          data-test="sistem-durumu"
+          data-siddet={sistem.durum}
+          className="space-y-2"
+        >
+          {sistem.satirlar.map((satir) => (
+            <li
+              key={satir.etiket}
+              className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 pb-2 last:border-0 last:pb-0"
+            >
+              <span className="text-sm text-slate-600">{satir.etiket}</span>
+              <span className="flex items-center gap-2 text-sm">
+                <span
+                  className={
+                    satir.siddet === "kritik"
+                      ? "font-medium text-red-700"
+                      : satir.siddet === "uyari"
+                        ? "font-medium text-amber-700"
+                        : "text-slate-800"
+                  }
+                >
+                  {satir.deger}
+                </span>
+                {satir.siddet !== "iyi" ? (
+                  <span
+                    aria-hidden
+                    className={
+                      satir.siddet === "kritik"
+                        ? "rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700"
+                        : "rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                    }
+                  >
+                    {satir.siddet === "kritik" ? "kritik" : "dikkat"}
+                  </span>
+                ) : null}
+              </span>
+              {satir.oneri ? (
+                <span className="w-full text-xs text-slate-500">
+                  {satir.oneri}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </Kart>
 
       <Kart baslik="Firma Adı">
         <EylemFormu eylem={firmaAdiGuncelle}>

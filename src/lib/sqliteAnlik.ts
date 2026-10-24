@@ -2,7 +2,7 @@ import { createReadStream, createWriteStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { createGzip } from "node:zlib";
+import { createGunzip, createGzip } from "node:zlib";
 import Database from "better-sqlite3";
 
 /**
@@ -83,6 +83,45 @@ export async function gziple(
     createWriteStream(hedefYol),
   );
   return (await stat(hedefYol)).size;
+}
+
+/** Gzip dosyasını açar; oluşan dosyanın boyutunu döner. */
+export async function gzipAc(
+  kaynakYol: string,
+  hedefYol: string,
+): Promise<number> {
+  await pipeline(
+    createReadStream(kaynakYol),
+    createGunzip(),
+    createWriteStream(hedefYol),
+  );
+  return (await stat(hedefYol)).size;
+}
+
+/**
+ * Yedek dosyasındaki temel tablo sayıları.
+ *
+ * Geri yükleme provasında kullanılıyor: dosyanın açılması yetmiyor, içinde
+ * beklenen verinin olduğunu da görmek gerekiyor.
+ */
+export function yedekTablolariniSay(yol: string): {
+  kullanici: number;
+  cihaz: number;
+  fatura: number;
+} {
+  const db = new Database(yol, { readonly: true, fileMustExist: true });
+  try {
+    const say = (tablo: string) =>
+      (db.prepare(`SELECT COUNT(*) AS n FROM ${tablo}`).get() as { n: number })
+        .n;
+    return {
+      kullanici: say("Kullanici"),
+      cihaz: say("StokKalemi"),
+      fatura: say("AlisFaturasi"),
+    };
+  } finally {
+    db.close();
+  }
 }
 
 /** stok-yedek-YYYYAAGG-SSDD.db.gz */

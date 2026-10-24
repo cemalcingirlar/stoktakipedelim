@@ -1,6 +1,7 @@
 import "server-only";
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
+import { pipeline } from "node:stream/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { google } from "googleapis";
@@ -8,10 +9,13 @@ import { prisma } from "./prisma";
 import {
   anlikGoruntuAl,
   butunlukKontrolu,
+  gzipAc,
   gziple,
   veritabaniYolu,
   yedekDosyaAdi,
+  yedekTablolariniSay,
 } from "./sqliteAnlik";
+import { provaSonucu } from "./yedekProvasi";
 import {
   yedegiDogrula,
   yuklenmeyenDogrulama,
@@ -266,6 +270,84 @@ async function eskiYedekleriSil(saklama: number): Promise<number> {
     }
   }
   return silinen;
+}
+
+/**
+ * Drive'daki en yeni yedeği indirip açar: geri yükleme provası.
+ *
+ * Yedeğin ALINMASI ile GERİ YÜKLENEBİLMESİ ayrı şeyler. Bütünlük kontrolü
+ * dosyayı alındığı anda sınıyor; prova Drive'dan geri indirip açıyor —
+ * yüklemede bozulma, yanlış klasör ya da eksik yetki ancak böyle görünür.
+ */
+export async function geriYuklemeProvasi(): Promise<{
+  basarili: boolean;
+  metin: string;
+}> {
+  const ayar = yedekAyariniOku();
+  if (ayar.yontem === "YOK") {
+    return {
+      basarili: false,
+      metin: `Google Drive yapılandırılmamış. Eksik: ${ayar.eksik.join(", ")}`,
+    };
+  }
+
+  const gecici = path.join(tmpdir(), `stok-prova-${Date.now()}`);
+  try {
+    await mkdir(gecici, { recursive: true });
+    const drive = driveIstemcisi();
+
+    const liste = await drive.files.list({
+      q: [
+        "name contains 'stok-yedek-'",
+        "trashed = false",
+        ...(ayar.klasorId ? [`'${ayar.klasorId}' in parents`] : []),
+      ].join(" and "),
+      orderBy: "createdTime desc",
+      fields: "files(id,name,size)",
+      pageSize: 1,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+
+    const dosya = liste.data.files?.[0];
+    if (!dosya?.id) {
+      return { basarili: false, metin: "Drive'da yedek dosyası bulunamadı." };
+    }
+
+    const gzipYol = path.join(gecici, dosya.name ?? "yedek.db.gz");
+    const indirme = await drive.files.get(
+      { fileId: dosya.id, alt: "media", supportsAllDrives: true },
+      { responseType: "stream" },
+    );
+    await pipeline(
+      indirme.data as NodeJS.ReadableStream,
+      createWriteStream(gzipYol),
+    );
+
+    const dbYol = path.join(gecici, "prova.db");
+    await gzipAc(gzipYol, dbYol);
+
+    const butunluk = butunlukKontrolu(dbYol);
+    const yedekSayilari = yedekTablolariniSay(dbYol);
+    const [kullanici, cihaz, fatura] = await Promise.all([
+      prisma.kullanici.count(),
+      prisma.stokKalemi.count(),
+      prisma.alisFaturasi.count(),
+    ]);
+
+    return provaSonucu({
+      butunluk,
+      yedek: yedekSayilari,
+      canli: { kullanici, cihaz, fatura },
+      dosyaAdi: dosya.name ?? "yedek",
+    });
+  } catch (hata) {
+    const mesaj = hata instanceof Error ? hata.message : String(hata);
+    console.error("Geri yükleme provası başarısız:", hata);
+    return { basarili: false, metin: `Prova yapılamadı: ${mesaj}` };
+  } finally {
+    await rm(gecici, { recursive: true, force: true });
+  }
 }
 
 /** Drive bağlantısını yedek almadan sınar. */
