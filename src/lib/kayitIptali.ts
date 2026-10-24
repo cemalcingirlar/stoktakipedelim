@@ -96,3 +96,16 @@ export function faturaIptalEngeli(kalemler: FaturaKalemi[]): string | null {
     return "Faturanın bütün cihazları zaten iptal edilmiş.";
   return null;
 }
+
+/**
+ * İptal edilen faturanın yeni numarası.
+ *
+ * Fatura numarası tedarikçi başına tekil. Yanlış girilen faturayı iptal edip
+ * DOĞRUSUNU aynı numarayla girmek en olağan senaryo; iptal edilen kayıt
+ * numarayı tutmaya devam etseydi bu mümkün olmazdı. Numara serbest kalsın
+ * diye iptal edilene bir ek konuyor, ekranda da "İptal Edildi" rozetiyle
+ * birlikte okunuyor.
+ */
+export function iptalliFaturaNo(faturaNo: string, faturaId: number): string {
+  return `${faturaNo} (iptal #${faturaId})`;
+}

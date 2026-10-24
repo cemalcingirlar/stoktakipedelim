@@ -12,8 +12,14 @@ import {
   gruplaGecmisUrunler,
   type GecmisUrun,
 } from "@/lib/urunArama";
-import { LOG_ISLEM } from "@/lib/sabitler";
+import { HAREKET_TIP, LOG_ISLEM, STOK_DURUM } from "@/lib/sabitler";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
+import {
+  cihazIptalEngeli,
+  faturaIptalEngeli,
+  gerekceSorunu,
+  iptalliFaturaNo,
+} from "@/lib/kayitIptali";
 import { faturaSemasi } from "./dogrulama";
 
 export type FaturaDurumu = { hata?: string; alanHatalari?: string[] };
@@ -36,7 +42,9 @@ export async function faturaKaydet(
     try {
       cozulen = JSON.parse(hamVeri);
     } catch {
-      return { hata: "Form verisi okunamadı. Sayfayı yenileyip tekrar deneyin." };
+      return {
+        hata: "Form verisi okunamadı. Sayfayı yenileyip tekrar deneyin.",
+      };
     }
 
     const sonuc = faturaSemasi.safeParse(cozulen);
@@ -44,7 +52,8 @@ export async function faturaKaydet(
       return {
         hata: "Formda eksik veya hatalı alanlar var.",
         alanHatalari: sonuc.error.issues.map((i) => {
-          const satirNo = typeof i.path[1] === "number" ? `${i.path[1] + 1}. satır: ` : "";
+          const satirNo =
+            typeof i.path[1] === "number" ? `${i.path[1] + 1}. satır: ` : "";
           return `${satirNo}${i.message}`;
         }),
       };
@@ -94,7 +103,9 @@ export type BarkodBilgisi = {
  * okutulduğunda marka, model, renk, kapasite, kategori ve son alış fiyatı
  * hazır gelir. Fiyat değişmişse kullanıcı üzerine yazar.
  */
-export async function barkodBilgisiGetir(barkod: string): Promise<BarkodBilgisi> {
+export async function barkodBilgisiGetir(
+  barkod: string,
+): Promise<BarkodBilgisi> {
   const bos: BarkodBilgisi = {
     bulundu: false,
     kategoriId: null,
@@ -163,7 +174,9 @@ export type SeriNoKontrolu = { kullanimda: boolean; aciklama?: string };
  * Stok durumuna bakılmıyor: tükenmiş ürün yeniden alınabilir, hatta listenin
  * asıl işi bu.
  */
-export async function faturaUrunleriniAra(sorgu: string): Promise<GecmisUrun[]> {
+export async function faturaUrunleriniAra(
+  sorgu: string,
+): Promise<GecmisUrun[]> {
   try {
     await adminZorunlu();
     if (!aramaYeterliMi(sorgu)) return [];
@@ -214,7 +227,12 @@ export async function seriNoKontrolEt(seriNo: string): Promise<SeriNoKontrolu> {
 
     const mevcut = await prisma.stokKalemi.findUnique({
       where: { seriNo: kod },
-      select: { marka: true, model: true, durum: true, magaza: { select: { ad: true } } },
+      select: {
+        marka: true,
+        model: true,
+        durum: true,
+        magaza: { select: { ad: true } },
+      },
     });
     if (!mevcut) return { kullanimda: false };
 
@@ -249,8 +267,10 @@ export async function hizliTedarikciEkle(
     const oturum = await adminZorunlu();
 
     const temizAd = ad.trim();
-    if (temizAd.length < 2) return { basarili: false, hata: "Tedarikçi adı en az 2 karakter." };
-    if (temizAd.length > 80) return { basarili: false, hata: "Tedarikçi adı çok uzun." };
+    if (temizAd.length < 2)
+      return { basarili: false, hata: "Tedarikçi adı en az 2 karakter." };
+    if (temizAd.length > 80)
+      return { basarili: false, hata: "Tedarikçi adı çok uzun." };
 
     const temizTelefon = telefon.trim().slice(0, 30) || null;
 
@@ -260,7 +280,10 @@ export async function hizliTedarikciEkle(
     });
     if (mevcut) {
       if (!mevcut.aktif) {
-        await prisma.tedarikci.update({ where: { id: mevcut.id }, data: { aktif: true } });
+        await prisma.tedarikci.update({
+          where: { id: mevcut.id },
+          data: { aktif: true },
+        });
       }
       return { basarili: true, tedarikci: { id: mevcut.id, ad: mevcut.ad } };
     }
@@ -280,7 +303,8 @@ export async function hizliTedarikciEkle(
 
     return { basarili: true, tedarikci };
   } catch (hata) {
-    if (hata instanceof YetkiHatasi) return { basarili: false, hata: hata.message };
+    if (hata instanceof YetkiHatasi)
+      return { basarili: false, hata: hata.message };
     console.error("Tedarikçi eklenemedi:", hata);
     return { basarili: false, hata: "Tedarikçi eklenemedi. Tekrar deneyin." };
   }
@@ -307,7 +331,8 @@ export async function vadeOdemesiDegistir(
       select: { id: true, faturaNo: true, vadeGun: true },
     });
     if (!fatura) return { hata: "Fatura bulunamadı." };
-    if (fatura.vadeGun === 0) return { hata: "Bu fatura vadesiz; ödeme işareti gerekmiyor." };
+    if (fatura.vadeGun === 0)
+      return { hata: "Bu fatura vadesiz; ödeme işareti gerekmiyor." };
 
     await prisma.alisFaturasi.update({
       where: { id: faturaId },
@@ -329,5 +354,102 @@ export async function vadeOdemesiDegistir(
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Vade durumu güncellenemedi:", hata);
     return { hata: "Vade durumu güncellenemedi." };
+  }
+}
+
+export type FaturaIptalDurumu = { hata?: string; basari?: string };
+
+/**
+ * Yanlış girilmiş alış faturasını iptal eder.
+ *
+ * Fatura silinmiyor: iptal işareti konuyor, kalemlerinin hepsi cihaz olarak
+ * iptal ediliyor ve numarası serbest bırakılıyor (en olağan senaryo yanlış
+ * faturayı iptal edip doğrusunu aynı numarayla girmek).
+ *
+ * Tek bir cihazı bile satılmış ya da sevkiyattaysa engelleniyor: kısmen
+ * iptal, faturayı tutarı kalemlerini tutmayan bir hale sokardı.
+ */
+export async function faturayiIptalEt(
+  _onceki: FaturaIptalDurumu,
+  form: FormData,
+): Promise<FaturaIptalDurumu> {
+  try {
+    const oturum = await adminZorunlu();
+
+    const faturaId = Number(form.get("faturaId"));
+    if (!Number.isInteger(faturaId) || faturaId <= 0)
+      return { hata: "Fatura bulunamadı." };
+
+    const gerekce = String(form.get("gerekce") ?? "").trim();
+    const gerekceHatasi = gerekceSorunu(gerekce);
+    if (gerekceHatasi) return { hata: gerekceHatasi };
+
+    const fatura = await prisma.alisFaturasi.findUnique({
+      where: { id: faturaId },
+      include: { kalemler: { select: { id: true, durum: true } } },
+    });
+    if (!fatura) return { hata: "Fatura bulunamadı." };
+    if (fatura.iptalEdildi) return { hata: "Bu fatura zaten iptal edilmiş." };
+
+    const engel = faturaIptalEngeli(fatura.kalemler);
+    if (engel) return { hata: engel };
+
+    const iptalEdilecekler = fatura.kalemler
+      .filter((k) => !cihazIptalEngeli(k))
+      .map((k) => k.id);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.stokKalemi.updateMany({
+        where: { id: { in: iptalEdilecekler } },
+        data: { durum: STOK_DURUM.IPTAL },
+      });
+
+      for (const kalemId of iptalEdilecekler) {
+        await tx.stokHareketi.create({
+          data: {
+            stokKalemiId: kalemId,
+            tip: HAREKET_TIP.IPTAL,
+            kaynakMagazaId: fatura.magazaId,
+            kullaniciId: oturum.kullaniciId,
+            aciklama: `Fatura iptal edildi (${fatura.faturaNo}): ${gerekce}`,
+          },
+        });
+      }
+
+      await tx.alisFaturasi.update({
+        where: { id: fatura.id },
+        data: {
+          iptalEdildi: true,
+          iptalTarihi: new Date(),
+          iptalGerekce: gerekce,
+          iptalEdenId: oturum.kullaniciId,
+          // Numara serbest kalsın: doğrusu aynı numarayla girilebilmeli.
+          faturaNo: iptalliFaturaNo(fatura.faturaNo, fatura.id),
+        },
+      });
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.STOK_SIL,
+      hedefTip: "AlisFaturasi",
+      hedefId: fatura.id,
+      detay:
+        `Fatura iptal edildi: ${fatura.faturaNo} · ${iptalEdilecekler.length} cihaz · ` +
+        `gerekçe: ${gerekce}`,
+    });
+
+    revalidatePath(`/faturalar/${fatura.id}`);
+    revalidatePath("/faturalar");
+    revalidatePath("/cihazlar");
+    revalidatePath("/panel");
+    revalidatePath("/rapor");
+
+    return {
+      basari: `Fatura iptal edildi; ${iptalEdilecekler.length} cihaz stok toplamlarından düşüldü.`,
+    };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { hata: hata.message };
+    console.error("Fatura iptal edilemedi:", hata);
+    return { hata: "Fatura iptal edilemedi. Lütfen tekrar deneyin." };
   }
 }

@@ -83,7 +83,9 @@ function tutarVeyaNull(deger: unknown): number | null {
 }
 
 /** URL arama parametrelerini tiplenmiş filtreye çevirir. */
-export function filtreyiCoz(params: Record<string, string | string[] | undefined>): CihazFiltresi {
+export function filtreyiCoz(
+  params: Record<string, string | string[] | undefined>,
+): CihazFiltresi {
   const tek = (ad: string) => {
     const v = params[ad];
     return Array.isArray(v) ? v[0] : v;
@@ -97,7 +99,9 @@ export function filtreyiCoz(params: Record<string, string | string[] | undefined
     kategoriId: sayiVeyaNull(tek("kategori")),
     altKategoriId: sayiVeyaNull(tek("altKategori")),
     vade:
-      vadeDegeri === "gecen" || vadeDegeri === "yaklasan" || vadeDegeri === "odenmemis"
+      vadeDegeri === "gecen" ||
+      vadeDegeri === "yaklasan" ||
+      vadeDegeri === "odenmemis"
         ? vadeDegeri
         : "",
     ara: metin(tek("ara")),
@@ -163,32 +167,43 @@ export function filtredenWhere(
   if (filtre.durum) kosullar.push({ durum: filtre.durum });
   if (filtre.magazaId) kosullar.push({ magazaId: filtre.magazaId });
   if (filtre.kategoriId) kosullar.push({ kategoriId: filtre.kategoriId });
-  if (filtre.altKategoriId) kosullar.push({ altKategoriId: filtre.altKategoriId });
+  if (filtre.altKategoriId)
+    kosullar.push({ altKategoriId: filtre.altKategoriId });
 
   if (filtre.alisBas) kosullar.push({ girisTarihi: { gte: filtre.alisBas } });
-  if (filtre.alisBit) kosullar.push({ girisTarihi: { lte: gunSonu(filtre.alisBit) } });
+  if (filtre.alisBit)
+    kosullar.push({ girisTarihi: { lte: gunSonu(filtre.alisBit) } });
   if (filtre.satisBas) kosullar.push({ satisTarihi: { gte: filtre.satisBas } });
-  if (filtre.satisBit) kosullar.push({ satisTarihi: { lte: gunSonu(filtre.satisBit) } });
+  if (filtre.satisBit)
+    kosullar.push({ satisTarihi: { lte: gunSonu(filtre.satisBit) } });
 
   // Marka tam eşleşme: değer listeden seçiliyor, "içerir" araması burada
   // yanıltıcı olurdu (ör. "Samsung" seçildiğinde başka marka gelmemeli).
   if (filtre.marka) kosullar.push({ marka: filtre.marka });
   if (filtre.model) kosullar.push({ model: { contains: filtre.model } });
-  if (filtre.seriNo) kosullar.push({ seriNo: { contains: kodNormalize(filtre.seriNo) } });
-  if (filtre.barkod) kosullar.push({ barkod: { contains: kodNormalize(filtre.barkod) } });
+  if (filtre.seriNo)
+    kosullar.push({ seriNo: { contains: kodNormalize(filtre.seriNo) } });
+  if (filtre.barkod)
+    kosullar.push({ barkod: { contains: kodNormalize(filtre.barkod) } });
   if (filtre.tedarikciId) kosullar.push({ tedarikciId: filtre.tedarikciId });
   if (filtre.satanKullaniciId) {
     kosullar.push({ satanKullaniciId: filtre.satanKullaniciId });
   }
   if (filtre.musteri) {
-    kosullar.push({ musteri: { is: { adSoyad: { contains: filtre.musteri } } } });
+    kosullar.push({
+      musteri: { is: { adSoyad: { contains: filtre.musteri } } },
+    });
   }
   if (filtre.not) kosullar.push({ not: { contains: filtre.not } });
 
-  if (filtre.alisMin !== null) kosullar.push({ alisFiyatiKurus: { gte: filtre.alisMin } });
-  if (filtre.alisMax !== null) kosullar.push({ alisFiyatiKurus: { lte: filtre.alisMax } });
-  if (filtre.satisMin !== null) kosullar.push({ satisFiyatiKurus: { gte: filtre.satisMin } });
-  if (filtre.satisMax !== null) kosullar.push({ satisFiyatiKurus: { lte: filtre.satisMax } });
+  if (filtre.alisMin !== null)
+    kosullar.push({ alisFiyatiKurus: { gte: filtre.alisMin } });
+  if (filtre.alisMax !== null)
+    kosullar.push({ alisFiyatiKurus: { lte: filtre.alisMax } });
+  if (filtre.satisMin !== null)
+    kosullar.push({ satisFiyatiKurus: { gte: filtre.satisMin } });
+  if (filtre.satisMax !== null)
+    kosullar.push({ satisFiyatiKurus: { lte: filtre.satisMax } });
 
   if (filtre.ara) {
     // Arama normalleştirilmiş metin üzerinde yapılır (Türkçe karakter duyarsız).
@@ -197,18 +212,33 @@ export function filtredenWhere(
 
   if (filtre.vade === "gecen") {
     kosullar.push({
-      alisFaturasi: { is: { vadeOdendi: false, vadeTarihi: { not: null, lt: bugun } } },
+      // İptal edilen fatura borç değil; vade süzgeçlerine girmemeli.
+      alisFaturasi: {
+        is: {
+          iptalEdildi: false,
+          vadeOdendi: false,
+          vadeTarihi: { not: null, lt: bugun },
+        },
+      },
     });
   } else if (filtre.vade === "yaklasan") {
     const sinir = new Date(bugun);
     sinir.setDate(sinir.getDate() + 7);
     kosullar.push({
       alisFaturasi: {
-        is: { vadeOdendi: false, vadeTarihi: { not: null, gte: bugun, lte: gunSonu(sinir) } },
+        is: {
+          iptalEdildi: false,
+          vadeOdendi: false,
+          vadeTarihi: { not: null, gte: bugun, lte: gunSonu(sinir) },
+        },
       },
     });
   } else if (filtre.vade === "odenmemis") {
-    kosullar.push({ alisFaturasi: { is: { vadeOdendi: false, vadeGun: { gt: 0 } } } });
+    kosullar.push({
+      alisFaturasi: {
+        is: { iptalEdildi: false, vadeOdendi: false, vadeGun: { gt: 0 } },
+      },
+    });
   }
 
   return kosullar.length ? { AND: kosullar } : {};
@@ -234,7 +264,9 @@ export const CIHAZ_ICERIK = {
   },
 } satisfies Prisma.StokKalemiInclude;
 
-export type CihazSatiri = Prisma.StokKalemiGetPayload<{ include: typeof CIHAZ_ICERIK }>;
+export type CihazSatiri = Prisma.StokKalemiGetPayload<{
+  include: typeof CIHAZ_ICERIK;
+}>;
 
 /** Filtre nesnesini tekrar URL sorgu dizesine çevirir (sayfalama bağlantıları için). */
 export function filtreyiSorguyaCevir(

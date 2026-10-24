@@ -8,6 +8,7 @@ import {
   faturaIptalOzeti,
   gerekceSorunu,
   iptalGeriAlmaEngeli,
+  iptalliFaturaNo,
 } from "./kayitIptali";
 import { STOK_DURUM } from "./sabitler";
 
@@ -109,4 +110,20 @@ test("kısmen iptal edilmiş fatura kalanı iptal edebiliyor", () => {
     faturaIptalEngeli([d(STOK_DURUM.IPTAL), d(STOK_DURUM.STOKTA)]),
     null,
   );
+});
+
+test("iptal edilen fatura numarası serbest kalıyor", () => {
+  // Fatura numarası tedarikçi başına tekil. En olağan senaryo yanlış faturayı
+  // iptal edip doğrusunu AYNI numarayla girmek; iptal edilen kayıt numarayı
+  // tutsaydı bu mümkün olmazdı.
+  const yeni = iptalliFaturaNo("ABC-123", 7);
+  assert.notEqual(yeni, "ABC-123");
+  assert.match(yeni, /ABC-123/, "özgün numara okunabilir kalmalı");
+  assert.match(yeni, /iptal/i);
+  assert.match(yeni, /7/, "hangi kayıt olduğu ayırt edilebilmeli");
+});
+
+test("iki ayrı iptal farklı numara üretiyor", () => {
+  // Aynı numaralı fatura iki kez iptal edilebilir; ikisi çakışmamalı.
+  assert.notEqual(iptalliFaturaNo("ABC-123", 7), iptalliFaturaNo("ABC-123", 9));
 });

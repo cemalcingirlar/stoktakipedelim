@@ -66,6 +66,7 @@ model Kullanici {
   ekMagazalar Magaza[] @relation("KullaniciEkMagaza")
 
   olusturulanFaturalar   AlisFaturasi[]  @relation("FaturaOlusturan")
+  iptalEdilenFaturalar   AlisFaturasi[]  @relation("FaturaIptalEden")
   gonderilenTransferler  Transfer[]      @relation("TransferGonderen")
   kabulEdilenTransferler Transfer[]      @relation("TransferKabulEden")
   satislar               StokKalemi[]    @relation("SatanKullanici")
@@ -159,12 +160,21 @@ model AlisFaturasi {
   olusturanId Int
   createdAt   DateTime @default(now())
 
+  /// Yanlış girilen fatura silinmiyor, iptal ediliyor: tutarı vade ve borç
+  /// raporlarından düşüyor ama kaydın kendisi ve gerekçesi duruyor.
+  iptalEdildi  Boolean   @default(false)
+  iptalTarihi  DateTime?
+  iptalGerekce String?
+  iptalEdenId  Int?
+
   tedarikci Tedarikci    @relation(fields: [tedarikciId], references: [id])
   magaza    Magaza       @relation(fields: [magazaId], references: [id])
   olusturan Kullanici    @relation("FaturaOlusturan", fields: [olusturanId], references: [id])
+  iptalEden Kullanici?   @relation("FaturaIptalEden", fields: [iptalEdenId], references: [id])
   kalemler  StokKalemi[]
 
   @@unique([tedarikciId, faturaNo])
+  @@index([iptalEdildi])
   @@index([vadeTarihi])
   @@index([faturaTarihi])
 }

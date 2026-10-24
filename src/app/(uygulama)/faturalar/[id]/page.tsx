@@ -9,20 +9,32 @@ import { vadeEtiketi } from "@/lib/vade";
 import { tarihSaatYaz, tarihYaz } from "@/lib/tarih";
 import { vadeDurumu } from "@/lib/vade";
 import { adminMi, oturumGerekli } from "@/lib/yetki";
+import { faturaIptalEngeli } from "@/lib/kayitIptali";
+import { FaturaIptali } from "./FaturaIptali";
 import { VadeDugmesi } from "./VadeDugmesi";
 
 export const metadata = { title: "Fatura Detayı — Stok Takip" };
 
-function Satir({ etiket, children }: { etiket: string; children: React.ReactNode }) {
+function Satir({
+  etiket,
+  children,
+}: {
+  etiket: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex justify-between gap-4 border-b border-slate-100 py-2 last:border-0">
       <dt className="text-sm text-slate-500">{etiket}</dt>
-      <dd className="text-right text-sm font-medium text-slate-800">{children}</dd>
+      <dd className="text-right text-sm font-medium text-slate-800">
+        {children}
+      </dd>
     </div>
   );
 }
 
-export default async function FaturaDetaySayfasi({ params }: PageProps<"/faturalar/[id]">) {
+export default async function FaturaDetaySayfasi({
+  params,
+}: PageProps<"/faturalar/[id]">) {
   const oturum = await oturumGerekli();
   const { id } = await params;
   const faturaId = Number(id);
@@ -55,7 +67,9 @@ export default async function FaturaDetaySayfasi({ params }: PageProps<"/fatural
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Fatura {fatura.faturaNo}</h1>
+          <h1 className="text-xl font-semibold text-slate-900">
+            Fatura {fatura.faturaNo}
+          </h1>
           <p className="mt-0.5 text-sm text-slate-500">
             {fatura.tedarikci.ad} · {tarihYaz(fatura.faturaTarihi)}
           </p>
@@ -88,7 +102,9 @@ export default async function FaturaDetaySayfasi({ params }: PageProps<"/fatural
           <dl>
             <Satir etiket="Tedarikçi">{fatura.tedarikci.ad}</Satir>
             <Satir etiket="Fatura No">{fatura.faturaNo}</Satir>
-            <Satir etiket="Fatura Tarihi">{tarihYaz(fatura.faturaTarihi)}</Satir>
+            <Satir etiket="Fatura Tarihi">
+              {tarihYaz(fatura.faturaTarihi)}
+            </Satir>
             <Satir etiket="Giriş Deposu">{fatura.magaza.ad}</Satir>
             <Satir etiket="Cihaz Adedi">{fatura.kalemler.length}</Satir>
             <Satir etiket="Toplam Tutar">{kurusuTLYazSembollu(toplam)}</Satir>
@@ -119,10 +135,14 @@ export default async function FaturaDetaySayfasi({ params }: PageProps<"/fatural
               </Satir>
             ) : null}
             {fatura.odemeTarihi ? (
-              <Satir etiket="Ödeme Tarihi">{tarihYaz(fatura.odemeTarihi)}</Satir>
+              <Satir etiket="Ödeme Tarihi">
+                {tarihYaz(fatura.odemeTarihi)}
+              </Satir>
             ) : null}
             <Satir etiket="Girişi Yapan">{fatura.olusturan.adSoyad}</Satir>
-            <Satir etiket="Kayıt Zamanı">{tarihSaatYaz(fatura.createdAt)}</Satir>
+            <Satir etiket="Kayıt Zamanı">
+              {tarihSaatYaz(fatura.createdAt)}
+            </Satir>
             {fatura.not ? <Satir etiket="Not">{fatura.not}</Satir> : null}
           </dl>
 
@@ -133,7 +153,10 @@ export default async function FaturaDetaySayfasi({ params }: PageProps<"/fatural
           ) : null}
         </Kart>
 
-        <Kart baslik={`Cihazlar (${fatura.kalemler.length})`} className="lg:col-span-2">
+        <Kart
+          baslik={`Cihazlar (${fatura.kalemler.length})`}
+          className="lg:col-span-2"
+        >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
               <thead>
@@ -152,7 +175,9 @@ export default async function FaturaDetaySayfasi({ params }: PageProps<"/fatural
                     <td className="py-2 pr-3 text-slate-600">
                       {k.kategori.ad}
                       {k.altKategori ? (
-                        <span className="block text-xs text-slate-400">{k.altKategori.ad}</span>
+                        <span className="block text-xs text-slate-400">
+                          {k.altKategori.ad}
+                        </span>
                       ) : null}
                     </td>
                     <td className="py-2 pr-3">
@@ -184,6 +209,24 @@ export default async function FaturaDetaySayfasi({ params }: PageProps<"/fatural
             </table>
           </div>
         </Kart>
+
+        {adminMi(oturum) ? (
+          <Kart baslik="Fatura İptali">
+            {fatura.iptalEdildi ? (
+              <p data-test="fatura-iptalli" className="text-sm text-slate-600">
+                Bu fatura{" "}
+                {fatura.iptalTarihi ? tarihYaz(fatura.iptalTarihi) : ""}{" "}
+                tarihinde iptal edildi. Gerekçe: {fatura.iptalGerekce ?? "—"}
+              </p>
+            ) : (
+              <FaturaIptali
+                faturaId={fatura.id}
+                kalemAdedi={fatura.kalemler.length}
+                engel={faturaIptalEngeli(fatura.kalemler)}
+              />
+            )}
+          </Kart>
+        ) : null}
       </div>
     </div>
   );
