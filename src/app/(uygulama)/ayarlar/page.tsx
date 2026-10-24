@@ -5,7 +5,11 @@ import { EylemFormu } from "@/bilesenler/EylemFormu";
 import { Kart } from "@/bilesenler/Kart";
 import { prisma } from "@/lib/prisma";
 import { adminSayfasi } from "@/lib/yetki";
-import { saatDilimiDurumu, saatDilimiUyarisi } from "@/lib/saatDilimi";
+import {
+  saatDilimiDurumu,
+  saatDilimiOzeti,
+  saatDilimiUyarisi,
+} from "@/lib/saatDilimi";
 import { firmaAdiGuncelle } from "./eylemler";
 
 export const metadata = { title: "Ayarlar — Stok Takip" };
@@ -80,15 +84,40 @@ export default async function AyarlarSayfasi() {
   // Saat dilimi sunucu ayarı; yanlışsa gün sınırına yakın satışlar yanlış
   // güne yazılır. Sessiz bir günlük satırı yerine yöneticinin göreceği yere
   // konuyor, çünkü düzeltmesi gereken kişi o.
-  const saatUyarisi = saatDilimiUyarisi(saatDilimiDurumu());
+  const saatDurumu = saatDilimiDurumu();
+  const saatUyarisi = saatDilimiUyarisi(saatDurumu);
+  const saatOzeti = saatDilimiOzeti(saatDurumu);
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">Ayarlar</h1>
-        <p className="mt-0.5 text-sm text-slate-500">
-          Yalnızca yönetici erişebilir.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Ayarlar</h1>
+          <p className="mt-0.5 text-sm text-slate-500">
+            Yalnızca yönetici erişebilir.
+          </p>
+        </div>
+
+        {/* Dilim her durumda yazılı. Yalnız sorun varken bir şey göstermek,
+            sessizliği iki anlamlı bırakıyordu: ya ayar doğru ya da güncelleme
+            inmemiş. */}
+        <span
+          data-test="saat-dilimi-bilgisi"
+          data-dogru={saatOzeti.dogru ? "evet" : "hayir"}
+          title={
+            saatOzeti.dogru
+              ? "Gün, hafta ve ay hesapları bu dilime göre yapılıyor."
+              : "Beklenen dilimden farklı; ayrıntı aşağıda."
+          }
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium ${
+            saatOzeti.dogru
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-amber-300 bg-amber-50 text-amber-900"
+          }`}
+        >
+          <span aria-hidden>{saatOzeti.dogru ? "✓" : "!"}</span>
+          {saatOzeti.metin}
+        </span>
       </div>
 
       {/* Banda bilerek ARIA rolü verilmiyor. Sayfa açılışında zaten duruyor,

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   BEKLENEN_SAAT_DILIMI,
   saatDilimiDurumu,
+  saatDilimiOzeti,
   saatDilimiUyarisi,
 } from "./saatDilimi";
 
@@ -57,4 +58,39 @@ test("tanınmayan dilim adında çökmüyor", () => {
   const durum = saatDilimiDurumu("Mars/Olympus", "Europe/Istanbul", AN);
   assert.equal(durum.dogru, false);
   assert.ok(saatDilimiUyarisi(durum));
+});
+
+test("özet satırı dilimi her durumda yazıyor", () => {
+  // Uyarı yalnız sorun varken çıkıyordu; sessizlik "ayar doğru" ile
+  // "güncelleme inmemiş" arasında ayrım bırakmıyordu.
+  const dogru = saatDilimiOzeti(
+    saatDilimiDurumu("Europe/Istanbul", "Europe/Istanbul", AN),
+  );
+  assert.equal(dogru.dogru, true);
+  assert.match(dogru.metin, /Europe\/Istanbul/);
+
+  const yanlis = saatDilimiOzeti(
+    saatDilimiDurumu("UTC", "Europe/Istanbul", AN),
+  );
+  assert.equal(yanlis.dogru, false);
+  assert.match(yanlis.metin, /UTC/, "yanlışken de hangi dilimde olduğu yazılı");
+});
+
+test("özet ile uyarı birbiriyle tutarlı", () => {
+  // Rozet "doğru" derken altta uyarı çıkmamalı, tersi de.
+  for (const dilim of [
+    "Europe/Istanbul",
+    "UTC",
+    "Asia/Tokyo",
+    "Asia/Nicosia",
+  ]) {
+    const durum = saatDilimiDurumu(dilim, "Europe/Istanbul", AN);
+    const ozet = saatDilimiOzeti(durum);
+    const uyari = saatDilimiUyarisi(durum);
+    assert.equal(
+      ozet.dogru,
+      uyari === null,
+      `${dilim} için özet ve uyarı çelişiyor`,
+    );
+  }
 });
