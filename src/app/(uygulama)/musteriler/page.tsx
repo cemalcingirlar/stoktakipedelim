@@ -7,11 +7,14 @@ import { prisma } from "@/lib/prisma";
 import { aramaNormalize } from "@/lib/metin";
 import { STOK_DURUM } from "@/lib/sabitler";
 import { tarihYaz } from "@/lib/tarih";
-import { oturumGerekli } from "@/lib/yetki";
+import { adminMi, oturumGerekli } from "@/lib/yetki";
+import { MusteriDuzenleme } from "./MusteriDuzenleme";
 
 export const metadata = { title: "Müşteriler — Stok Takip" };
 
-export default async function MusterilerSayfasi({ searchParams }: PageProps<"/musteriler">) {
+export default async function MusterilerSayfasi({
+  searchParams,
+}: PageProps<"/musteriler">) {
   const oturum = await oturumGerekli();
   // Müşteri kaydının kendisi mağazalar arasında ortak — aynı telefon tek kayda
   // bağlanıyor ve her mağaza yeni satışta onu bulmalı. Kısıtlanan, müşterinin
@@ -22,20 +25,27 @@ export default async function MusterilerSayfasi({ searchParams }: PageProps<"/mu
   const ham = typeof params.ara === "string" ? params.ara.trim() : "";
   const rakamlar = ham.replace(/\D/g, "");
 
+  const silebilir = adminMi(oturum);
+
   const musteriler = await prisma.musteri.findMany({
     where: ham
       ? {
           OR: [
             { adSoyad: { contains: ham } },
             { adSoyad: { contains: aramaNormalize(ham) } },
-            ...(rakamlar.length >= 3 ? [{ telefon: { contains: rakamlar } }] : []),
-            ...(rakamlar.length >= 3 ? [{ tcknVkn: { contains: rakamlar } }] : []),
+            ...(rakamlar.length >= 3
+              ? [{ telefon: { contains: rakamlar } }]
+              : []),
+            ...(rakamlar.length >= 3
+              ? [{ tcknVkn: { contains: rakamlar } }]
+              : []),
           ],
         }
       : {},
     orderBy: { createdAt: "desc" },
     take: 200,
     include: {
+      _count: { select: { satinAlinanlar: true, aktarimSatislari: true } },
       satinAlinanlar: {
         where: { durum: STOK_DURUM.SATILDI, ...magazaKosulu(gorunur) },
         orderBy: { satisTarihi: "desc" },
@@ -57,7 +67,8 @@ export default async function MusterilerSayfasi({ searchParams }: PageProps<"/mu
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Müşteriler</h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Müşteri kayıtları satış ekranından oluşur. Aynı telefon numarası tek kayda bağlanır.
+            Müşteri kayıtları satış ekranından oluşur. Aynı telefon numarası tek
+            kayda bağlanır.
           </p>
         </div>
         {/* Birden çok cihazlı satıştan sonra bu sayfaya düşülüyor. */}
@@ -97,22 +108,33 @@ export default async function MusterilerSayfasi({ searchParams }: PageProps<"/mu
       <Kart baslik={`${musteriler.length} müşteri`}>
         {musteriler.length === 0 ? (
           <p className="py-8 text-center text-sm text-slate-500">
-            {ham ? "Aramanıza uyan müşteri bulunamadı." : "Henüz müşteri kaydı yok."}
+            {ham
+              ? "Aramanıza uyan müşteri bulunamadı."
+              : "Henüz müşteri kaydı yok."}
           </p>
         ) : (
           <ul className="divide-y divide-slate-100">
             {musteriler.map((m) => {
-              const toplam = m.satinAlinanlar.reduce((t, c) => t + (c.satisFiyatiKurus ?? 0), 0);
+              const toplam = m.satinAlinanlar.reduce(
+                (t, c) => t + (c.satisFiyatiKurus ?? 0),
+                0,
+              );
               return (
                 <li key={m.id} className="py-3">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <div>
-                      <span className="font-medium text-slate-900">{m.adSoyad}</span>
+                      <span className="font-medium text-slate-900">
+                        {m.adSoyad}
+                      </span>
                       {m.telefon ? (
-                        <span className="ml-2 text-sm text-slate-600">{m.telefon}</span>
+                        <span className="ml-2 text-sm text-slate-600">
+                          {m.telefon}
+                        </span>
                       ) : null}
                       {m.tcknVkn ? (
-                        <span className="ml-2 text-xs text-slate-400">{m.tcknVkn}</span>
+                        <span className="ml-2 text-xs text-slate-400">
+                          {m.tcknVkn}
+                        </span>
                       ) : null}
                     </div>
                     <div className="text-sm text-slate-600">
@@ -122,7 +144,29 @@ export default async function MusterilerSayfasi({ searchParams }: PageProps<"/mu
                       </span>
                     </div>
                   </div>
-                  {m.adres ? <p className="mt-0.5 text-xs text-slate-500">{m.adres}</p> : null}
+                  {m.adres ? (
+                    <p className="mt-0.5 text-xs text-slate-500">{m.adres}</p>
+                  ) : null}
+                  {m.not ? (
+                    <p className="mt-0.5 text-xs text-slate-500">{m.not}</p>
+                  ) : null}
+                  {/* Satış adedi görünür mağaza kısıtından bağımsız: başka
+                      mağazada satışı olan müşteri "satışı yok" sayılıp
+                      tamamen silinmemeli. */}
+                  <MusteriDuzenleme
+                    musteri={{
+                      id: m.id,
+                      adSoyad: m.adSoyad,
+                      telefon: m.telefon,
+                      tcknVkn: m.tcknVkn,
+                      adres: m.adres,
+                      not: m.not,
+                    }}
+                    satisAdedi={
+                      m._count.satinAlinanlar + m._count.aktarimSatislari
+                    }
+                    silebilir={silebilir}
+                  />
                   {m.satinAlinanlar.length > 0 ? (
                     <ul className="mt-2 flex flex-wrap gap-2">
                       {m.satinAlinanlar.map((c) => (

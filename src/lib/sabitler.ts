@@ -42,7 +42,8 @@ export const TRANSFER_DURUM = {
   RED: "RED",
   IPTAL: "IPTAL",
 } as const;
-export type TransferDurum = (typeof TRANSFER_DURUM)[keyof typeof TRANSFER_DURUM];
+export type TransferDurum =
+  (typeof TRANSFER_DURUM)[keyof typeof TRANSFER_DURUM];
 
 export const TRANSFER_DURUM_ETIKET: Record<TransferDurum, string> = {
   BEKLIYOR: "Onay Bekliyor",
@@ -166,6 +167,8 @@ export const LOG_ISLEM = {
   SAYIM_KAPAT: "SAYIM_KAPAT",
   EXCEL_AKTAR: "EXCEL_AKTAR",
   AYAR_DEGISTIR: "AYAR_DEGISTIR",
+  MUSTERI_DUZENLE: "MUSTERI_DUZENLE",
+  MUSTERI_SIL: "MUSTERI_SIL",
   YEDEK_AL: "YEDEK_AL",
 } as const;
 export type LogIslem = (typeof LOG_ISLEM)[keyof typeof LOG_ISLEM];
