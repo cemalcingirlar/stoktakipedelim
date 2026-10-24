@@ -141,5 +141,31 @@ await Promise.all([sayfa.waitForURL("**/panel"), sayfa.click('button[type="submi
 await sayfa.goto(`${hedef}/ayarlar/kategoriler`, { waitUntil: "networkidle" });
 console.log("8) sorumlu /ayarlar/kategoriler ->", new URL(sayfa.url()).pathname, sayfa.url().endsWith("/panel") ? "✓" : "✗");
 
+// ------------------------------------------------- 9) Saat dilimi rozeti
+// Rozet HER DURUMDA görünmeli. Önce yalnız sorun varken bir şey
+// gösteriliyordu; sessizlik iki anlamlıydı — ya ayar doğru ya da güncelleme
+// sunucuya inmemiş. Yönetici bunu ayırt edebilmeli.
+await sayfa.context().clearCookies();
+await sayfa.goto(`${hedef}/giris`, { waitUntil: "networkidle" });
+await sayfa.fill("#kullaniciAdi", "admin");
+await sayfa.fill("#sifre", "Stok2026!");
+await Promise.all([sayfa.waitForURL("**/panel"), sayfa.click('button[type="submit"]')]);
+await sayfa.goto(`${hedef}/ayarlar`, { waitUntil: "networkidle" });
+
+const rozet = sayfa.locator('[data-test="saat-dilimi-bilgisi"]');
+if ((await rozet.count()) !== 1) throw new Error("saat dilimi rozeti görünmüyor");
+const rozetMetni = ((await rozet.textContent()) ?? "").replace(/\s+/g, " ").trim();
+if (!/Saat dilimi:\s*\S/.test(rozetMetni)) {
+  throw new Error(`rozet dilimi yazmıyor: "${rozetMetni}"`);
+}
+
+// Rozet ile alttaki uyarı birbiriyle çelişmemeli.
+const rozetDogru = (await rozet.getAttribute("data-dogru")) === "evet";
+const uyariVar = (await sayfa.locator('[data-test="saat-dilimi-uyarisi"]').count()) > 0;
+if (rozetDogru === uyariVar) {
+  throw new Error(`rozet (dogru=${rozetDogru}) ile uyarı (var=${uyariVar}) çelişiyor`);
+}
+console.log("9) saat dilimi rozeti:", rozetMetni, "| uyarı:", uyariVar ? "var" : "yok", "✓");
+
 console.log("konsol hataları:", hatalar.length ? hatalar : "yok");
 await tarayici.close();

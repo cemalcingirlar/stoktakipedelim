@@ -76,3 +76,18 @@ export function saatDilimiUyarisi(durum: SaatDilimiDurumu): string | null {
     `yapılan satışlar yanlış güne yazılabilir.`
   );
 }
+
+/**
+ * Ayarlar ekranında her zaman duran bilgi satırı.
+ *
+ * Uyarı bandı yalnız sorun varken çıkıyor; doğruyken hiçbir şey görünmediği
+ * için "ayar nerede, çalışıyor mu" sorusu cevapsız kalıyordu. Sessizliğin iki
+ * anlamı vardı — ya her şey yolunda ya da güncelleme inmemiş. Bu satır ikisini
+ * ayırıyor: dilim her durumda yazılı.
+ */
+export function saatDilimiOzeti(durum: SaatDilimiDurumu = saatDilimiDurumu()): {
+  metin: string;
+  dogru: boolean;
+} {
+  return { metin: `Saat dilimi: ${durum.mevcut}`, dogru: durum.dogru };
+}
