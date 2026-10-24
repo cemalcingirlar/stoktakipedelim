@@ -28,7 +28,7 @@
     "googleapis": "^180.0.0",
     "jose": "^6.2.12",
     "next": "16.4.3",
-    "pdfjs-dist": "^5.4.149",
+    "pdfjs-dist": "^6.4.299",
     "prisma": "^7.10.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
