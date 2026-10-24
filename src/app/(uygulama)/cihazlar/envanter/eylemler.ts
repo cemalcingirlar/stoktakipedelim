@@ -13,6 +13,11 @@ import { prisma } from "@/lib/prisma";
 import type { Matris } from "@/lib/tablo";
 import { HAREKET_TIP, LOG_ISLEM, STOK_DURUM } from "@/lib/sabitler";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
+import {
+  cihazIptalEngeli,
+  faturaIptalEngeli,
+  gerekceSorunu,
+} from "@/lib/kayitIptali";
 import { envanterKaydiSemasi } from "./dogrulama";
 
 /** 20.000 satırlık bir envanter dökümü bu sınırın altında kalıyor. */
@@ -104,7 +109,9 @@ export async function envanteriOnizle(
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Envanter dosyası okunamadı:", hata);
-    return { hata: "Dosya okunamadı. Raporu .xlsx olarak kaydedip yeniden deneyin." };
+    return {
+      hata: "Dosya okunamadı. Raporu .xlsx olarak kaydedip yeniden deneyin.",
+    };
   }
 }
 
@@ -202,7 +209,9 @@ export async function envanteriKaydet(
       select: { id: true, ad: true },
     });
     if (magazalar.length !== magazaIdleri.length) {
-      return { hata: "Satırlardaki mağazalardan biri bulunamadı veya kapatılmış." };
+      return {
+        hata: "Satırlardaki mağazalardan biri bulunamadı veya kapatılmış.",
+      };
     }
 
     // Seri no zorunluluğu ve tekrar kontrolü — istemciden gelen veriye
@@ -211,16 +220,23 @@ export async function envanteriKaydet(
       .map((s) => s.seriNo)
       .filter((s): s is string => Boolean(s));
     const tekrar = seriNolar.find((s, i) => seriNolar.indexOf(s) !== i);
-    if (tekrar) return { hata: `Aynı seri numarası birden fazla satırda var: ${tekrar}` };
+    if (tekrar)
+      return { hata: `Aynı seri numarası birden fazla satırda var: ${tekrar}` };
 
     // Seri no zorunluluğu satır bazında: kullanıcının "bu numara gerçek seri
     // numarası değil" diye onayladığı satırlarda aranmıyor, diğerlerinde
     // aranıyor. Toplu bir muafiyet vermiyoruz.
-    const seriSiz = veri.satirlar.filter((s) => !s.seriNo && !s.tekrarEdenNumara);
+    const seriSiz = veri.satirlar.filter(
+      (s) => !s.seriNo && !s.tekrarEdenNumara,
+    );
     if (kategori.seriNoZorunlu && seriSiz.length > 0) {
-      return { hata: `${kategori.ad} kategorisinde her satırda seri no (IMEI) olmalı.` };
+      return {
+        hata: `${kategori.ad} kategorisinde her satırda seri no (IMEI) olmalı.`,
+      };
     }
-    const onayliSerisiz = veri.satirlar.filter((s) => !s.seriNo && s.tekrarEdenNumara).length;
+    const onayliSerisiz = veri.satirlar.filter(
+      (s) => !s.seriNo && s.tekrarEdenNumara,
+    ).length;
 
     if (seriNolar.length > 0) {
       const cakisan: string[] = [];
@@ -234,7 +250,9 @@ export async function envanteriKaydet(
       if (cakisan.length > 0) {
         return {
           hata: "Bu seri numaraları sistemde zaten kayıtlı.",
-          alanHatalari: cakisan.slice(0, 50).map((s) => `${s} daha önce girilmiş.`),
+          alanHatalari: cakisan
+            .slice(0, 50)
+            .map((s) => `${s} daha önce girilmiş.`),
         };
       }
     }
@@ -244,9 +262,21 @@ export async function envanteriKaydet(
 
     await prisma.$transaction(
       async (tx) => {
+        // Parti kaydı: bu yol fatura oluşturmuyor, dolayısıyla yüklenen
+        // cihazların hangi yüklemeden geldiği başka türlü bilinemez ve
+        // yanlış bir döküm geri alınamazdı.
+        const parti = await tx.iceAktarim.create({
+          data: {
+            aciklama,
+            adet: veri.satirlar.length,
+            kullaniciId: oturum.kullaniciId,
+          },
+        });
+
         for (const satir of veri.satirlar) {
           const kalem = await tx.stokKalemi.create({
             data: {
+              iceAktarimId: parti.id,
               barkod: satir.barkod,
               seriNo: satir.seriNo,
               kategoriId: kategori.id,
@@ -284,7 +314,10 @@ export async function envanteriKaydet(
     );
 
     const ozet = [...magazaAdlari.entries()]
-      .map(([id, ad]) => `${ad}: ${veri.satirlar.filter((s) => s.magazaId === id).length}`)
+      .map(
+        ([id, ad]) =>
+          `${ad}: ${veri.satirlar.filter((s) => s.magazaId === id).length}`,
+      )
       .join(" · ");
 
     await logYaz(oturum, {
@@ -305,5 +338,99 @@ export async function envanteriKaydet(
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Envanter dökümü kaydedilemedi:", hata);
     return { hata: "Kayıt sırasında hata oluştu. Lütfen tekrar deneyin." };
+  }
+}
+
+export type PartiGeriAlmaDurumu = { hata?: string; basari?: string };
+
+/**
+ * Bir envanter yükleme partisini topluca geri alır.
+ *
+ * Yanlış bir döküm yüklendiğinde tek çare eski yedeği geri yüklemekti — o da
+ * aradaki bütün işi siler. Parti geri alınınca cihazlar tek tek iptal
+ * ediliyor: kayıtlar duruyor, stok toplamlarından düşüyor, gerekçe her
+ * cihazın tarihçesinde kalıyor.
+ *
+ * Partideki tek bir cihaz bile satılmış ya da sevkiyattaysa engelleniyor;
+ * yüklemenin bir kısmı artık başka kayıtlara bağlı demektir.
+ */
+export async function partiyiGeriAl(
+  _onceki: PartiGeriAlmaDurumu,
+  form: FormData,
+): Promise<PartiGeriAlmaDurumu> {
+  try {
+    const oturum = await adminZorunlu();
+
+    const partiId = Number(form.get("partiId"));
+    if (!Number.isInteger(partiId) || partiId <= 0)
+      return { hata: "Yükleme bulunamadı." };
+
+    const gerekce = String(form.get("gerekce") ?? "").trim();
+    const gerekceHatasi = gerekceSorunu(gerekce);
+    if (gerekceHatasi) return { hata: gerekceHatasi };
+
+    const parti = await prisma.iceAktarim.findUnique({
+      where: { id: partiId },
+      include: {
+        kalemler: { select: { id: true, durum: true, magazaId: true } },
+      },
+    });
+    if (!parti) return { hata: "Yükleme bulunamadı." };
+    if (parti.geriAlindi) return { hata: "Bu yükleme zaten geri alınmış." };
+
+    const engel = faturaIptalEngeli(parti.kalemler);
+    if (engel)
+      return {
+        hata: engel.replace("Fatura", "Yükleme").replace("fatura", "yükleme"),
+      };
+
+    const iptalEdilecekler = parti.kalemler.filter((k) => !cihazIptalEngeli(k));
+
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.stokKalemi.updateMany({
+          where: { id: { in: iptalEdilecekler.map((k) => k.id) } },
+          data: { durum: STOK_DURUM.IPTAL },
+        });
+        for (const kalem of iptalEdilecekler) {
+          await tx.stokHareketi.create({
+            data: {
+              stokKalemiId: kalem.id,
+              tip: HAREKET_TIP.IPTAL,
+              kaynakMagazaId: kalem.magazaId,
+              kullaniciId: oturum.kullaniciId,
+              aciklama: `Toplu yükleme geri alındı (#${parti.id}): ${gerekce}`,
+            },
+          });
+        }
+        await tx.iceAktarim.update({
+          where: { id: parti.id },
+          data: {
+            geriAlindi: true,
+            geriAlmaTarihi: new Date(),
+            geriAlmaGerekce: gerekce,
+          },
+        });
+      },
+      { timeout: 120_000 },
+    );
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.STOK_SIL,
+      hedefTip: "IceAktarim",
+      hedefId: parti.id,
+      detay: `Toplu yükleme geri alındı: ${iptalEdilecekler.length} cihaz · gerekçe: ${gerekce}`,
+    });
+
+    revalidatePath("/cihazlar/envanter");
+    revalidatePath("/cihazlar");
+    revalidatePath("/panel");
+    revalidatePath("/rapor");
+
+    return { basari: `${iptalEdilecekler.length} cihaz iptal edildi.` };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { hata: hata.message };
+    console.error("Yükleme geri alınamadı:", hata);
+    return { hata: "Yükleme geri alınamadı. Lütfen tekrar deneyin." };
   }
 }

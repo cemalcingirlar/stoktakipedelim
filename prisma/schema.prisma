@@ -66,6 +66,7 @@ model Kullanici {
   ekMagazalar Magaza[] @relation("KullaniciEkMagaza")
 
   olusturulanFaturalar   AlisFaturasi[]  @relation("FaturaOlusturan")
+  iceAktarimlar          IceAktarim[]    @relation("IceAktarimYapan")
   iptalEdilenFaturalar   AlisFaturasi[]  @relation("FaturaIptalEden")
   gonderilenTransferler  Transfer[]      @relation("TransferGonderen")
   kabulEdilenTransferler Transfer[]      @relation("TransferKabulEden")
@@ -196,6 +197,8 @@ model StokKalemi {
   kapasite String?
 
   alisFaturasiId  Int?
+  /// Envanter dökümü partisi; toplu geri alma bunun üzerinden yapılıyor.
+  iceAktarimId    Int?
   tedarikciId     Int?
   alisFiyatiKurus Int      @default(0)
   girisTarihi     DateTime @default(now())
@@ -223,6 +226,7 @@ model StokKalemi {
   kategori       Kategori      @relation(fields: [kategoriId], references: [id])
   altKategori    AltKategori?  @relation(fields: [altKategoriId], references: [id])
   alisFaturasi   AlisFaturasi? @relation(fields: [alisFaturasiId], references: [id])
+  iceAktarim     IceAktarim?   @relation(fields: [iceAktarimId], references: [id])
   tedarikci      Tedarikci?    @relation(fields: [tedarikciId], references: [id])
   magaza         Magaza        @relation(fields: [magazaId], references: [id])
   satanKullanici Kullanici?    @relation("SatanKullanici", fields: [satanKullaniciId], references: [id])
@@ -432,6 +436,30 @@ model GirisDenemesi {
   guncellendi  DateTime  @updatedAt
 
   @@index([kilitBitis])
+}
+
+/// Envanter dökümünden toplu giriş partisi.
+///
+/// Toplu yüklemenin geri alınabilmesi için gerekli: yüklenen cihazların
+/// hangi partiden geldiği başka türlü bilinmiyordu (bu yol fatura
+/// oluşturmuyor). Excel yüklemesi fatura açtığı için oraya gerek yok.
+model IceAktarim {
+  id          Int      @id @default(autoincrement())
+  aciklama    String
+  dosyaAdi    String?
+  adet        Int
+  kullaniciId Int
+  tarih       DateTime @default(now())
+
+  geriAlindi      Boolean   @default(false)
+  geriAlmaTarihi  DateTime?
+  geriAlmaGerekce String?
+
+  kullanici Kullanici    @relation("IceAktarimYapan", fields: [kullaniciId], references: [id])
+  kalemler  StokKalemi[]
+
+  @@index([tarih])
+  @@index([geriAlindi])
 }
 
 model Log {
