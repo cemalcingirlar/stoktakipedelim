@@ -2,6 +2,7 @@ import "server-only";
 import { oturumuOku, type OturumBilgisi } from "./oturum";
 import { oturumBilgisiKur } from "./oturumKur";
 import { prisma } from "./prisma";
+import { saatDiliminiUygula } from "./saatDilimiAyari";
 
 /**
  * Oturumu çerezden okur, sonra yetkileri veritabanından tazeler.
@@ -15,11 +16,18 @@ import { prisma } from "./prisma";
  * Aynı sebeple pasife alınan veya silinen kullanıcı da anında dışarı düşer;
  * eskiden çerezi geçerli kaldığı sürece işlem yapmaya devam edebiliyordu.
  *
+ * Saat dilimi de burada uygulanıyor. Burası her sayfa ve her server action'ın
+ * geçtiği tek nokta — dilimi render başlamadan yerine oturtmanın en erken ve
+ * en kesin yeri. `instrumentation` kancasında denenmişti, işçi süreçlerin bir
+ * kısmı eski dilimde kalıyordu (src/lib/saatDilimi.ts başındaki not).
+ *
  * Çerezi yeniden yazmıyoruz: bir istekteki okuma, çerezin kendisini
  * tazelemek için yeterli sebep değil ve her sayfada Set-Cookie göndermek
  * önbelleklemeyi bozar.
  */
 export async function oturumuTazeOku(): Promise<OturumBilgisi | null> {
+  await saatDiliminiUygula();
+
   const cerez = await oturumuOku();
   if (!cerez) return null;
 
