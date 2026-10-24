@@ -19,6 +19,7 @@ import { beklemeGunu, karKurus } from "@/lib/sutunlar";
 import { tarihSaatYaz, tarihYaz } from "@/lib/tarih";
 import { vadeDurumu, vadeEtiketi } from "@/lib/vade";
 import { adminMi, oturumGerekli } from "@/lib/yetki";
+import { KayitIptali } from "./KayitIptali";
 import { SatisDuzenleme } from "./SatisDuzenleme";
 import { CIHAZ_ICERIK } from "@/lib/cihazFiltre";
 
@@ -28,7 +29,9 @@ function Satir({ etiket, children }: { etiket: string; children: ReactNode }) {
   return (
     <div className="flex justify-between gap-4 border-b border-slate-100 py-2 last:border-0">
       <dt className="shrink-0 text-sm text-slate-500">{etiket}</dt>
-      <dd className="text-right text-sm font-medium text-slate-800">{children}</dd>
+      <dd className="text-right text-sm font-medium text-slate-800">
+        {children}
+      </dd>
     </div>
   );
 }
@@ -43,16 +46,23 @@ const HAREKET_NOKTASI: Record<HareketTip, string> = {
   [HAREKET_TIP.IADE]: "bg-amber-500",
   [HAREKET_TIP.DUZELTME]: "bg-slate-400",
   [HAREKET_TIP.SAYIM_FARK]: "bg-amber-600",
+  [HAREKET_TIP.IPTAL]: "bg-slate-500",
+  [HAREKET_TIP.IPTAL_GERI]: "bg-slate-300",
 };
 
-export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar/[id]">) {
+export default async function CihazDetaySayfasi({
+  params,
+}: PageProps<"/cihazlar/[id]">) {
   const oturum = await oturumGerekli();
   const { id } = await params;
   const cihazId = Number(id);
   if (!Number.isInteger(cihazId)) notFound();
 
   const [cihaz, hareketler] = await Promise.all([
-    prisma.stokKalemi.findUnique({ where: { id: cihazId }, include: CIHAZ_ICERIK }),
+    prisma.stokKalemi.findUnique({
+      where: { id: cihazId },
+      include: CIHAZ_ICERIK,
+    }),
     prisma.stokHareketi.findMany({
       where: { stokKalemiId: cihazId },
       orderBy: [{ tarih: "asc" }, { id: "asc" }],
@@ -127,7 +137,9 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
             </h1>
             <DurumRozeti durum={cihaz.durum} />
             {vade.durum === "GECTI" || vade.durum === "YAKLASIYOR" ? (
-              <Rozet ton={vade.durum === "GECTI" ? "kirmizi" : "sari"}>Vade: {vade.etiket}</Rozet>
+              <Rozet ton={vade.durum === "GECTI" ? "kirmizi" : "sari"}>
+                Vade: {vade.etiket}
+              </Rozet>
             ) : null}
           </div>
           <p className="mt-0.5 text-sm text-slate-500">
@@ -191,7 +203,9 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
                 {cihaz.marka} {cihaz.model}
               </Satir>
               {cihaz.renk ? <Satir etiket="Renk">{cihaz.renk}</Satir> : null}
-              {cihaz.kapasite ? <Satir etiket="Kapasite">{cihaz.kapasite}</Satir> : null}
+              {cihaz.kapasite ? (
+                <Satir etiket="Kapasite">{cihaz.kapasite}</Satir>
+              ) : null}
               <Satir etiket="Seri No / IMEI">
                 {cihaz.seriNo ? (
                   <span className="font-mono">{cihaz.seriNo}</span>
@@ -207,7 +221,9 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
                 )}
               </Satir>
               <Satir etiket="Bulunduğu Depo">{cihaz.magaza.ad}</Satir>
-              <Satir etiket="Stokta Bekleme">{beklemeGunu(cihaz, bugun)} gün</Satir>
+              <Satir etiket="Stokta Bekleme">
+                {beklemeGunu(cihaz, bugun)} gün
+              </Satir>
               {cihaz.not ? <Satir etiket="Not">{cihaz.not}</Satir> : null}
             </dl>
           </Kart>
@@ -216,7 +232,9 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
             <dl>
               <Satir etiket="Giriş Tarihi">{tarihYaz(cihaz.girisTarihi)}</Satir>
               <Satir etiket="Tedarikçi">{cihaz.tedarikci?.ad ?? "—"}</Satir>
-              <Satir etiket="Alış Fiyatı">{kurusuTLYazSembollu(cihaz.alisFiyatiKurus)}</Satir>
+              <Satir etiket="Alış Fiyatı">
+                {kurusuTLYazSembollu(cihaz.alisFiyatiKurus)}
+              </Satir>
               <Satir etiket="Fatura">
                 {cihaz.alisFaturasi ? (
                   <Link
@@ -264,26 +282,37 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
           {cihaz.durum === "SATILDI" ? (
             <Kart baslik="Satış ve Müşteri Bilgileri">
               <dl>
-                <Satir etiket="Satış Tarihi">{tarihYaz(cihaz.satisTarihi)}</Satir>
-                <Satir etiket="Satış Fiyatı">{kurusuTLYazSembollu(cihaz.satisFiyatiKurus)}</Satir>
+                <Satir etiket="Satış Tarihi">
+                  {tarihYaz(cihaz.satisTarihi)}
+                </Satir>
+                <Satir etiket="Satış Fiyatı">
+                  {kurusuTLYazSembollu(cihaz.satisFiyatiKurus)}
+                </Satir>
                 <Satir etiket="Kâr">
                   {kar === null ? (
                     "—"
                   ) : (
-                    <span className={kar < 0 ? "text-red-600" : "text-emerald-700"}>
+                    <span
+                      className={kar < 0 ? "text-red-600" : "text-emerald-700"}
+                    >
                       {kurusuTLYazSembollu(kar)}
                     </span>
                   )}
                 </Satir>
                 <Satir etiket="Ödeme Tipi">
                   {cihaz.odemeTipi
-                    ? (ODEME_TIPI_ETIKET[cihaz.odemeTipi as OdemeTipi] ?? cihaz.odemeTipi)
+                    ? (ODEME_TIPI_ETIKET[cihaz.odemeTipi as OdemeTipi] ??
+                      cihaz.odemeTipi)
                     : "—"}
                 </Satir>
-                <Satir etiket="Satan Kullanıcı">{cihaz.satanKullanici?.adSoyad ?? "—"}</Satir>
+                <Satir etiket="Satan Kullanıcı">
+                  {cihaz.satanKullanici?.adSoyad ?? "—"}
+                </Satir>
                 <Satir etiket="Müşteri">{cihaz.musteri?.adSoyad ?? "—"}</Satir>
                 {cihaz.musteri?.telefon ? (
-                  <Satir etiket="Müşteri Telefonu">{cihaz.musteri.telefon}</Satir>
+                  <Satir etiket="Müşteri Telefonu">
+                    {cihaz.musteri.telefon}
+                  </Satir>
                 ) : null}
               </dl>
 
@@ -293,7 +322,9 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
                     cihazId: cihaz.id,
                     satisFiyatiKurus: cihaz.satisFiyatiKurus,
                     odemeTipi: cihaz.odemeTipi,
-                    satisTarihi: cihaz.satisTarihi ? cihaz.satisTarihi.toISOString() : null,
+                    satisTarihi: cihaz.satisTarihi
+                      ? cihaz.satisTarihi.toISOString()
+                      : null,
                     satanKullaniciId: cihaz.satanKullaniciId,
                     musteriId: cihaz.musteriId,
                     not: cihaz.not,
@@ -306,9 +337,17 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
             </Kart>
           ) : null}
 
+          {yonetici ? (
+            <Kart baslik="Kayıt İptali">
+              <KayitIptali cihazId={cihaz.id} durum={cihaz.durum} />
+            </Kart>
+          ) : null}
+
           <Kart baslik="Sevkiyat ve Hareket Tarihçesi">
             {hareketler.length === 0 ? (
-              <p className="text-sm text-slate-500">Bu cihaz için hareket kaydı yok.</p>
+              <p className="text-sm text-slate-500">
+                Bu cihaz için hareket kaydı yok.
+              </p>
             ) : (
               <ol className="relative space-y-4 border-l border-slate-200 pl-5">
                 {hareketler.map((h) => (
@@ -323,7 +362,9 @@ export default async function CihazDetaySayfasi({ params }: PageProps<"/cihazlar
                       <span className="text-sm font-medium text-slate-800">
                         {HAREKET_TIP_ETIKET[h.tip as HareketTip] ?? h.tip}
                       </span>
-                      <span className="text-xs text-slate-500">{tarihSaatYaz(h.tarih)}</span>
+                      <span className="text-xs text-slate-500">
+                        {tarihSaatYaz(h.tarih)}
+                      </span>
                     </div>
                     <p className="mt-0.5 text-sm text-slate-600">
                       {h.kaynakMagaza && h.hedefMagaza

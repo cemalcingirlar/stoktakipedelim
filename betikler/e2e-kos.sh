@@ -29,6 +29,17 @@ else
   PORT=$(( 3100 + TOPLAM % 700 ))
 fi
 
+# Port boş olmalı. Önceki bir çalıştırmadan kalan sunucu aynı portu
+# tutuyorsa curl hemen cevap alır ve süit ESKİ derlemeye karşı koşar —
+# sonuçlar sessizce yanlış çıkar. Boş port bulunana kadar ilerliyoruz.
+for _ in $(seq 1 60); do
+  if curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$PORT/" 2>/dev/null; then
+    PORT=$(( PORT + 1 ))
+  else
+    break
+  fi
+done
+
 CALISMA="$(mktemp -d "${TMPDIR:-/tmp}/e2e-${SUIT}-XXXXXX")"
 VT="$CALISMA/test.db"
 GUNLUK="$CALISMA/sunucu.log"

@@ -19,6 +19,10 @@ export const STOK_DURUM = {
   SATILDI: "SATILDI",
   IADE: "IADE",
   ARIZALI: "ARIZALI",
+  /// Yanlış girilmiş kayıt. Silinmiyor — iz kalsın diye durumu değişiyor ve
+  /// stok sayımlarının tamamı zaten STOKTA filtrelediği için toplamlardan
+  /// kendiliğinden düşüyor.
+  IPTAL: "IPTAL",
 } as const;
 export type StokDurum = (typeof STOK_DURUM)[keyof typeof STOK_DURUM];
 
@@ -28,6 +32,7 @@ export const STOK_DURUM_ETIKET: Record<StokDurum, string> = {
   SATILDI: "Satıldı",
   IADE: "İade",
   ARIZALI: "Arızalı",
+  IPTAL: "İptal Edildi",
 };
 
 export const TRANSFER_DURUM = {
@@ -63,6 +68,8 @@ export const HAREKET_TIP = {
   IADE: "IADE",
   DUZELTME: "DUZELTME",
   SAYIM_FARK: "SAYIM_FARK",
+  IPTAL: "IPTAL",
+  IPTAL_GERI: "IPTAL_GERI",
 } as const;
 export type HareketTip = (typeof HAREKET_TIP)[keyof typeof HAREKET_TIP];
 
@@ -76,6 +83,8 @@ export const HAREKET_TIP_ETIKET: Record<HareketTip, string> = {
   IADE: "İade",
   DUZELTME: "Düzeltme",
   SAYIM_FARK: "Sayım Farkı",
+  IPTAL: "Kayıt İptali",
+  IPTAL_GERI: "İptal Geri Alındı",
 };
 
 export const SAYIM_DURUM = {

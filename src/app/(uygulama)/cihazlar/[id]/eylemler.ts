@@ -7,6 +7,20 @@ import { aramaMetniUret } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
 import { HAREKET_TIP, LOG_ISLEM, ODEME_TIPI, STOK_DURUM } from "@/lib/sabitler";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
+import {
+  cihazIptalEngeli,
+  gerekceSorunu,
+  iptalGeriAlmaEngeli,
+} from "@/lib/kayitIptali";
+
+/** İptal ve geri alma aynı sayfaları tazeliyor; tek yerde dursun. */
+function cihazYollariniTazele(cihazId: number): void {
+  revalidatePath(`/cihazlar/${cihazId}`);
+  revalidatePath("/cihazlar");
+  revalidatePath("/panel");
+  revalidatePath("/rapor");
+  revalidatePath("/faturalar");
+}
 
 /**
  * Kaydedilmiş bir satışın düzeltilmesi ve geri alınması.
@@ -23,7 +37,10 @@ const satisDuzenlemeSemasi = z.object({
     .int("Satış fiyatı geçersiz.")
     .min(0, "Satış fiyatı negatif olamaz.")
     .max(1_000_000_00_00, "Satış fiyatı çok yüksek."),
-  odemeTipi: z.enum(Object.values(ODEME_TIPI) as [string, ...string[]], "Ödeme tipi seçin."),
+  odemeTipi: z.enum(
+    Object.values(ODEME_TIPI) as [string, ...string[]],
+    "Ödeme tipi seçin.",
+  ),
   satisTarihi: z.coerce.date({ message: "Satış tarihi geçersiz." }),
   satanKullaniciId: z.number().int().positive("Satışı yapan kişiyi seçin."),
   musteriId: z.number().int().positive().nullable(),
@@ -137,11 +154,15 @@ export async function satisiGeriAl(
     const oturum = await adminZorunlu();
 
     const cihazId = Number(form.get("cihazId"));
-    if (!Number.isInteger(cihazId) || cihazId <= 0) return { hata: "Cihaz bulunamadı." };
+    if (!Number.isInteger(cihazId) || cihazId <= 0)
+      return { hata: "Cihaz bulunamadı." };
 
     const cihaz = await prisma.stokKalemi.findUnique({
       where: { id: cihazId },
-      include: { musteri: { select: { adSoyad: true } }, tedarikci: { select: { ad: true } } },
+      include: {
+        musteri: { select: { adSoyad: true } },
+        tedarikci: { select: { ad: true } },
+      },
     });
     if (!cihaz) return { hata: "Cihaz bulunamadı." };
     if (cihaz.durum !== STOK_DURUM.SATILDI) {
@@ -206,5 +227,124 @@ export async function satisiGeriAl(
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Satış geri alınamadı:", hata);
     return { hata: "Satış geri alınamadı. Lütfen tekrar deneyin." };
+  }
+}
+
+/**
+ * Yanlış girilmiş bir cihazı iptal eder.
+ *
+ * Kayıt silinmiyor, durumu IPTAL oluyor. Stok sayımlarının tamamı zaten
+ * `durum = STOKTA` filtrelediği için cihaz toplamlardan kendiliğinden düşüyor;
+ * buna karşılık kimin ne zaman hangi gerekçeyle iptal ettiği görünür kalıyor.
+ * Sessizce kaybolan kayıt denetlenemez.
+ *
+ * Yalnız yöneticide: iptal, stok değerini doğrudan değiştiriyor.
+ */
+export async function cihaziIptalEt(
+  _onceki: SatisDuzenlemeDurumu,
+  form: FormData,
+): Promise<SatisDuzenlemeDurumu> {
+  try {
+    const oturum = await adminZorunlu();
+
+    const cihazId = Number(form.get("cihazId"));
+    if (!Number.isInteger(cihazId) || cihazId <= 0)
+      return { hata: "Cihaz bulunamadı." };
+
+    const gerekce = String(form.get("gerekce") ?? "").trim();
+    const gerekceHatasi = gerekceSorunu(gerekce);
+    if (gerekceHatasi) return { hata: gerekceHatasi };
+
+    const cihaz = await prisma.stokKalemi.findUnique({
+      where: { id: cihazId },
+    });
+    if (!cihaz) return { hata: "Cihaz bulunamadı." };
+
+    const engel = cihazIptalEngeli(cihaz);
+    if (engel) return { hata: engel };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.stokKalemi.update({
+        where: { id: cihaz.id },
+        data: { durum: STOK_DURUM.IPTAL },
+      });
+      await tx.stokHareketi.create({
+        data: {
+          stokKalemiId: cihaz.id,
+          tip: HAREKET_TIP.IPTAL,
+          kaynakMagazaId: cihaz.magazaId,
+          kullaniciId: oturum.kullaniciId,
+          aciklama: `Kayıt iptal edildi: ${gerekce}`,
+        },
+      });
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.STOK_SIL,
+      hedefTip: "StokKalemi",
+      hedefId: cihaz.id,
+      detay:
+        `Cihaz iptal edildi: ${cihaz.marka} ${cihaz.model} ` +
+        `(${cihaz.seriNo ?? cihaz.barkod ?? "kodsuz"}) · gerekçe: ${gerekce}`,
+    });
+
+    cihazYollariniTazele(cihaz.id);
+    return { basari: "Cihaz iptal edildi; stok toplamlarından düşüldü." };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { hata: hata.message };
+    console.error("Cihaz iptal edilemedi:", hata);
+    return { hata: "Cihaz iptal edilemedi. Lütfen tekrar deneyin." };
+  }
+}
+
+/** Yanlışlıkla iptal edilen cihazı stoğa geri alır. */
+export async function cihazIptaliniGeriAl(
+  _onceki: SatisDuzenlemeDurumu,
+  form: FormData,
+): Promise<SatisDuzenlemeDurumu> {
+  try {
+    const oturum = await adminZorunlu();
+
+    const cihazId = Number(form.get("cihazId"));
+    if (!Number.isInteger(cihazId) || cihazId <= 0)
+      return { hata: "Cihaz bulunamadı." };
+
+    const cihaz = await prisma.stokKalemi.findUnique({
+      where: { id: cihazId },
+    });
+    if (!cihaz) return { hata: "Cihaz bulunamadı." };
+
+    const engel = iptalGeriAlmaEngeli(cihaz);
+    if (engel) return { hata: engel };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.stokKalemi.update({
+        where: { id: cihaz.id },
+        data: { durum: STOK_DURUM.STOKTA },
+      });
+      await tx.stokHareketi.create({
+        data: {
+          stokKalemiId: cihaz.id,
+          tip: HAREKET_TIP.IPTAL_GERI,
+          hedefMagazaId: cihaz.magazaId,
+          kullaniciId: oturum.kullaniciId,
+          aciklama: "İptal geri alındı; cihaz tekrar stokta",
+        },
+      });
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.STOK_DUZENLE,
+      hedefTip: "StokKalemi",
+      hedefId: cihaz.id,
+      detay: `Cihaz iptali geri alındı: ${cihaz.marka} ${cihaz.model}`,
+    });
+
+    cihazYollariniTazele(cihaz.id);
+    return { basari: "İptal geri alındı; cihaz tekrar stokta." };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { hata: hata.message };
+    console.error("İptal geri alınamadı:", hata);
+    return { hata: "İptal geri alınamadı. Lütfen tekrar deneyin." };
   }
 }
