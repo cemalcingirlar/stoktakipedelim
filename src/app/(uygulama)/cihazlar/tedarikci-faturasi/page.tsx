@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { sinifIandirilmamisKategoriId } from "@/lib/kategori";
 import { prisma } from "@/lib/prisma";
+import { inputTarih } from "@/lib/tarih";
 import { adminSayfasi } from "@/lib/yetki";
 import { TedarikciFaturasiFormu } from "./TedarikciFaturasiFormu";
 
@@ -43,11 +44,13 @@ export default async function TedarikciFaturasiSayfasi() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Tedarikçi Faturası Yükle</h1>
+          <h1 className="text-xl font-semibold text-slate-900">
+            Tedarikçi Faturası Yükle
+          </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Tedarikçinizin e-Fatura PDF&apos;ini ya da portaldan indirdiğiniz seri no listesini
-            doğrudan stoğa işler. Fatura numarası, tarih, vade, barkod, marka, seri numaraları ve
-            birim tutar dosyadan okunur.
+            Tedarikçinizin e-Fatura PDF&apos;ini ya da portaldan indirdiğiniz
+            seri no listesini doğrudan stoğa işler. Fatura numarası, tarih,
+            vade, barkod, marka, seri numaraları ve birim tutar dosyadan okunur.
           </p>
         </div>
         <Link
@@ -62,33 +65,48 @@ export default async function TedarikciFaturasiSayfasi() {
         <h2 className="text-sm font-semibold text-slate-800">Nasıl çalışır</h2>
         <ol className="mt-2 list-inside list-decimal space-y-1 text-sm text-slate-600">
           <li>
-            <span className="font-medium text-slate-700">e-Fatura PDF&apos;i:</span> tedarikçinizin
-            e-posta ile gönderdiği faturayı olduğu gibi yükleyin. Ürün tablosu ve alttaki seri
-            numarası notu okunur; vade tarihi de faturadan gelir.
+            <span className="font-medium text-slate-700">
+              e-Fatura PDF&apos;i:
+            </span>{" "}
+            tedarikçinizin e-posta ile gönderdiği faturayı olduğu gibi yükleyin.
+            Ürün tablosu ve alttaki seri numarası notu okunur; vade tarihi de
+            faturadan gelir.
           </li>
           <li>
-            <span className="font-medium text-slate-700">Ya da portal Excel&apos;i:</span> portalda{" "}
-            <span className="font-medium text-slate-700">Seri No Kontrolü</span> ekranını açıp{" "}
-            <span className="font-medium text-slate-700">Excel&apos;e Aktar</span> düğmesine basın,
-            inen dosyayı olduğu gibi yükleyin — sütunları düzenlemeniz gerekmez.
+            <span className="font-medium text-slate-700">
+              Ya da portal Excel&apos;i:
+            </span>{" "}
+            portalda{" "}
+            <span className="font-medium text-slate-700">Seri No Kontrolü</span>{" "}
+            ekranını açıp{" "}
+            <span className="font-medium text-slate-700">
+              Excel&apos;e Aktar
+            </span>{" "}
+            düğmesine basın, inen dosyayı olduğu gibi yükleyin — sütunları
+            düzenlemeniz gerekmez.
           </li>
           <li>
-            Program satırları ürün koduna göre gruplar. Daha önce girdiğiniz bir ürünse
-            kategorisi otomatik gelir. Kategori seçmek zorunlu değil — seçmediklerinizi
-            <span className="font-medium text-slate-700"> Sınıflandırılmamış</span> olarak
-            kaydeder, sonra cihaz sayfasından düzeltebilirsiniz.
+            Program satırları ürün koduna göre gruplar. Daha önce girdiğiniz bir
+            ürünse kategorisi otomatik gelir. Kategori seçmek zorunlu değil —
+            seçmediklerinizi
+            <span className="font-medium text-slate-700">
+              {" "}
+              Sınıflandırılmamış
+            </span>{" "}
+            olarak kaydeder, sonra cihaz sayfasından düzeltebilirsiniz.
           </li>
           <li>
-            Tedarikçi, depo ve vadeyi seçip kaydedin. Her seri numarası ayrı bir stok kaydı olur.
-            Fatura numarası olarak dosyadaki{" "}
-            <span className="font-medium text-slate-700">E-Fatura No</span> kullanılır;{" "}
+            Tedarikçi, depo ve vadeyi seçip kaydedin. Her seri numarası ayrı bir
+            stok kaydı olur. Fatura numarası olarak dosyadaki{" "}
+            <span className="font-medium text-slate-700">E-Fatura No</span>{" "}
+            kullanılır;{" "}
             <span className="font-medium text-slate-700">Fatura No</span>{" "}
             sütunundaki sipariş numarası fatura notuna yazılır.
           </li>
         </ol>
         <p className="mt-2 text-xs text-slate-500">
-          Dosyada zaten kayıtlı bir seri numarası varsa o cihaz atlanır — aynı faturayı iki kez
-          yüklerseniz stok ikiye katlanmaz.
+          Dosyada zaten kayıtlı bir seri numarası varsa o cihaz atlanır — aynı
+          faturayı iki kez yüklerseniz stok ikiye katlanmaz.
         </p>
       </div>
 
@@ -96,13 +114,17 @@ export default async function TedarikciFaturasiSayfasi() {
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm text-amber-800">
             Önce en az bir tedarikçi ekleyin —{" "}
-            <Link href="/ayarlar/tedarikciler" className="font-medium underline">
+            <Link
+              href="/ayarlar/tedarikciler"
+              className="font-medium underline"
+            >
               Ayarlar → Tedarikçiler
             </Link>
           </p>
         </div>
       ) : (
         <TedarikciFaturasiFormu
+          bugun={inputTarih(new Date())}
           kategoriler={kategoriler}
           varsayilanKategoriId={varsayilanKategoriId}
           tedarikciler={tedarikciler}

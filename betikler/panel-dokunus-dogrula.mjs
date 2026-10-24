@@ -193,8 +193,16 @@ try {
   kontrol("vade kartı cihaz listesine bağlanıyor", vadeBaglanti === 1);
 
   // --------------- 5b) Bugün Stoktan Çıkanlar başlığı listeye götürüyor
-  const buguntarih = new Date();
-  const gunMetni = `${buguntarih.getFullYear()}-${String(buguntarih.getMonth() + 1).padStart(2, "0")}-${String(buguntarih.getDate()).padStart(2, "0")}`;
+  // "Bugün" SUNUCUNUN saat dilimine göre: uygulama gün hesabını Ayarlar'daki
+  // dilimle yapıyor (öntanımlı Europe/Istanbul). Test süreci UTC'de koştuğu
+  // için kendi tarihini kullanmak gece yarısından sonra bir gün şaşıyordu —
+  // ve bu, uygulamanın değil testin hatasıydı.
+  const gunMetni = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Istanbul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
   const cikisYolu = `/cihazlar?durum=SATILDI&satisBas=${gunMetni}&satisBit=${gunMetni}`;
 
   const baslikBaglantisi = sayfa.locator(`a[href="${cikisYolu}"]`);

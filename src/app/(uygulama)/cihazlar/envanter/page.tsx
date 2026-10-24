@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { Kart } from "@/bilesenler/Kart";
-import { tarihSaatYaz } from "@/lib/tarih";
+import { tarihSaatYaz, inputTarih } from "@/lib/tarih";
 import { PartiGeriAlma } from "./PartiGeriAlma";
 import { ENVANTER_BEKLENEN_SUTUNLAR } from "@/lib/envanterDosyasi";
 import { adminSayfasi } from "@/lib/yetki";
@@ -146,6 +146,7 @@ export default async function EnvanterSayfasi() {
           </div>
 
           <EnvanterFormu
+            bugun={inputTarih(new Date())}
             kategoriler={kategoriler}
             varsayilanKategoriId={varsayilan?.id ?? null}
           />

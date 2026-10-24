@@ -35,13 +35,19 @@ export function SatisDuzenleme({
   satis,
   kullanicilar,
   musteriler,
+  bugun,
 }: {
+  /** Bugünün tarihi, sunucunun saat diliminde (bkz. SatisFormu'ndaki not). */
+  bugun: string;
   satis: SatisBilgisi;
   kullanicilar: { id: number; adSoyad: string }[];
   musteriler: { id: number; adSoyad: string; telefon: string | null }[];
 }) {
   const [acik, setAcik] = useState(false);
-  const [durum, eylem] = useActionState<SatisDuzenlemeDurumu, FormData>(satisiDuzenle, {});
+  const [durum, eylem] = useActionState<SatisDuzenlemeDurumu, FormData>(
+    satisiDuzenle,
+    {},
+  );
   const [geriDurum, geriEylem] = useActionState<SatisDuzenlemeDurumu, FormData>(
     satisiGeriAl,
     {},
@@ -49,14 +55,18 @@ export function SatisDuzenleme({
   const [geriAlOnayi, setGeriAlOnayi] = useState(false);
 
   const [fiyat, setFiyat] = useState(kurusuTLYaz(satis.satisFiyatiKurus ?? 0));
-  const [odemeTipi, setOdemeTipi] = useState(satis.odemeTipi ?? ODEME_TIPI.NAKIT);
+  const [odemeTipi, setOdemeTipi] = useState(
+    satis.odemeTipi ?? ODEME_TIPI.NAKIT,
+  );
   const [tarih, setTarih] = useState(
-    satis.satisTarihi ? inputTarih(new Date(satis.satisTarihi)) : inputTarih(new Date()),
+    satis.satisTarihi ? inputTarih(new Date(satis.satisTarihi)) : bugun,
   );
   const [satanId, setSatanId] = useState(
     satis.satanKullaniciId ?? kullanicilar[0]?.id ?? 0,
   );
-  const [musteriId, setMusteriId] = useState<number | "">(satis.musteriId ?? "");
+  const [musteriId, setMusteriId] = useState<number | "">(
+    satis.musteriId ?? "",
+  );
   const [not, setNot] = useState(satis.not ?? "");
 
   const satisKurus = tlyiKurusaCevir(fiyat);
@@ -89,7 +99,10 @@ export function SatisDuzenleme({
           Satış bilgilerini düzelt
         </button>
         {durum.basari || geriDurum.basari ? (
-          <p role="status" className="mt-2 text-sm font-medium text-emerald-700">
+          <p
+            role="status"
+            className="mt-2 text-sm font-medium text-emerald-700"
+          >
             {durum.basari ?? geriDurum.basari}
           </p>
         ) : null}
@@ -114,12 +127,18 @@ export function SatisDuzenleme({
       </div>
 
       {durum.hata ? (
-        <p role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p
+          role="alert"
+          className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
           {durum.hata}
         </p>
       ) : null}
       {durum.basari ? (
-        <p role="status" className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <p
+          role="status"
+          className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+        >
           {durum.basari}
         </p>
       ) : null}
@@ -140,7 +159,15 @@ export function SatisDuzenleme({
             />
             <p className="mt-1 text-xs text-slate-500">
               Kâr:{" "}
-              <span className={kar === null ? "" : kar < 0 ? "text-red-600" : "text-emerald-700"}>
+              <span
+                className={
+                  kar === null
+                    ? ""
+                    : kar < 0
+                      ? "text-red-600"
+                      : "text-emerald-700"
+                }
+              >
                 {kar === null ? "—" : `${kurusuTLYaz(kar)} TL`}
               </span>
             </p>
@@ -205,7 +232,9 @@ export function SatisDuzenleme({
               id="duzeltMusteri"
               data-test="duzelt-musteri"
               value={musteriId}
-              onChange={(e) => setMusteriId(e.target.value ? Number(e.target.value) : "")}
+              onChange={(e) =>
+                setMusteriId(e.target.value ? Number(e.target.value) : "")
+              }
               className={GIRDI_SINIFI}
             >
               <option value="">— müşterisiz —</option>
@@ -232,24 +261,35 @@ export function SatisDuzenleme({
           </div>
         </div>
 
-        <GonderDugmesi bekleyenMetin="Kaydediliyor…">Değişiklikleri Kaydet</GonderDugmesi>
+        <GonderDugmesi bekleyenMetin="Kaydediliyor…">
+          Değişiklikleri Kaydet
+        </GonderDugmesi>
       </form>
 
       {/* ---------------------------------------------- satışı geri alma */}
       <div className="border-t border-slate-200 pt-3">
         {geriDurum.hata ? (
-          <p role="alert" className="mb-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <p
+            role="alert"
+            className="mb-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+          >
             {geriDurum.hata}
           </p>
         ) : null}
         {geriDurum.basari ? (
-          <p role="status" className="mb-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <p
+            role="status"
+            className="mb-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+          >
             {geriDurum.basari}
           </p>
         ) : null}
 
         {geriAlOnayi ? (
-          <form action={geriEylem} className="flex flex-wrap items-center gap-2">
+          <form
+            action={geriEylem}
+            className="flex flex-wrap items-center gap-2"
+          >
             <input type="hidden" name="cihazId" value={satis.cihazId} />
             <span className="text-sm text-slate-700">
               Satış silinecek, cihaz tekrar stoğa dönecek. Emin misiniz?

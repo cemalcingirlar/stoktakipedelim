@@ -39,7 +39,6 @@ import {
   VARSAYILAN_ODEME_TIPI,
   type OdemeTipi,
 } from "@/lib/sabitler";
-import { inputTarih } from "@/lib/tarih";
 import { adayEtiketi, secimBasligi, type AdayCihaz } from "@/lib/cihazSecimi";
 import {
   musteriAra,
@@ -60,10 +59,21 @@ type OkunanCihaz = Parameters<typeof sepeteEkle>[1];
 export function SatisFormu({
   saticilar,
   varsayilanSaticiId,
+  bugun,
 }: {
   /** Satışı yapan olarak seçilebilecek kişiler; ilk sıradaki oturum sahibi. */
   saticilar: { id: number; adSoyad: string }[];
   varsayilanSaticiId: number;
+  /**
+   * Bugünün tarihi (yyyy-aa-gg), SUNUCUNUN saat diliminde hesaplanmış.
+   *
+   * Tarayıcının saatinden alınmıyor: ölçüldü, tarayıcı UTC'de sunucu
+   * Europe/Istanbul'dayken gece yarısından sonra ikisi farklı gün söylüyor ve
+   * kayıt bir önceki güne yazılıp panelin "bugün" kartında hiç görünmüyordu.
+   * Saat dilimi yanlış kalmış bir telefon da aynı hatayı üretir. Gün
+   * hesabının tek sahibi sunucu (Ayarlar'daki saat dilimi).
+   */
+  bugun: string;
 }) {
   const [durum, eylem] = useActionState<SatisDurumu, FormData>(satisKaydet, {});
   // Bir müşteri birden çok cihaz alabiliyor; okutulan her cihaz listeye ekleniyor.
@@ -79,7 +89,7 @@ export function SatisFormu({
     sepetRef.current = sepet;
   }, [sepet]);
   const [odemeTipi, setOdemeTipi] = useState<string>(VARSAYILAN_ODEME_TIPI);
-  const [satisTarihi, setSatisTarihi] = useState(inputTarih(new Date()));
+  const [satisTarihi, setSatisTarihi] = useState(bugun);
   const [satanKullaniciId, setSatanKullaniciId] = useState(varsayilanSaticiId);
   const [not, setNot] = useState("");
 

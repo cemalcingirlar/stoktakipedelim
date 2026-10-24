@@ -16,7 +16,7 @@ import {
 } from "@/lib/sabitler";
 import { gorebilirMi, gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { beklemeGunu, karKurus } from "@/lib/sutunlar";
-import { tarihSaatYaz, tarihYaz } from "@/lib/tarih";
+import { tarihSaatYaz, tarihYaz, inputTarih } from "@/lib/tarih";
 import { vadeDurumu, vadeEtiketi } from "@/lib/vade";
 import { adminMi, oturumGerekli } from "@/lib/yetki";
 import { KayitIptali } from "./KayitIptali";
@@ -318,6 +318,7 @@ export default async function CihazDetaySayfasi({
 
               {satisDuzenlenebilir ? (
                 <SatisDuzenleme
+                  bugun={inputTarih(new Date())}
                   satis={{
                     cihazId: cihaz.id,
                     satisFiyatiKurus: cihaz.satisFiyatiKurus,

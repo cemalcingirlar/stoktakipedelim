@@ -23,7 +23,9 @@ import { oturumGerekli, stokEkleyebilirMi } from "@/lib/yetki";
 
 export const metadata = { title: "Cihazlar — Stok Takip" };
 
-export default async function CihazlarSayfasi({ searchParams }: PageProps<"/cihazlar">) {
+export default async function CihazlarSayfasi({
+  searchParams,
+}: PageProps<"/cihazlar">) {
   const oturum = await oturumGerekli();
   const params = await searchParams;
   const filtre = filtreyiCoz(params);
@@ -47,7 +49,10 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
       const eslesmeler = await prisma.stokKalemi.findMany({
         // Görünmeyen mağazadaki cihaza atlamak, detay sayfası onu 404'leyecek
         // olsa bile "bu kod sistemde var" bilgisini sızdırırdı.
-        where: { OR: [{ seriNo: kod }, { barkod: kod }], ...magazaKosulu(gorunur) },
+        where: {
+          OR: [{ seriNo: kod }, { barkod: kod }],
+          ...magazaKosulu(gorunur),
+        },
         select: { id: true },
         // İkiden fazlasını saymaya gerek yok: karar "tek mi, değil mi".
         take: 2,
@@ -70,60 +75,65 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
     tedarikciler,
     saticilar,
   ] = await Promise.all([
-      prisma.kategori.findMany({ where: { aktif: true }, orderBy: { sira: "asc" } }),
-      prisma.magaza.findMany({
-        where: {
-          aktif: true,
-          // Filtre çubuğundaki mağaza seçenekleri de kısıtlı: seçilemeyen bir
-          // mağazayı listelemenin anlamı yok.
-          ...(gorunur === null ? {} : { id: { in: gorunur } }),
-        },
-        orderBy: { kod: "asc" },
-      }),
-      // Filtre çubuğu seçili kategorinin altlarını gösteriyor ama künye
-      // düzeltmede her kategorinin altları gerekiyor; hepsi çekilip ekranda
-      // ayrıştırılıyor.
-      prisma.altKategori.findMany({
-        where: { aktif: true },
-        orderBy: [{ kategoriId: "asc" }, { sira: "asc" }],
-      }),
-      prisma.stokKalemi.aggregate({ where, _sum: { alisFiyatiKurus: true } }),
-      prisma.stokKalemi.count({ where }),
-      prisma.stokKalemi.findMany({
-        where,
-        include: CIHAZ_ICERIK,
-        orderBy: siralamaOrderBy(filtre.siralama),
-        skip: (filtre.sayfa - 1) * SAYFA_BOYUTU,
-        take: SAYFA_BOYUTU,
-      }),
-      prisma.kullanici.findUnique({
-        where: { id: oturum.kullaniciId },
-        select: { sutunTercihi: true },
-      }),
-      // Marka listesi filtre açılırından geliyor; stokta hangi markalar varsa
-      // yalnız onlar gösteriliyor, boş seçenek bırakmanın anlamı yok.
-      prisma.stokKalemi.findMany({
-        where: magazaKosulu(gorunur),
-        distinct: ["marka"],
-        select: { marka: true },
-        orderBy: { marka: "asc" },
-      }),
-      prisma.tedarikci.findMany({
-        where: { aktif: true },
-        select: { id: true, ad: true },
-        orderBy: { ad: "asc" },
-      }),
-      prisma.kullanici.findMany({
-        where: { aktif: true },
-        select: { id: true, adSoyad: true },
-        orderBy: { adSoyad: "asc" },
-      }),
-    ]);
+    prisma.kategori.findMany({
+      where: { aktif: true },
+      orderBy: { sira: "asc" },
+    }),
+    prisma.magaza.findMany({
+      where: {
+        aktif: true,
+        // Filtre çubuğundaki mağaza seçenekleri de kısıtlı: seçilemeyen bir
+        // mağazayı listelemenin anlamı yok.
+        ...(gorunur === null ? {} : { id: { in: gorunur } }),
+      },
+      orderBy: { kod: "asc" },
+    }),
+    // Filtre çubuğu seçili kategorinin altlarını gösteriyor ama künye
+    // düzeltmede her kategorinin altları gerekiyor; hepsi çekilip ekranda
+    // ayrıştırılıyor.
+    prisma.altKategori.findMany({
+      where: { aktif: true },
+      orderBy: [{ kategoriId: "asc" }, { sira: "asc" }],
+    }),
+    prisma.stokKalemi.aggregate({ where, _sum: { alisFiyatiKurus: true } }),
+    prisma.stokKalemi.count({ where }),
+    prisma.stokKalemi.findMany({
+      where,
+      include: CIHAZ_ICERIK,
+      orderBy: siralamaOrderBy(filtre.siralama),
+      skip: (filtre.sayfa - 1) * SAYFA_BOYUTU,
+      take: SAYFA_BOYUTU,
+    }),
+    prisma.kullanici.findUnique({
+      where: { id: oturum.kullaniciId },
+      select: { sutunTercihi: true },
+    }),
+    // Marka listesi filtre açılırından geliyor; stokta hangi markalar varsa
+    // yalnız onlar gösteriliyor, boş seçenek bırakmanın anlamı yok.
+    prisma.stokKalemi.findMany({
+      where: magazaKosulu(gorunur),
+      distinct: ["marka"],
+      select: { marka: true },
+      orderBy: { marka: "asc" },
+    }),
+    prisma.tedarikci.findMany({
+      where: { aktif: true },
+      select: { id: true, ad: true },
+      orderBy: { ad: "asc" },
+    }),
+    prisma.kullanici.findMany({
+      where: { aktif: true },
+      select: { id: true, adSoyad: true },
+      orderBy: { adSoyad: "asc" },
+    }),
+  ]);
 
   // Künye düzeltmede "bu barkodtaki hepsine uygulansın mı" diye sorabilmek
   // için sayfadaki her barkodun kaç cihaz taşıdığı gerekiyor. Yalnız görünen
   // barkodlar sorgulanıyor; tüm tabloyu saymanın anlamı yok.
-  const sayfaBarkodlari = [...new Set(satirlar.map((s) => s.barkod).filter(Boolean))] as string[];
+  const sayfaBarkodlari = [
+    ...new Set(satirlar.map((s) => s.barkod).filter(Boolean)),
+  ] as string[];
   const barkodGruplari = sayfaBarkodlari.length
     ? await prisma.stokKalemi.groupBy({
         by: ["barkod"],
@@ -264,7 +274,11 @@ export default async function CihazlarSayfasi({ searchParams }: PageProps<"/ciha
           }))}
           barkodAdetleri={barkodAdetleri}
         />
-        <Sayfalama sayfa={filtre.sayfa} toplamSayfa={toplamSayfa} params={params} />
+        <Sayfalama
+          sayfa={filtre.sayfa}
+          toplamSayfa={toplamSayfa}
+          params={params}
+        />
       </div>
     </div>
   );

@@ -59,7 +59,8 @@ export async function tedarikciDosyasiniOnizle(
     if (!(dosya instanceof File) || dosya.size === 0) {
       return { hata: "Bir Excel dosyası seçin." };
     }
-    if (dosya.size > EN_BUYUK_DOSYA) return { hata: "Dosya 5 MB'tan büyük olamaz." };
+    if (dosya.size > EN_BUYUK_DOSYA)
+      return { hata: "Dosya 5 MB'tan büyük olamaz." };
 
     // Uzantıya değil içeriğe bakılıyor: aynı ekran hem portal Excel'ini hem
     // tedarikçinin e-Fatura PDF'ini kabul ediyor.
@@ -84,7 +85,9 @@ export async function tedarikciDosyasiniOnizle(
     }
 
     const barkodlar = [
-      ...new Set(sonuc.faturalar.flatMap((f) => f.gruplar.map((g) => g.barkod))),
+      ...new Set(
+        sonuc.faturalar.flatMap((f) => f.gruplar.map((g) => g.barkod)),
+      ),
     ];
 
     // Her barkod için en son girilen kaydın kategorisi; kullanıcı aynı ürünü
@@ -96,7 +99,12 @@ export async function tedarikciDosyasiniOnizle(
         orderBy: [{ girisTarihi: "desc" }, { id: "desc" }],
         // Marka ve model de alınıyor: barkod kayıtlıysa ürün adı faturadan
         // yeniden türetilmesin, aynı cihaz stokta tek isimle dursun.
-        select: { kategoriId: true, altKategoriId: true, marka: true, model: true },
+        select: {
+          kategoriId: true,
+          altKategoriId: true,
+          marka: true,
+          model: true,
+        },
       });
       if (son) {
         gecmis.push({
@@ -126,7 +134,9 @@ export async function tedarikciDosyasiniOnizle(
       faturalar: sonuc.faturalar,
       hatalar: sonuc.hatalar,
       gecmis,
-      kayitliSeriNolar: kayitli.map((k) => k.seriNo).filter((s): s is string => Boolean(s)),
+      kayitliSeriNolar: kayitli
+        .map((k) => k.seriNo)
+        .filter((s): s is string => Boolean(s)),
     };
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
@@ -144,7 +154,9 @@ export async function tedarikciDosyasiniOnizle(
  * yürütmek yerine kullanıcıyı Excel'e yönlendiriyoruz — yanlış fiyatla stok
  * açmak okunamayan dosyadan kötü.
  */
-async function pdfFaturasiniOku(veri: ArrayBuffer): Promise<TedarikciDosyaSonucu> {
+async function pdfFaturasiniOku(
+  veri: ArrayBuffer,
+): Promise<TedarikciDosyaSonucu> {
   let metin: string;
   try {
     metin = await pdfMetniCikar(veri);
@@ -171,7 +183,11 @@ async function pdfFaturasiniOku(veri: ArrayBuffer): Promise<TedarikciDosyaSonucu
   return efaturadanTedarikciFaturasi(efaturaCoz(metin));
 }
 
-export type KayitDurumu = { hata?: string; alanHatalari?: string[]; faturaId?: number };
+export type KayitDurumu = {
+  hata?: string;
+  alanHatalari?: string[];
+  faturaId?: number;
+};
 
 /** Önizlemesi onaylanan faturayı kaydeder; elle girişle aynı yoldan geçer. */
 export async function tedarikciFaturasiniKaydet(
@@ -193,14 +209,16 @@ export async function tedarikciFaturasiniKaydet(
       return {
         hata: "Eksik veya hatalı alanlar var.",
         alanHatalari: sonuc.error.issues.map((i) => {
-          const satirNo = typeof i.path[1] === "number" ? `${i.path[1] + 1}. cihaz: ` : "";
+          const satirNo =
+            typeof i.path[1] === "number" ? `${i.path[1] + 1}. cihaz: ` : "";
           return `${satirNo}${i.message}`;
         }),
       };
     }
 
     const kayit = await faturaOlustur(oturum.kullaniciId, sonuc.data);
-    if (!kayit.basarili) return { hata: kayit.hata, alanHatalari: kayit.alanHatalari };
+    if (!kayit.basarili)
+      return { hata: kayit.hata, alanHatalari: kayit.alanHatalari };
 
     await logYaz(oturum, {
       islem: LOG_ISLEM.FATURA_EKLE,

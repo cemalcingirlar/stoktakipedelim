@@ -21,7 +21,7 @@ import { KameraDugmesi } from "@/bilesenler/KameraOkuyucu";
 import { TedarikciSecici } from "@/bilesenler/TedarikciSecici";
 import { VadeAlani } from "@/bilesenler/VadeAlani";
 import { kurusuTLYaz, tlyiKurusaCevir } from "@/lib/para";
-import { inputTarih, tarihYaz } from "@/lib/tarih";
+import { tarihYaz } from "@/lib/tarih";
 import type { FaturaSatiriGirdisi } from "../dogrulama";
 import {
   barkodBilgisiGetir,
@@ -100,7 +100,9 @@ export function FaturaFormu({
   tedarikciler,
   magazalar,
   varsayilanMagazaId,
+  bugun,
 }: {
+  bugun: string;
   kategoriler: KategoriSecimi[];
   tedarikciler: { id: number; ad: string }[];
   magazalar: { id: number; kod: string; ad: string }[];
@@ -113,7 +115,7 @@ export function FaturaFormu({
   const [urunler, setUrunler] = useState<Urun[]>([]);
   const [barkod, setBarkod] = useState("");
   const [barkodUyarisi, setBarkodUyarisi] = useState("");
-  const [faturaTarihi, setFaturaTarihi] = useState(inputTarih(new Date()));
+  const [faturaTarihi, setFaturaTarihi] = useState(bugun);
   const [barkodBekliyor, barkodBasla] = useTransition();
   const barkodRef = useRef<HTMLInputElement>(null);
   // Barkod okutulunca odak o ürünün IMEI kutusuna gitsin diye.

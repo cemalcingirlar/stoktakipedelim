@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { inputTarih } from "@/lib/tarih";
 import { saticiAdaylari, type SaticiAdayi } from "@/lib/satici";
 import { oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
 import { SatisFormu } from "./SatisFormu";
@@ -35,7 +36,11 @@ export default async function SatisSayfasi() {
   }));
 
   const saticilar = saticiAdaylari(
-    { kullaniciId: oturum.kullaniciId, rol: oturum.rol, magazaIdleri: yetkiliMagazalar(oturum) },
+    {
+      kullaniciId: oturum.kullaniciId,
+      rol: oturum.rol,
+      magazaIdleri: yetkiliMagazalar(oturum),
+    },
     adaylar,
   );
 
@@ -52,6 +57,7 @@ export default async function SatisSayfasi() {
         </p>
       </div>
       <SatisFormu
+        bugun={inputTarih(new Date())}
         saticilar={saticilar.map((s) => ({ id: s.id, adSoyad: s.adSoyad }))}
         varsayilanSaticiId={oturum.kullaniciId}
       />

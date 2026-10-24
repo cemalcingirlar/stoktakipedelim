@@ -60,7 +60,9 @@ export function FiyatDuzeltme({
           Alış: <strong>{kurusuTLYaz(kayitli.fiyatKurus)} TL</strong>
         </span>
         {kayitli.not ? (
-          <span className="max-w-xs truncate text-xs text-slate-500">· {kayitli.not}</span>
+          <span className="max-w-xs truncate text-xs text-slate-500">
+            · {kayitli.not}
+          </span>
         ) : null}
         <button
           type="button"
@@ -76,7 +78,11 @@ export function FiyatDuzeltme({
           Fiyat / not düzelt
         </button>
         {basari ? (
-          <span role="status" data-test="fiyat-basari" className="text-xs font-medium text-emerald-700">
+          <span
+            role="status"
+            data-test="fiyat-basari"
+            className="text-xs font-medium text-emerald-700"
+          >
             {basari}
           </span>
         ) : null}

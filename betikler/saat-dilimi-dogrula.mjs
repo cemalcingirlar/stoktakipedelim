@@ -189,6 +189,76 @@ try {
     `ekran ${sonSaat} · beklenen ${dilimdeSaat("Europe/Istanbul")}`,
   );
 
+  // ========== 6) Form tarihleri sunucunun dilimine göre geliyor
+  // Bu, gerçek bir hatanın testi: satış tarihi varsayılanı tarayıcının
+  // saatinden geliyordu. Tarayıcı UTC'de, sunucu Europe/Istanbul'dayken gece
+  // yarısından sonra satış bir önceki güne yazılıyor ve panelin "Bugün
+  // Satılan" kartında hiç görünmüyordu. Dükkânda da aynısı olur: saat dilimi
+  // yanlış kalmış bir telefon satışı yanlış güne yazar.
+  //
+  // Tarayıcı bilerek çok uzak bir dilime alınıyor (UTC-12): günün büyük
+  // kısmında İstanbul'dan farklı bir TARİH gösteriyor.
+  const uzakBaglam = await tarayici.newContext({
+    locale: "tr-TR",
+    timezoneId: "Etc/GMT+12",
+  });
+  const uzakSayfa = await uzakBaglam.newPage();
+  await uzakSayfa.goto(`${hedef}/giris`, { waitUntil: "networkidle" });
+  await uzakSayfa.fill("#kullaniciAdi", "admin");
+  await uzakSayfa.fill("#sifre", SIFRE);
+  await Promise.all([
+    uzakSayfa.waitForURL("**/panel"),
+    uzakSayfa.click('button[type="submit"]'),
+  ]);
+
+  const gun = (dilim) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: dilim,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+  const sunucuGunu = gun("Europe/Istanbul");
+  const tarayiciGunu = gun("Etc/GMT+12");
+
+  // Fatura ve envanter formlarındaki tarih alanları cihaz okutmadan da
+  // görünüyor; satış ekranındaki alan ancak sepete cihaz girince açılıyor,
+  // o yüzden ölçüm bu ikisinden yapılıyor (varsayılan hepsinde aynı yoldan
+  // geliyor: sunucudan gelen `bugun` prop'u).
+  await uzakSayfa.goto(`${hedef}/faturalar/yeni`, { waitUntil: "networkidle" });
+  const faturaTarihi = await uzakSayfa.locator("#faturaTarihi").inputValue();
+  kontrol(
+    "fatura tarihi varsayılanı sunucunun gününü gösteriyor",
+    faturaTarihi === sunucuGunu,
+    `form ${faturaTarihi} · sunucu ${sunucuGunu} · tarayıcı ${tarayiciGunu}`,
+  );
+
+  // Panelin "bugün" bağlantısı da aynı günü kullanmalı: kart ile formun
+  // ayrı günlere bakması, satışın panelde hiç görünmemesine yol açıyordu.
+  await uzakSayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
+  const bugunBaglantisi = await uzakSayfa
+    .locator(`a[href*="satisBas=${sunucuGunu}"]`)
+    .count();
+  const satisKarti = await uzakSayfa
+    .locator('a[href="/satis"]')
+    .count();
+  kontrol(
+    "panelin bugün bağlantısı sunucunun gününü kullanıyor",
+    bugunBaglantisi >= 1 || satisKarti >= 1,
+    `${bugunBaglantisi} tarihli bağlantı · ${satisKarti} satış bağlantısı (bugün satış yoksa ikincisi)`,
+  );
+
+  // Ölçümün anlamlı olduğu saatlerde iki dilim farklı gün gösteriyor;
+  // aynı gündeyse kontrol doğru ama ayırt edici değil — hangisi olduğu
+  // çıktıda yazsın.
+  console.log(
+    tarayiciGunu === sunucuGunu
+      ? `   (bu saatte iki dilim aynı günde: ${sunucuGunu})`
+      : `   (diller farklı günde: sunucu ${sunucuGunu}, tarayıcı ${tarayiciGunu})`,
+  );
+  await uzakBaglam.close();
+
   await sayfa.screenshot({ path: `${cikti}-ayarlar.png`, fullPage: true });
   kontrol("tarayıcı konsolunda hata yok", hatalar.length === 0, hatalar.slice(0, 3).join(" | "));
 } catch (hata) {

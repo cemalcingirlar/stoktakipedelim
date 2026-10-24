@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Kart } from "@/bilesenler/Kart";
 import { aktarimEngeli, aktarimaUygunKaynaklar } from "@/lib/dukkan";
 import { prisma } from "@/lib/prisma";
+import { inputTarih } from "@/lib/tarih";
 import { saticiAdaylari, type SaticiAdayi } from "@/lib/satici";
 import { adminMi, oturumGerekli, yetkiliMagazalar } from "@/lib/yetki";
 import { AktarimFormu } from "./AktarimFormu";
@@ -39,7 +40,11 @@ export default async function AktarimSayfasi() {
   });
 
   const saticilar = saticiAdaylari(
-    { kullaniciId: oturum.kullaniciId, rol: oturum.rol, magazaIdleri: yetkiliMagazalar(oturum) },
+    {
+      kullaniciId: oturum.kullaniciId,
+      rol: oturum.rol,
+      magazaIdleri: yetkiliMagazalar(oturum),
+    },
     kullanicilar.map((k) => ({
       id: k.id,
       adSoyad: k.adSoyad,
@@ -55,17 +60,29 @@ export default async function AktarimSayfasi() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Mağaza İçi Aktarım</h1>
+        <h1 className="text-xl font-semibold text-slate-900">
+          Mağaza İçi Aktarım
+        </h1>
         <p className="mt-0.5 text-sm text-slate-500">
-          Aynı dükkânda duran iki kayıt arasında cihazı tek adımda taşır — sevkiyat açılmaz,
-          kabul beklenmez. Farklı dükkânlar arasında <Link href="/sevkiyat/yeni" className="text-sky-700 underline-offset-2 hover:underline">Mağazalar Arası Sevk</Link> kullanılır,
-          çünkü orada mal fiziken yolda ve karşı tarafın teslim aldığını onaylaması gerekir.
+          Aynı dükkânda duran iki kayıt arasında cihazı tek adımda taşır —
+          sevkiyat açılmaz, kabul beklenmez. Farklı dükkânlar arasında{" "}
+          <Link
+            href="/sevkiyat/yeni"
+            className="text-sky-700 underline-offset-2 hover:underline"
+          >
+            Mağazalar Arası Sevk
+          </Link>{" "}
+          kullanılır, çünkü orada mal fiziken yolda ve karşı tarafın teslim
+          aldığını onaylaması gerekir.
         </p>
       </div>
 
       {engel?.tur === "YETKI_YOK" ? (
         <Kart baslik="Bu dükkânda yetkiniz eksik">
-          <p data-test="aktarim-yetki-engeli" className="text-sm text-slate-700">
+          <p
+            data-test="aktarim-yetki-engeli"
+            className="text-sm text-slate-700"
+          >
             Mağaza içi aktarım dükkânınızda tanımlı, ama tek adımlı aktarım için{" "}
             <strong>iki mağazada da</strong> yetkili olmanız gerekiyor.
             {engel.magazaAdlari.length > 0 ? (
@@ -77,18 +94,18 @@ export default async function AktarimSayfasi() {
             ) : null}
           </p>
           <p className="mt-2 text-sm text-slate-700">
-            Yöneticinizden <strong>Ayarlar → Mağazalar</strong> ekranında, o mağazanın
-            &quot;Yetkili Kullanıcılar&quot; bölümünden size yetki vermesini isteyin. Bu bir
-            yönetici ayrıcalığı değil; yetki verilen her kullanıcı aktarım yapabilir ve alış
-            fiyatını revize edebilir.
+            Yöneticinizden <strong>Ayarlar → Mağazalar</strong> ekranında, o
+            mağazanın &quot;Yetkili Kullanıcılar&quot; bölümünden size yetki
+            vermesini isteyin. Bu bir yönetici ayrıcalığı değil; yetki verilen
+            her kullanıcı aktarım yapabilir ve alış fiyatını revize edebilir.
           </p>
         </Kart>
       ) : engel?.tur === "DUKKAN_YOK" ? (
         <Kart baslik="Önce dükkân grubu tanımlanmalı">
           <p className="text-sm text-slate-700">
-            Mağaza içi aktarım için aynı dükkânda duran mağazaların <strong>aynı dükkân
-            kodunu</strong> taşıması ve sizin ikisinde de yetkili olmanız gerekiyor. Şu anda
-            böyle bir eşleşme yok.
+            Mağaza içi aktarım için aynı dükkânda duran mağazaların{" "}
+            <strong>aynı dükkân kodunu</strong> taşıması ve sizin ikisinde de
+            yetkili olmanız gerekiyor. Şu anda böyle bir eşleşme yok.
           </p>
           {adminMi(oturum) ? (
             <p className="mt-2 text-sm text-slate-700">
@@ -99,8 +116,8 @@ export default async function AktarimSayfasi() {
                 Ayarlar → Mağazalar
               </Link>{" "}
               ekranında, örneğin bir dükkânın kasa ve depo kaydına ikisine de{" "}
-              <code className="rounded bg-slate-100 px-1">KOZAN</code> yazın; aralarında aktarım
-              açılır.
+              <code className="rounded bg-slate-100 px-1">KOZAN</code> yazın;
+              aralarında aktarım açılır.
             </p>
           ) : (
             <p className="mt-2 text-sm text-slate-700">
@@ -110,6 +127,7 @@ export default async function AktarimSayfasi() {
         </Kart>
       ) : (
         <AktarimFormu
+          bugun={inputTarih(new Date())}
           magazalar={uygun}
           varsayilanKaynakId={oturum.magazaId}
           saticilar={saticilar.map((s) => ({ id: s.id, adSoyad: s.adSoyad }))}

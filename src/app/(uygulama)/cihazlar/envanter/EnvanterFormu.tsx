@@ -6,7 +6,6 @@ import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { magazayaGoreToplam } from "@/lib/envanterDosyasi";
 import { kurusuTLYaz } from "@/lib/para";
-import { inputTarih } from "@/lib/tarih";
 import {
   envanteriKaydet,
   envanteriOnizle,
@@ -26,21 +25,34 @@ export type EnvanterKategorisiSecenegi = {
 export function EnvanterFormu({
   kategoriler,
   varsayilanKategoriId,
+  bugun,
 }: {
   kategoriler: EnvanterKategorisiSecenegi[];
   varsayilanKategoriId: number | null;
+  /**
+   * Bugünün tarihi (yyyy-aa-gg), SUNUCUNUN saat diliminde hesaplanmış.
+   *
+   * Tarayıcının saatinden alınmıyor: ölçüldü, tarayıcı UTC'de sunucu
+   * Europe/Istanbul'dayken gece yarısından sonra ikisi farklı gün söylüyor ve
+   * kayıt bir önceki güne yazılıp panelin "bugün" kartında hiç görünmüyordu.
+   * Saat dilimi yanlış kalmış bir telefon da aynı hatayı üretir. Gün
+   * hesabının tek sahibi sunucu (Ayarlar'daki saat dilimi).
+   */
+  bugun: string;
 }) {
-  const [onizleme, onizleEylem, onizleniyor] = useActionState<EnvanterOnizlemesi, FormData>(
-    envanteriOnizle,
-    {},
-  );
+  const [onizleme, onizleEylem, onizleniyor] = useActionState<
+    EnvanterOnizlemesi,
+    FormData
+  >(envanteriOnizle, {});
   const [kayit, kaydetEylem] = useActionState<EnvanterKaydiDurumu, FormData>(
     envanteriKaydet,
     {},
   );
-  const [kategoriId, setKategoriId] = useState<number | "">(varsayilanKategoriId ?? "");
+  const [kategoriId, setKategoriId] = useState<number | "">(
+    varsayilanKategoriId ?? "",
+  );
   const [altKategoriId, setAltKategoriId] = useState<number | "">("");
-  const [girisTarihi, setGirisTarihi] = useState(inputTarih(new Date()));
+  const [girisTarihi, setGirisTarihi] = useState(bugun);
   const [tumunuGoster, setTumunuGoster] = useState(false);
   const [tekrarListesiAcik, setTekrarListesiAcik] = useState(false);
   // Onay dosyanın yeniden okunmasını gerektiriyor (ayrıştırma sunucuda). React
@@ -54,7 +66,9 @@ export function EnvanterFormu({
   const tekrarNumaralari = onizleme.tekrarEdenNumaralar ?? [];
   const tekrarSatirSayisi = onizleme.tekrarEdenSatirSayisi ?? 0;
   const onayBekliyor = !onizleme.tekrarOnayi && uyarilar.length > 0;
-  const serisizYuklenen = satirlar.filter((s) => s.tekrarEdenNumara !== null).length;
+  const serisizYuklenen = satirlar.filter(
+    (s) => s.tekrarEdenNumara !== null,
+  ).length;
 
   function tekrarlariOnayla() {
     if (!secilenDosya) return;
@@ -73,14 +87,17 @@ export function EnvanterFormu({
   // dosyayı okuduktan sonra kategoriyi değiştirirse seri no zorunluluğu
   // yeniden denetlenmemiş olur.
   const kategoriDegisti =
-    onizleme.kategoriId !== undefined && onizleme.kategoriId !== Number(kategoriId);
+    onizleme.kategoriId !== undefined &&
+    onizleme.kategoriId !== Number(kategoriId);
 
   function veriyiHazirla(): FormData {
     const yuk = {
       kategoriId: Number(kategoriId) || 0,
       altKategoriId: Number(altKategoriId) || null,
       girisTarihi,
-      aciklama: onizleme.dosyaAdi ? `Envanter dökümü: ${onizleme.dosyaAdi}` : null,
+      aciklama: onizleme.dosyaAdi
+        ? `Envanter dökümü: ${onizleme.dosyaAdi}`
+        : null,
       satirlar: satirlar.map((s) => ({
         magazaId: s.magazaId,
         marka: s.marka,
@@ -104,8 +121,8 @@ export function EnvanterFormu({
           {kayit.eklenen} cihaz stoğa eklendi
         </h2>
         <p className="mt-1 text-sm text-emerald-800">
-          Cihazlar bulundukları mağazalara yazıldı. Listede görmek için aşağıdaki bağlantıyı
-          kullanın.
+          Cihazlar bulundukları mağazalara yazıldı. Listede görmek için
+          aşağıdaki bağlantıyı kullanın.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
@@ -133,8 +150,9 @@ export function EnvanterFormu({
           1. Kategoriyi seçin ve dosyayı yükleyin
         </h2>
         <p className="mb-3 text-sm text-slate-500">
-          Dökümde kategori sütunu olmadığı için kategori burada bir kez seçilir ve dosyadaki tüm
-          satırlara uygulanır. Dosya yüklendiğinde hiçbir kayıt oluşmaz.
+          Dökümde kategori sütunu olmadığı için kategori burada bir kez seçilir
+          ve dosyadaki tüm satırlara uygulanır. Dosya yüklendiğinde hiçbir kayıt
+          oluşmaz.
         </p>
 
         <form action={onizleEylem} className="space-y-3">
@@ -172,7 +190,9 @@ export function EnvanterFormu({
                 id="altKategoriId"
                 name="altKategoriId"
                 value={altKategoriId}
-                onChange={(e) => setAltKategoriId(e.target.value ? Number(e.target.value) : "")}
+                onChange={(e) =>
+                  setAltKategoriId(e.target.value ? Number(e.target.value) : "")
+                }
                 disabled={!secilenKategori?.altKategoriler.length}
                 className={GIRDI_SINIFI}
               >
@@ -207,7 +227,10 @@ export function EnvanterFormu({
         </form>
 
         {onizleme.hata ? (
-          <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <div
+            role="alert"
+            className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3"
+          >
             <p className="text-sm font-medium text-red-800">{onizleme.hata}</p>
           </div>
         ) : null}
@@ -216,23 +239,37 @@ export function EnvanterFormu({
       {/* ------------------------------------------------- 2. Önizleme */}
       {onizleme.dosyaAdi ? (
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-1 text-sm font-semibold text-slate-800">2. Önizleme</h2>
+          <h2 className="mb-1 text-sm font-semibold text-slate-800">
+            2. Önizleme
+          </h2>
           <p className="mb-3 text-sm text-slate-500">
-            <span className="font-medium text-slate-700">{onizleme.dosyaAdi}</span> ·{" "}
+            <span className="font-medium text-slate-700">
+              {onizleme.dosyaAdi}
+            </span>{" "}
+            ·{" "}
             {onizleme.kategoriAdi ? (
               <>
-                kategori <span className="font-medium text-slate-700">{onizleme.kategoriAdi}</span>{" "}
+                kategori{" "}
+                <span className="font-medium text-slate-700">
+                  {onizleme.kategoriAdi}
+                </span>{" "}
                 ·{" "}
               </>
             ) : null}
-            <span className="font-medium text-emerald-700">{satirlar.length} geçerli satır</span>
+            <span className="font-medium text-emerald-700">
+              {satirlar.length} geçerli satır
+            </span>
             {hatalar.length > 0 ? (
               <>
                 {" · "}
-                <span className="font-medium text-red-700">{hatalar.length} hatalı satır</span>
+                <span className="font-medium text-red-700">
+                  {hatalar.length} hatalı satır
+                </span>
               </>
             ) : null}
-            {satirlar.length > 0 ? ` · toplam ${kurusuTLYaz(toplamKurus)} TL` : null}
+            {satirlar.length > 0
+              ? ` · toplam ${kurusuTLYaz(toplamKurus)} TL`
+              : null}
             {serisizYuklenen > 0 ? (
               <>
                 {" · "}
@@ -266,20 +303,24 @@ export function EnvanterFormu({
               className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3"
             >
               <p className="text-sm font-semibold text-amber-900">
-                {tekrarSatirSayisi} satırda tekrar eden numara var — onayınız gerekiyor
+                {tekrarSatirSayisi} satırda tekrar eden numara var — onayınız
+                gerekiyor
               </p>
               <p className="mt-1 text-sm text-amber-900">
-                Dosyada {tekrarNumaralari.length} numara birden çok satırda geçiyor. Seri
-                numarası olmayan ürünlere sıra numarası verildiyse bu normaldir.
+                Dosyada {tekrarNumaralari.length} numara birden çok satırda
+                geçiyor. Seri numarası olmayan ürünlere sıra numarası verildiyse
+                bu normaldir.
               </p>
 
               <div className="mt-2 rounded-md border border-amber-200 bg-white px-3 py-2">
                 <p className="text-sm text-slate-700">
                   <span className="font-medium">Onaylarsanız ne olur:</span> bu{" "}
-                  {tekrarSatirSayisi} satırın her biri <strong>ayrı bir cihaz</strong> olarak
-                  eklenir, ama numara <strong>seri numarası olarak yazılmaz</strong> — aynı seri
-                  numarası iki cihazda olamaz. Numara cihazın notuna yazılır, aramada yine
-                  bulunur. Gerçek seri numaralı satırlar bundan etkilenmez.
+                  {tekrarSatirSayisi} satırın her biri{" "}
+                  <strong>ayrı bir cihaz</strong> olarak eklenir, ama numara{" "}
+                  <strong>seri numarası olarak yazılmaz</strong> — aynı seri
+                  numarası iki cihazda olamaz. Numara cihazın notuna yazılır,
+                  aramada yine bulunur. Gerçek seri numaralı satırlar bundan
+                  etkilenmez.
                 </p>
               </div>
 
@@ -287,9 +328,10 @@ export function EnvanterFormu({
                 <div className="mt-2 text-sm text-amber-900">
                   <span className="font-medium">Tekrar eden numaralar: </span>
                   <span className="font-mono text-xs">
-                    {(tekrarListesiAcik ? tekrarNumaralari : tekrarNumaralari.slice(0, 15)).join(
-                      ", ",
-                    )}
+                    {(tekrarListesiAcik
+                      ? tekrarNumaralari
+                      : tekrarNumaralari.slice(0, 15)
+                    ).join(", ")}
                   </span>
                   {tekrarNumaralari.length > 15 ? (
                     <button
@@ -297,7 +339,9 @@ export function EnvanterFormu({
                       onClick={() => setTekrarListesiAcik((o) => !o)}
                       className="ml-2 font-medium underline"
                     >
-                      {tekrarListesiAcik ? "kısalt" : `+${tekrarNumaralari.length - 15} tane daha`}
+                      {tekrarListesiAcik
+                        ? "kısalt"
+                        : `+${tekrarNumaralari.length - 15} tane daha`}
                     </button>
                   ) : null}
                 </div>
@@ -310,7 +354,9 @@ export function EnvanterFormu({
                   disabled={onizleniyor || !secilenDosya}
                   className="rounded-lg bg-amber-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {onizleniyor ? "Okunuyor…" : "Onaylıyorum, seri numarasız olarak yükle"}
+                  {onizleniyor
+                    ? "Okunuyor…"
+                    : "Onaylıyorum, seri numarasız olarak yükle"}
                 </button>
                 <span className="text-sm text-amber-800">
                   Onaylamazsanız bu satırlar atlanır, diğerleri yüklenir.
@@ -338,8 +384,8 @@ export function EnvanterFormu({
           {onizleme.tekrarOnayi && serisizYuklenen > 0 ? (
             <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
               <p className="text-sm text-emerald-900">
-                Onayınızla {serisizYuklenen} cihaz seri numarasız olarak yüklenecek; dosyadaki
-                numara her birinin notuna yazılacak.
+                Onayınızla {serisizYuklenen} cihaz seri numarasız olarak
+                yüklenecek; dosyadaki numara her birinin notuna yazılacak.
               </p>
             </div>
           ) : null}
@@ -356,7 +402,10 @@ export function EnvanterFormu({
               </ul>
               <p className="mt-2 text-sm text-amber-800">
                 Mağaza adını ya da kodunu dökümdeki yazımla aynı yapmak için{" "}
-                <Link href="/ayarlar/magazalar" className="font-medium underline">
+                <Link
+                  href="/ayarlar/magazalar"
+                  className="font-medium underline"
+                >
                   Ayarlar → Mağazalar
                 </Link>{" "}
                 ekranını kullanın.
@@ -367,7 +416,8 @@ export function EnvanterFormu({
           {hatalar.length > 0 ? (
             <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
               <p className="text-sm font-medium text-red-800">
-                Aşağıdaki satırlar atlanacak. Dosyayı düzeltip yeniden yükleyebilirsiniz.
+                Aşağıdaki satırlar atlanacak. Dosyayı düzeltip yeniden
+                yükleyebilirsiniz.
               </p>
               <ul
                 data-test="satir-hatalari"
@@ -401,11 +451,16 @@ export function EnvanterFormu({
                   <tbody className="divide-y divide-slate-100">
                     {gosterilen.map((s) => (
                       <tr key={s.satirNo}>
-                        <td className="px-3 py-1.5 text-slate-400">{s.satirNo}</td>
+                        <td className="px-3 py-1.5 text-slate-400">
+                          {s.satirNo}
+                        </td>
                         <td className="px-3 py-1.5">
                           {s.magazaAdi}
                           {s.ambarMetni !== s.magazaAdi ? (
-                            <span className="text-slate-400"> ← {s.ambarMetni}</span>
+                            <span className="text-slate-400">
+                              {" "}
+                              ← {s.ambarMetni}
+                            </span>
                           ) : null}
                         </td>
                         <td className="px-3 py-1.5">{s.marka}</td>
@@ -413,7 +468,10 @@ export function EnvanterFormu({
                         <td className="px-3 py-1.5 font-mono text-xs">
                           {s.seriNo ??
                             (s.tekrarEdenNumara ? (
-                              <span className="text-amber-700" title="Seri numarası sayılmadı">
+                              <span
+                                className="text-amber-700"
+                                title="Seri numarası sayılmadı"
+                              >
                                 ({s.tekrarEdenNumara})
                               </span>
                             ) : (
@@ -423,7 +481,9 @@ export function EnvanterFormu({
                         <td className="px-3 py-1.5 font-mono text-xs text-slate-500">
                           {s.barkod ?? "—"}
                         </td>
-                        <td className="px-3 py-1.5 text-right">{kurusuTLYaz(s.alisFiyatiKurus)}</td>
+                        <td className="px-3 py-1.5 text-right">
+                          {kurusuTLYaz(s.alisFiyatiKurus)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -449,10 +509,12 @@ export function EnvanterFormu({
       {satirlar.length > 0 ? (
         <form action={() => kaydetEylem(veriyiHazirla())}>
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="mb-1 text-sm font-semibold text-slate-800">3. Stoğa aktar</h2>
+            <h2 className="mb-1 text-sm font-semibold text-slate-800">
+              3. Stoğa aktar
+            </h2>
             <p className="mb-3 text-sm text-slate-500">
-              Bu bir devir girişidir: alış faturası oluşturulmaz, vade takibine girmez. Her cihaz
-              dökümdeki mağazasına yazılır.
+              Bu bir devir girişidir: alış faturası oluşturulmaz, vade takibine
+              girmez. Her cihaz dökümdeki mağazasına yazılır.
             </p>
 
             {kayit.hata ? (
@@ -474,9 +536,9 @@ export function EnvanterFormu({
             {onayBekliyor ? (
               <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
                 <p className="text-sm text-amber-900">
-                  <strong>{tekrarSatirSayisi} satır onayınızı bekliyor.</strong> Şimdi
-                  kaydederseniz o satırlar atlanır. Yüklenmelerini istiyorsanız yukarıdaki
-                  “Onaylıyorum” düğmesine basın.
+                  <strong>{tekrarSatirSayisi} satır onayınızı bekliyor.</strong>{" "}
+                  Şimdi kaydederseniz o satırlar atlanır. Yüklenmelerini
+                  istiyorsanız yukarıdaki “Onaylıyorum” düğmesine basın.
                 </p>
               </div>
             ) : null}
@@ -484,8 +546,8 @@ export function EnvanterFormu({
             {kategoriDegisti ? (
               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                 <p className="text-sm text-amber-900">
-                  Kategoriyi dosyayı okuduktan sonra değiştirdiniz. Dosyayı yeni kategoriyle
-                  yeniden okutun.
+                  Kategoriyi dosyayı okuduktan sonra değiştirdiniz. Dosyayı yeni
+                  kategoriyle yeniden okutun.
                 </p>
               </div>
             ) : null}
@@ -519,7 +581,8 @@ export function EnvanterFormu({
                 </GonderDugmesi>
               )}
               <span className="text-sm text-slate-500">
-                Toplam {kurusuTLYaz(toplamKurus)} TL · {magazaOzeti.length} mağaza
+                Toplam {kurusuTLYaz(toplamKurus)} TL · {magazaOzeti.length}{" "}
+                mağaza
               </span>
             </div>
           </section>

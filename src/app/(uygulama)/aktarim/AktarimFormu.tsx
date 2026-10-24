@@ -13,7 +13,6 @@ import type { MusteriOzeti } from "../satis/eylemler";
 import { aktarimUrunleriniAra, dukkanIciAktar } from "./eylemler";
 import { FiyatDuzeltme } from "./FiyatDuzeltme";
 import { MusteriBlogu } from "./MusteriBlogu";
-import { inputTarih } from "@/lib/tarih";
 import {
   aramaYeterliMi,
   grupAciklamasi,
@@ -48,7 +47,9 @@ export function AktarimFormu({
   varsayilanKaynakId,
   saticilar,
   varsayilanSaticiId,
+  bugun,
 }: {
+  bugun: string;
   magazalar: Magaza[];
   varsayilanKaynakId: number | null;
   /** Satışı yapan olarak seçilebilecek kişiler. */
@@ -83,7 +84,7 @@ export function AktarimFormu({
   const [not, setNot] = useState("");
   // Tek tarih hem aktarım hareketine hem sat-geri al satışına yazılıyor:
   // ikisi aynı işlemin parçası, ayrı tarih tutmak tarihçeyi tutarsız yapardı.
-  const [islemTarihi, setIslemTarihi] = useState(inputTarih(new Date()));
+  const [islemTarihi, setIslemTarihi] = useState(bugun);
 
   // ---------------------------------------------- müşteriye sat, geri al
   // Dükkân içinde cihaz taşınırken ürün fiilen müşteriye satılıp geri
