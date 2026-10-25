@@ -153,7 +153,28 @@ export async function yedekAl(
     });
 
     // Drive boyutu metin olarak döner; sayıya çevrilemiyorsa "bilinmiyor".
-    const uzakHam = yukleme.data.size;
+    //
+    // Yükleme cevabı boyutu her zaman taşımıyor (Ortak Drive ve bazı hesap
+    // yapılandırmalarında alan boş geliyor). Gerçekte görüldü: yedek alındı,
+    // bütünlük kontrolü geçti, ama doğrulama "yüklenen boyut okunamadı"da
+    // takıldı. Doğrulamayı tek bir cevabın alanına bağlamak kırılgan;
+    // boyut gelmediyse dosya ayrıca sorgulanıyor.
+    let uzakHam = yukleme.data.size;
+    if (
+      (uzakHam === null || uzakHam === undefined || uzakHam === "") &&
+      yukleme.data.id
+    ) {
+      try {
+        const bilgi = await drive.files.get({
+          fileId: yukleme.data.id,
+          fields: "size",
+          supportsAllDrives: true,
+        });
+        uzakHam = bilgi.data.size;
+      } catch (hata) {
+        console.error("Yüklenen yedeğin boyutu okunamadı:", hata);
+      }
+    }
     const uzakBoyut =
       uzakHam === null || uzakHam === undefined || uzakHam === ""
         ? null
