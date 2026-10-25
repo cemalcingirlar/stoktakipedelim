@@ -78,7 +78,55 @@ try {
     (girisYanit?.headers() ?? {})["x-frame-options"] === "DENY",
   );
 
-  // ========================= 2) Şifre değişince eski oturum düşüyor
+  // ============ 2) Şifre ekranı HER kullanıcıda ve her ölçüde görünüyor
+  // Bu bölüm şifre değiştiren adımlardan ÖNCE: aşağıda personel1'in
+  // şifresi sıfırlanıyor, sonrasında tohum şifresiyle giriş yapılamaz.
+  // Tek bir rolde çalışması yetmiyor: menü yönetici ile personel için ayrı
+  // kuruluyor ve telefonda ☰ ile açılıyor. Bağlantının bir rolde ya da bir
+  // ölçüde kaybolması, o kişinin şifresini hiç değiştirememesi demek.
+  const TUM_KULLANICILAR = ["admin", "sorumlu1", "sorumlu2", "sorumlu3", "personel1", "personel3"];
+  const OLCULER = [
+    { ad: "masaüstü", boyut: { width: 1400, height: 900 }, menuAc: false },
+    { ad: "telefon", boyut: { width: 390, height: 844 }, menuAc: true },
+  ];
+  for (const kullanici of TUM_KULLANICILAR) {
+    for (const olcu of OLCULER) {
+      const baglam = await tarayici.newContext({ viewport: olcu.boyut, locale: "tr-TR" });
+      const s = await baglam.newPage();
+      await s.goto(`${hedef}/giris`, { waitUntil: "networkidle" });
+      await s.fill("#kullaniciAdi", kullanici);
+      await s.fill("#sifre", SIFRE);
+      await Promise.all([s.waitForURL("**/panel"), s.click('button[type="submit"]')]);
+
+      const bag = s.locator('[data-test="sifre-baglantisi"]');
+      let gorunur = (await bag.count()) > 0 && (await bag.isVisible());
+      // Telefonda menü kapalı başlıyor; ☰ ile açılıyor.
+      if (!gorunur && olcu.menuAc) {
+        const dugme = s.locator("header button").first();
+        if (await dugme.count()) {
+          await dugme.click();
+          await s.waitForTimeout(350);
+          gorunur = await bag.isVisible();
+        }
+      }
+      let acildi = false;
+      if (gorunur) {
+        await bag.click();
+        await s.waitForTimeout(1200);
+        acildi =
+          s.url().includes("/sifre") &&
+          (await s.locator('[data-test="sifre-formu"]').count()) === 1;
+      }
+      kontrol(
+        `${kullanici} (${olcu.ad}) şifre ekranına ulaşabiliyor`,
+        gorunur && acildi,
+        `görünür:${gorunur ? "evet" : "HAYIR"} ekran:${acildi ? "açıldı" : "AÇILMADI"}`,
+      );
+      await baglam.close();
+    }
+  }
+
+  // ========================= 3) Şifre değişince eski oturum düşüyor
   const { baglam: personelBaglam, sayfa: personel } = await oturumAc("personel1");
   await personel.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
   kontrol("personel oturumu açıldı", personel.url().endsWith("/panel"), personel.url());
@@ -129,7 +177,7 @@ try {
   kontrol("eski şifre artık çalışmıyor", !eski.url().endsWith("/panel"), eski.url());
   await eskiBaglam.close();
 
-  // ========================= 3) Kullanıcı kendi şifresini değiştirebiliyor
+  // ========================= 4) Kullanıcı kendi şifresini değiştirebiliyor
   const { baglam: kendiBaglam, sayfa: kendi } = await oturumAc("personel2");
   kontrol(
     "üst menüde şifre bağlantısı var",
