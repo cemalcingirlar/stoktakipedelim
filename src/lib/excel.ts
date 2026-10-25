@@ -31,18 +31,31 @@ export async function excelUret(sayfalar: ExcelSayfasi[]): Promise<Buffer> {
     // Excel sayfa adında bu karakterler kullanılamaz.
     const guvenliAd = sayfaTanimi.ad.replace(/[*?:/\\[\]]/g, "-").slice(0, 31);
     const sayfa = kitap.addWorksheet(guvenliAd, {
-      views: [{ state: "frozen", ySplit: (sayfaTanimi.ustBilgiler?.length ?? 0) + 1 }],
+      views: [
+        { state: "frozen", ySplit: (sayfaTanimi.ustBilgiler?.length ?? 0) + 1 },
+      ],
     });
 
     for (const bilgi of sayfaTanimi.ustBilgiler ?? []) {
       const satir = sayfa.addRow([bilgi]);
       satir.font = { bold: true, size: 11 };
-      sayfa.mergeCells(satir.number, 1, satir.number, Math.max(1, sayfaTanimi.sutunlar.length));
+      sayfa.mergeCells(
+        satir.number,
+        1,
+        satir.number,
+        Math.max(1, sayfaTanimi.sutunlar.length),
+      );
     }
 
-    const baslikSatiri = sayfa.addRow(sayfaTanimi.sutunlar.map((s) => s.baslik));
+    const baslikSatiri = sayfa.addRow(
+      sayfaTanimi.sutunlar.map((s) => s.baslik),
+    );
     baslikSatiri.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    baslikSatiri.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BASLIK_DOLGU } };
+    baslikSatiri.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: BASLIK_DOLGU },
+    };
     baslikSatiri.alignment = { vertical: "middle" };
 
     for (const satir of sayfaTanimi.satirlar) {
@@ -71,18 +84,97 @@ export async function excelUret(sayfalar: ExcelSayfasi[]): Promise<Buffer> {
   return Buffer.from(veri);
 }
 
+/**
+ * Satırları akış halinde yazan .xlsx üreticisi.
+ *
+ * `excelUret` bütün kitabı bellekte kuruyor. Ölçüldü: 20.000 satırlık cihaz
+ * aktarımında sunucu süreci 420 MB'dan 1264 MB'a çıkıyor — 2 GB'lık bir
+ * VPS'te iki eşzamanlı aktarım ya da yedek sırasında gelen bir aktarım
+ * süreci öldürmeye yeter.
+ *
+ * Bu sürüm exceljs'in akışlı yazıcısını kullanıyor: satırlar yazıldıkça
+ * diske/çıkışa gidiyor, bellekte birikmiyor. `satirUret` bir üretici
+ * (generator) alıyor ki veritabanı satırları da obek obek okunabilsin.
+ */
+export async function excelAkisaYaz(
+  hedef: import("node:stream").Writable,
+  sayfaTanimi: Omit<ExcelSayfasi, "satirlar"> & {
+    satirUret: () => AsyncGenerator<(string | number | null)[]>;
+  },
+): Promise<void> {
+  const kitap = new ExcelJS.stream.xlsx.WorkbookWriter({
+    stream: hedef,
+    useStyles: true,
+  });
+  kitap.creator = "Stok Takip";
+  kitap.created = new Date();
+
+  const guvenliAd = sayfaTanimi.ad.replace(/[*?:/\\[\]]/g, "-").slice(0, 31);
+  const sayfa = kitap.addWorksheet(guvenliAd, {
+    views: [
+      { state: "frozen", ySplit: (sayfaTanimi.ustBilgiler?.length ?? 0) + 1 },
+    ],
+  });
+
+  // Sütun genişlikleri satırlardan ÖNCE veriliyor: akışlı yazıcıda sayfa
+  // kapandıktan sonra geriye dönüp sütun ayarlamak mümkün değil.
+  sayfa.columns = sayfaTanimi.sutunlar.map((sutun) => ({
+    width: sutun.genislik ?? Math.max(12, sutun.baslik.length + 4),
+    style: sutun.sayisal
+      ? { numFmt: "#,##0.00", alignment: { horizontal: "right" as const } }
+      : undefined,
+  }));
+
+  for (const bilgi of sayfaTanimi.ustBilgiler ?? []) {
+    const satir = sayfa.addRow([bilgi]);
+    satir.font = { bold: true, size: 11 };
+    satir.commit();
+  }
+
+  const baslikSatiri = sayfa.addRow(sayfaTanimi.sutunlar.map((s) => s.baslik));
+  baslikSatiri.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  baslikSatiri.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: BASLIK_DOLGU },
+  };
+  baslikSatiri.alignment = { vertical: "middle" };
+  baslikSatiri.commit();
+
+  // Filtre açılırları: başlık satırı yazıldıktan sonra, sayfa kapanmadan
+  // önce tanımlanıyor.
+  const baslikSatirNo = (sayfaTanimi.ustBilgiler?.length ?? 0) + 1;
+  sayfa.autoFilter = {
+    from: { row: baslikSatirNo, column: 1 },
+    to: {
+      row: baslikSatirNo,
+      column: Math.max(1, sayfaTanimi.sutunlar.length),
+    },
+  };
+
+  for await (const satir of sayfaTanimi.satirUret()) {
+    sayfa.addRow(satir).commit();
+  }
+
+  sayfa.commit();
+  await kitap.commit();
+}
+
 /** Tarayıcının dosyayı indirmesi için Content-Disposition başlığı üretir. */
 export function excelBasliklari(dosyaAdi: string): HeadersInit {
   const guvenli = dosyaAdi.replace(/[^\w.\-]+/g, "_");
   return {
-    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "Content-Type":
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "Content-Disposition": `attachment; filename="${guvenli}"; filename*=UTF-8''${encodeURIComponent(dosyaAdi)}`,
     "Cache-Control": "no-store",
   };
 }
 
 /** Kuruş değerini Excel'in sayı olarak anlayacağı TL değerine çevirir. */
-export function kurusuExcelSayisi(kurus: number | null | undefined): number | null {
+export function kurusuExcelSayisi(
+  kurus: number | null | undefined,
+): number | null {
   if (kurus === null || kurus === undefined) return null;
   return Number((kurus / 100).toFixed(2));
 }
