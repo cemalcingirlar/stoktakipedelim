@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { oturumuOku, type OturumBilgisi } from "./oturum";
 import { oturumBilgisiKur } from "./oturumKur";
 import { prisma } from "./prisma";
@@ -25,8 +26,15 @@ import { saatDiliminiUygula } from "./saatDilimiAyari";
  * Çerezi yeniden yazmıyoruz: bir istekteki okuma, çerezin kendisini
  * tazelemek için yeterli sebep değil ve her sayfada Set-Cookie göndermek
  * önbelleklemeyi bozar.
+ *
+ * Sonuç istek boyunca `cache` ile tutuluyor. Her sayfa bu okumayı iki kez
+ * tetikliyordu: bir kez düzen (menü), bir kez sayfanın kendisi. Ölçüldü:
+ * kullanıcı + ana mağaza + ek mağazalar üç ayrı sorgu, yani her sayfa
+ * görüntülemede üç gereksiz sorgu ve bir fazladan JWT doğrulaması. Tek
+ * render içinde iki okumanın farklı sonuç vermesi beklenmez; vermesi
+ * hâlinde menü ile sayfanın yetkisi çelişirdi.
  */
-export async function oturumuTazeOku(): Promise<OturumBilgisi | null> {
+async function oturumuTazeOkuHam(): Promise<OturumBilgisi | null> {
   await saatDiliminiUygula();
 
   const cerez = await oturumuOku();
@@ -63,3 +71,6 @@ export async function oturumuTazeOku(): Promise<OturumBilgisi | null> {
 
   return oturumBilgisiKur(kullanici);
 }
+
+/** İstek boyunca tek okuma. Server Action'larda render bağlamı yoksa cache etkisizdir, sonuç aynı kalır. */
+export const oturumuTazeOku = cache(oturumuTazeOkuHam);

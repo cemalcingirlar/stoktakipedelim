@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { filtreyiSorguyaCevir } from "@/lib/cihazFiltre";
 
 export function Sayfalama({

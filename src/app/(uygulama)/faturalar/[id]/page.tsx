@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { notFound } from "next/navigation";
 import { Kart } from "@/bilesenler/Kart";
 import { DurumRozeti, Rozet } from "@/bilesenler/Rozet";

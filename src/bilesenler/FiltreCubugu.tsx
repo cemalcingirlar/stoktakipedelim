@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { GIRDI_SINIFI } from "./Alan";
 import { filtreyiSorguyaCevir, type CihazFiltresi } from "@/lib/cihazFiltre";
 import { STOK_DURUM, STOK_DURUM_ETIKET } from "@/lib/sabitler";

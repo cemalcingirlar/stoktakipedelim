@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { Kart, SayiKarti } from "@/bilesenler/Kart";
 import { Rozet } from "@/bilesenler/Rozet";

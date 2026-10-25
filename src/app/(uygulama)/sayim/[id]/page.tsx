@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { notFound } from "next/navigation";
 import type { Prisma } from "@/generated/prisma/client";
 import { Kart } from "@/bilesenler/Kart";

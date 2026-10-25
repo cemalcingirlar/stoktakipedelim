@@ -45,9 +45,28 @@ const GUVENLIK_BASLIKLARI = [
   },
 ];
 
+/**
+ * Sekme simgesi için önbellek.
+ *
+ * Next bu dosyayı "public, max-age=0, must-revalidate" ile ve doğrulayıcı
+ * (ETag / Last-Modified) olmadan sunuyor. Sonuç ölçüldü: tarayıcı her sayfa
+ * geçişinde 25 KB'lık simgeyi baştan indiriyordu — tünel üzerinden her
+ * tıklamaya eklenen boş yük. Adres içerik özeti taşıdığı için
+ * (/favicon.ico?favicon.<özet>.ico) simge değişince adres de değişir.
+ *
+ * Bir hafta: özetsiz /favicon.ico adresini de kapsıyor, logo değişirse o yol
+ * da en geç bir haftada tazeleniyor.
+ */
+const SIMGE_ONBELLEGI = [
+  { key: "Cache-Control", value: "public, max-age=604800" },
+];
+
 const nextConfig: NextConfig = {
   async headers() {
-    return [{ source: "/:yol*", headers: GUVENLIK_BASLIKLARI }];
+    return [
+      { source: "/:yol*", headers: GUVENLIK_BASLIKLARI },
+      { source: "/favicon.ico", headers: SIMGE_ONBELLEGI },
+    ];
   },
   // Geliştirmede sunucuya 127.0.0.1 / yerel ağ IP'si üzerinden erişildiğinde
   // HMR kaynaklarının engellenmemesi için.

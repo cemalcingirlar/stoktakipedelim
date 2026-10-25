@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { sinifIandirilmamisKategoriId } from "@/lib/kategori";
 import { prisma } from "@/lib/prisma";
 import { inputTarih } from "@/lib/tarih";

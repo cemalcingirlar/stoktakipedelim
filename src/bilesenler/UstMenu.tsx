@@ -1,8 +1,26 @@
 "use client";
 
-import Link from "next/link";
+import { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { Link } from "@/bilesenler/Bag";
+
+/**
+ * Tıklanan menü ögesinin yanında görünen nokta.
+ *
+ * Sayfanın üstündeki bekleme çizgisi ortak bağlantı bileşeninde
+ * (src/bilesenler/Bag.tsx); bu nokta hangi ögeye tıklandığını gösteriyor.
+ */
+function BeklemeNoktasi() {
+  const { pending } = useLinkStatus();
+  if (!pending) return null;
+  return (
+    <span
+      aria-hidden
+      className="ml-1.5 inline-block h-1.5 w-1.5 animate-ping rounded-full bg-sky-300 align-middle"
+    />
+  );
+}
 
 export type MenuOgesi = { etiket: string; yol: string };
 
@@ -65,6 +83,7 @@ export function UstMenu({
               }`}
             >
               {oge.etiket}
+              <BeklemeNoktasi />
             </Link>
           ))}
         </nav>
@@ -86,6 +105,7 @@ export function UstMenu({
             className="rounded-md px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
           >
             Şifre
+            <BeklemeNoktasi />
           </Link>
           <form action={cikisEylemi}>
             <button

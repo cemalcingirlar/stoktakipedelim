@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { magazayaGoreToplam } from "@/lib/envanterDosyasi";
