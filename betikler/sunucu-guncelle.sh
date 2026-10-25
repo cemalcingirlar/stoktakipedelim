@@ -115,6 +115,23 @@ fi
 baslik "4/7  Bağımlılıklar"
 sudo -u "$KULLANICI" npm ci
 
+# Bilinen güvenlik açığı taraması.
+#
+# Neden burada: açık duyuruları bizim takvimimize göre çıkmıyor. pdfjs'teki
+# "kötü niyetli PDF ile kod çalıştırma" açığı böyle bulundu ve bu uygulama
+# tedarikçi PDF'i okuyor. Her kurulumda bir satırlık rapor görmek, aylar
+# sonra tesadüfen fark etmekten iyi.
+#
+# Güncellemeyi DURDURMUYOR: açık çıktı diye dükkânı kapatmanın anlamı yok,
+# ama görünmeden de geçmemeli.
+ACIK_RAPORU="$(sudo -u "$KULLANICI" npm audit --omit=dev 2>/dev/null | grep -E "vulnerabilit(y|ies)" | tail -1 || true)"
+if printf '%s' "$ACIK_RAPORU" | grep -q "found 0"; then
+  echo "güvenlik taraması: açık yok"
+else
+  kirmizi "güvenlik taraması: ${ACIK_RAPORU:-sonuç okunamadı}"
+  kirmizi "  Ayrıntı için: cd $UYGULAMA && npm audit"
+fi
+
 baslik "5/7  Veritabanı"
 sudo -u "$KULLANICI" npm run db:generate
 sudo -u "$KULLANICI" npm run db:deploy
