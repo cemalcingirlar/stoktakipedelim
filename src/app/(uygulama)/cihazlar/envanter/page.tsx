@@ -1,15 +1,20 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { Kart } from "@/bilesenler/Kart";
+import { tarihSaatYaz, inputTarih } from "@/lib/tarih";
+import { PartiGeriAlma } from "./PartiGeriAlma";
 import { ENVANTER_BEKLENEN_SUTUNLAR } from "@/lib/envanterDosyasi";
 import { adminSayfasi } from "@/lib/yetki";
 import { EnvanterFormu } from "./EnvanterFormu";
 
-export const metadata = { title: "Envanter Dökümü ile Stok Yükleme — Stok Takip" };
+export const metadata = {
+  title: "Envanter Dökümü ile Stok Yükleme — Stok Takip",
+};
 
 export default async function EnvanterSayfasi() {
   await adminSayfasi();
 
-  const [kategoriler, magazalar] = await Promise.all([
+  const [kategoriler, magazalar, partiler] = await Promise.all([
     prisma.kategori.findMany({
       where: { aktif: true },
       orderBy: { sira: "asc" },
@@ -29,20 +34,29 @@ export default async function EnvanterSayfasi() {
       orderBy: { kod: "asc" },
       select: { id: true, ad: true, kod: true },
     }),
+    prisma.iceAktarim.findMany({
+      orderBy: { tarih: "desc" },
+      take: 10,
+      include: { kullanici: { select: { adSoyad: true } } },
+    }),
   ]);
 
   // Telefon gibi seri no zorunlu bir kategori varsayılan olsun: döküm
   // çoğunlukla seri/lot takipli cihazları taşıyor.
-  const varsayilan = kategoriler.find((k) => k.seriNoZorunlu) ?? kategoriler[0] ?? null;
+  const varsayilan =
+    kategoriler.find((k) => k.seriNoZorunlu) ?? kategoriler[0] ?? null;
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Envanter Dökümü ile Stok Yükleme</h1>
+          <h1 className="text-xl font-semibold text-slate-900">
+            Envanter Dökümü ile Stok Yükleme
+          </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Muhasebe programından aldığınız “Seri/Lot Envanter Raporu” dosyasını olduğu gibi
-            yükleyin. Mağaza her satırdaki ambar bilgisinden bulunur.
+            Muhasebe programından aldığınız “Seri/Lot Envanter Raporu” dosyasını
+            olduğu gibi yükleyin. Mağaza her satırdaki ambar bilgisinden
+            bulunur.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -65,23 +79,32 @@ export default async function EnvanterSayfasi() {
         <h2 className="text-sm font-semibold text-slate-800">Nasıl çalışır</h2>
         <ol className="mt-2 list-inside list-decimal space-y-1 text-sm text-slate-600">
           <li>
-            <span className="font-medium text-slate-700">Dosyayı değiştirmenize gerek yok.</span>{" "}
+            <span className="font-medium text-slate-700">
+              Dosyayı değiştirmenize gerek yok.
+            </span>{" "}
             Başlık satırı nerede olursa olsun bulunur. Okunan sütunlar:{" "}
             {ENVANTER_BEKLENEN_SUTUNLAR.join(" · ")}
           </li>
           <li>
-            <span className="font-medium text-slate-700">Mağaza dosyadan gelir.</span> Ambar
-            Maliyet Grubu veya Ambar No. alanı mağaza adı/kodu ile eşleştirilir; eşleşmeyen
-            satırlar listelenir ve atlanır.
+            <span className="font-medium text-slate-700">
+              Mağaza dosyadan gelir.
+            </span>{" "}
+            Ambar Maliyet Grubu veya Ambar No. alanı mağaza adı/kodu ile
+            eşleştirilir; eşleşmeyen satırlar listelenir ve atlanır.
           </li>
           <li>
-            <span className="font-medium text-slate-700">Marka ve model tahmin edilir.</span>{" "}
-            Malzeme açıklamasının ilk kelimesi marka, kalanı model sayılır. Önizlemede ikisini de
-            görürsünüz.
+            <span className="font-medium text-slate-700">
+              Marka ve model tahmin edilir.
+            </span>{" "}
+            Malzeme açıklamasının ilk kelimesi marka, kalanı model sayılır.
+            Önizlemede ikisini de görürsünüz.
           </li>
           <li>
-            <span className="font-medium text-slate-700">Önizlemeyi kontrol edin.</span> Bu adımda
-            hiçbir kayıt oluşmaz; hatalı satırları görüp dosyayı düzeltebilirsiniz.
+            <span className="font-medium text-slate-700">
+              Önizlemeyi kontrol edin.
+            </span>{" "}
+            Bu adımda hiçbir kayıt oluşmaz; hatalı satırları görüp dosyayı
+            düzeltebilirsiniz.
           </li>
         </ol>
       </div>
@@ -122,7 +145,54 @@ export default async function EnvanterSayfasi() {
             </div>
           </div>
 
-          <EnvanterFormu kategoriler={kategoriler} varsayilanKategoriId={varsayilan?.id ?? null} />
+          <EnvanterFormu
+            bugun={inputTarih(new Date())}
+            kategoriler={kategoriler}
+            varsayilanKategoriId={varsayilan?.id ?? null}
+          />
+
+          {/* Geçmiş yüklemeler. Yanlış bir döküm yüklendiğinde tek çare eski
+              yedeği geri yüklemekti; o da aradaki bütün işi siler. */}
+          {partiler.length > 0 ? (
+            <Kart baslik="Son Yüklemeler">
+              <ul
+                data-test="parti-listesi"
+                className="divide-y divide-slate-100"
+              >
+                {partiler.map((p) => (
+                  <li
+                    key={p.id}
+                    data-test="parti-satiri"
+                    className="flex flex-wrap items-start justify-between gap-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-800">
+                        {p.adet} cihaz
+                        {p.geriAlindi ? (
+                          <span
+                            data-test="parti-geri-alinmis"
+                            className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600"
+                          >
+                            Geri Alındı
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {tarihSaatYaz(p.tarih)} · {p.kullanici.adSoyad} ·{" "}
+                        {p.aciklama}
+                        {p.geriAlindi && p.geriAlmaGerekce
+                          ? ` · geri alma gerekçesi: ${p.geriAlmaGerekce}`
+                          : ""}
+                      </p>
+                    </div>
+                    {p.geriAlindi ? null : (
+                      <PartiGeriAlma partiId={p.id} adet={p.adet} />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </Kart>
+          ) : null}
         </>
       )}
     </div>

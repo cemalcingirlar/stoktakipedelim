@@ -2,6 +2,8 @@ import "server-only";
 import { oturumuOku, type OturumBilgisi } from "./oturum";
 import { oturumBilgisiKur } from "./oturumKur";
 import { prisma } from "./prisma";
+import { jetonAni, oturumGecerliMi } from "./oturumGecerlilik";
+import { saatDiliminiUygula } from "./saatDilimiAyari";
 
 /**
  * Oturumu çerezden okur, sonra yetkileri veritabanından tazeler.
@@ -15,11 +17,18 @@ import { prisma } from "./prisma";
  * Aynı sebeple pasife alınan veya silinen kullanıcı da anında dışarı düşer;
  * eskiden çerezi geçerli kaldığı sürece işlem yapmaya devam edebiliyordu.
  *
+ * Saat dilimi de burada uygulanıyor. Burası her sayfa ve her server action'ın
+ * geçtiği tek nokta — dilimi render başlamadan yerine oturtmanın en erken ve
+ * en kesin yeri. `instrumentation` kancasında denenmişti, işçi süreçlerin bir
+ * kısmı eski dilimde kalıyordu (src/lib/saatDilimi.ts başındaki not).
+ *
  * Çerezi yeniden yazmıyoruz: bir istekteki okuma, çerezin kendisini
  * tazelemek için yeterli sebep değil ve her sayfada Set-Cookie göndermek
  * önbelleklemeyi bozar.
  */
 export async function oturumuTazeOku(): Promise<OturumBilgisi | null> {
+  await saatDiliminiUygula();
+
   const cerez = await oturumuOku();
   if (!cerez) return null;
 
@@ -32,6 +41,7 @@ export async function oturumuTazeOku(): Promise<OturumBilgisi | null> {
       rol: true,
       aktif: true,
       magazaId: true,
+      sifreDegisikligi: true,
       magaza: { select: { id: true, ad: true } },
       ekMagazalar: {
         where: { aktif: true },
@@ -42,5 +52,14 @@ export async function oturumuTazeOku(): Promise<OturumBilgisi | null> {
   });
 
   if (!kullanici || !kullanici.aktif) return null;
+
+  // Şifre bu jetondan sonra değiştiyse jeton eski şifre döneminden kalmıştır.
+  // Şifre sıfırlamanın asıl amacı buydu: ele geçirilmiş oturumu kesmek.
+  if (
+    !oturumGecerliMi(jetonAni(cerez.jetonAniSn), kullanici.sifreDegisikligi)
+  ) {
+    return null;
+  }
+
   return oturumBilgisiKur(kullanici);
 }

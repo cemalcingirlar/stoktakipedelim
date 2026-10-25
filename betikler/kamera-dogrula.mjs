@@ -76,14 +76,33 @@ try {
   kontrol("kamera penceresi açıldı", await sayfa.locator('[role="dialog"]').isVisible());
 
   // Çözümleyici indirilip görüntüyü okuyana kadar bekle.
-  await sayfa.waitForFunction(
-    () => document.querySelectorAll('[role="dialog"] ul li').length > 0,
-    undefined,
-    { timeout: 40000 },
-  ).catch(() => {});
+  //
+  // İki düzeltme: (1) beklenen KODUN kendisi bekleniyor, "herhangi bir satır
+  // çıktı" değil; (2) süre dolduğunda bu açıkça yazılıyor. Eskiden zaman
+  // aşımı sessizce yutuluyor ve sonuç "okunmadı" olarak görünüyordu —
+  // kameranın bozuk olduğu mu yoksa testin acele mi ettiği anlaşılmıyordu.
+  // Çözümleme tarayıcıda CPU ile yapılıyor; süit tek başına koşarken ~10
+  // saniye, yoğun makinede daha uzun sürebiliyor.
+  let sureDoldu = false;
+  await sayfa
+    .waitForFunction(
+      (beklenen) =>
+        [...document.querySelectorAll('[role="dialog"] ul li')].some(
+          (li) => li.textContent?.trim() === beklenen,
+        ),
+      IMEI,
+      { timeout: 90000 },
+    )
+    .catch(() => {
+      sureDoldu = true;
+    });
   const okunanlar = await sayfa.locator('[role="dialog"] ul li').allTextContents();
-  kontrol("kamera koddu okudu", okunanlar.some((t) => t.trim() === IMEI),
-    okunanlar.map((t) => t.trim()).join(", ") || "(okunmadı)");
+  kontrol(
+    "kamera koddu okudu",
+    okunanlar.some((t) => t.trim() === IMEI),
+    okunanlar.map((t) => t.trim()).join(", ") ||
+      (sureDoldu ? "(90 sn içinde okunamadı)" : "(okunmadı)"),
+  );
 
   await sayfa.locator('[role="dialog"] button:has-text("Kapat")').click();
   await sayfa.waitForTimeout(500);

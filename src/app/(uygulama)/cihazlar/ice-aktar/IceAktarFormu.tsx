@@ -7,7 +7,6 @@ import { TedarikciSecici } from "@/bilesenler/TedarikciSecici";
 import { VadeAlani } from "@/bilesenler/VadeAlani";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { kurusuTLYaz } from "@/lib/para";
-import { inputTarih } from "@/lib/tarih";
 import type { OkunanSatir } from "@/lib/iceAktar";
 import {
   exceliOnizle,
@@ -22,16 +21,33 @@ export function IceAktarFormu({
   tedarikciler,
   magazalar,
   varsayilanMagazaId,
+  bugun,
 }: {
   tedarikciler: { id: number; ad: string }[];
   magazalar: { id: number; ad: string }[];
   varsayilanMagazaId: number | null;
+  /**
+   * Bugünün tarihi (yyyy-aa-gg), SUNUCUNUN saat diliminde hesaplanmış.
+   *
+   * Tarayıcının saatinden alınmıyor: ölçüldü, tarayıcı UTC'de sunucu
+   * Europe/Istanbul'dayken gece yarısından sonra ikisi farklı gün söylüyor ve
+   * kayıt bir önceki güne yazılıp panelin "bugün" kartında hiç görünmüyordu.
+   * Saat dilimi yanlış kalmış bir telefon da aynı hatayı üretir. Gün
+   * hesabının tek sahibi sunucu (Ayarlar'daki saat dilimi).
+   */
+  bugun: string;
 }) {
   const yonlendirici = useRouter();
-  const [onizleme, onizleEylem] = useActionState<OnizlemeDurumu, FormData>(exceliOnizle, {});
-  const [kayit, kaydetEylem] = useActionState<KayitDurumu, FormData>(iceAktariKaydet, {});
+  const [onizleme, onizleEylem] = useActionState<OnizlemeDurumu, FormData>(
+    exceliOnizle,
+    {},
+  );
+  const [kayit, kaydetEylem] = useActionState<KayitDurumu, FormData>(
+    iceAktariKaydet,
+    {},
+  );
   const [tumunuGoster, setTumunuGoster] = useState(false);
-  const [faturaTarihi, setFaturaTarihi] = useState(inputTarih(new Date()));
+  const [faturaTarihi, setFaturaTarihi] = useState(bugun);
 
   const satirlar = onizleme.satirlar ?? [];
   const hatalar = onizleme.hatalar ?? [];
@@ -75,10 +91,12 @@ export function IceAktarFormu({
     <div className="space-y-5">
       {/* ------------------------------------------------- 1. Dosya seçme */}
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-1 text-sm font-semibold text-slate-800">1. Excel dosyasını yükleyin</h2>
+        <h2 className="mb-1 text-sm font-semibold text-slate-800">
+          1. Excel dosyasını yükleyin
+        </h2>
         <p className="mb-3 text-sm text-slate-500">
-          Şablonu indirip doldurun. Dosya yüklendiğinde hiçbir kayıt oluşmaz — önce satırları
-          kontrol edersiniz.
+          Şablonu indirip doldurun. Dosya yüklendiğinde hiçbir kayıt oluşmaz —
+          önce satırları kontrol edersiniz.
         </p>
 
         <form action={onizleEylem} className="flex flex-wrap items-end gap-3">
@@ -101,7 +119,10 @@ export function IceAktarFormu({
         </form>
 
         {onizleme.hata ? (
-          <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <div
+            role="alert"
+            className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3"
+          >
             <p className="text-sm font-medium text-red-800">{onizleme.hata}</p>
           </div>
         ) : null}
@@ -110,23 +131,35 @@ export function IceAktarFormu({
       {/* ------------------------------------------------- 2. Önizleme */}
       {onizleme.dosyaAdi ? (
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-1 text-sm font-semibold text-slate-800">2. Okunan satırlar</h2>
+          <h2 className="mb-1 text-sm font-semibold text-slate-800">
+            2. Okunan satırlar
+          </h2>
           <p className="mb-3 text-sm text-slate-500">
-            <span className="font-medium text-slate-700">{onizleme.dosyaAdi}</span> ·{" "}
-            <span className="font-medium text-emerald-700">{satirlar.length} geçerli satır</span>
+            <span className="font-medium text-slate-700">
+              {onizleme.dosyaAdi}
+            </span>{" "}
+            ·{" "}
+            <span className="font-medium text-emerald-700">
+              {satirlar.length} geçerli satır
+            </span>
             {hatalar.length > 0 ? (
               <>
                 {" · "}
-                <span className="font-medium text-red-700">{hatalar.length} hatalı satır</span>
+                <span className="font-medium text-red-700">
+                  {hatalar.length} hatalı satır
+                </span>
               </>
             ) : null}
-            {satirlar.length > 0 ? ` · toplam ${kurusuTLYaz(toplamKurus)} TL` : null}
+            {satirlar.length > 0
+              ? ` · toplam ${kurusuTLYaz(toplamKurus)} TL`
+              : null}
           </p>
 
           {hatalar.length > 0 ? (
             <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
               <p className="text-sm font-medium text-red-800">
-                Aşağıdaki satırlar atlanacak. Dosyayı düzeltip yeniden yükleyebilirsiniz.
+                Aşağıdaki satırlar atlanacak. Dosyayı düzeltip yeniden
+                yükleyebilirsiniz.
               </p>
               <ul className="mt-2 max-h-52 list-inside list-disc space-y-0.5 overflow-y-auto text-sm text-red-700">
                 {hatalar.map((h) => (
@@ -153,16 +186,23 @@ export function IceAktarFormu({
                   <tbody className="divide-y divide-slate-100">
                     {gosterilen.map((s: OkunanSatir) => (
                       <tr key={s.excelSatiri}>
-                        <td className="px-3 py-1.5 text-slate-400">{s.excelSatiri}</td>
+                        <td className="px-3 py-1.5 text-slate-400">
+                          {s.excelSatiri}
+                        </td>
                         <td className="px-3 py-1.5">
                           {s.kategoriAdi}
                           {s.altKategoriAdi ? (
-                            <span className="text-slate-400"> · {s.altKategoriAdi}</span>
+                            <span className="text-slate-400">
+                              {" "}
+                              · {s.altKategoriAdi}
+                            </span>
                           ) : null}
                         </td>
                         <td className="px-3 py-1.5">{s.marka}</td>
                         <td className="px-3 py-1.5">{s.model}</td>
-                        <td className="px-3 py-1.5 font-mono text-xs">{s.seriNo ?? "—"}</td>
+                        <td className="px-3 py-1.5 font-mono text-xs">
+                          {s.seriNo ?? "—"}
+                        </td>
                         <td className="px-3 py-1.5 text-right">
                           {kurusuTLYaz(s.alisFiyatiKurus)}
                         </td>
@@ -191,13 +231,18 @@ export function IceAktarFormu({
       {satirlar.length > 0 ? (
         <form action={(form) => kaydetEylem(veriyiHazirla(form))}>
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="mb-1 text-sm font-semibold text-slate-800">3. Alış faturası bilgileri</h2>
+            <h2 className="mb-1 text-sm font-semibold text-slate-800">
+              3. Alış faturası bilgileri
+            </h2>
             <p className="mb-3 text-sm text-slate-500">
               Cihazlar bu faturaya bağlanır; vade takibi fatura üzerinden yürür.
             </p>
 
             {kayit.hata ? (
-              <div role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+              <div
+                role="alert"
+                className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3"
+              >
                 <p className="text-sm font-medium text-red-800">{kayit.hata}</p>
                 {kayit.alanHatalari?.length ? (
                   <ul className="mt-2 max-h-52 list-inside list-disc space-y-0.5 overflow-y-auto text-sm text-red-700">
@@ -266,7 +311,12 @@ export function IceAktarFormu({
                 <label htmlFor="not" className={KUCUK_ETIKET}>
                   Not
                 </label>
-                <input id="not" name="not" maxLength={500} className={GIRDI_SINIFI} />
+                <input
+                  id="not"
+                  name="not"
+                  maxLength={500}
+                  className={GIRDI_SINIFI}
+                />
               </div>
             </div>
 

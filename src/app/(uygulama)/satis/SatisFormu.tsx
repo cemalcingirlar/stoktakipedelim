@@ -1,9 +1,18 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
-import { OkutmaKutusu, type OkutmaGeriBildirimi } from "@/bilesenler/OkutmaKutusu";
+import {
+  OkutmaKutusu,
+  type OkutmaGeriBildirimi,
+} from "@/bilesenler/OkutmaKutusu";
 import {
   aramaYeterliMi,
   grupAciklamasi,
@@ -11,6 +20,7 @@ import {
   grupFiyatMetni,
   sonucYokMesaji,
   type UrunGrubu,
+  kesintiUyarisi,
 } from "@/lib/urunArama";
 import { kurusuTLYaz, kurusuTLYazSembollu } from "@/lib/para";
 import {
@@ -29,7 +39,6 @@ import {
   VARSAYILAN_ODEME_TIPI,
   type OdemeTipi,
 } from "@/lib/sabitler";
-import { inputTarih } from "@/lib/tarih";
 import { adayEtiketi, secimBasligi, type AdayCihaz } from "@/lib/cihazSecimi";
 import {
   musteriAra,
@@ -50,10 +59,21 @@ type OkunanCihaz = Parameters<typeof sepeteEkle>[1];
 export function SatisFormu({
   saticilar,
   varsayilanSaticiId,
+  bugun,
 }: {
   /** Satışı yapan olarak seçilebilecek kişiler; ilk sıradaki oturum sahibi. */
   saticilar: { id: number; adSoyad: string }[];
   varsayilanSaticiId: number;
+  /**
+   * Bugünün tarihi (yyyy-aa-gg), SUNUCUNUN saat diliminde hesaplanmış.
+   *
+   * Tarayıcının saatinden alınmıyor: ölçüldü, tarayıcı UTC'de sunucu
+   * Europe/Istanbul'dayken gece yarısından sonra ikisi farklı gün söylüyor ve
+   * kayıt bir önceki güne yazılıp panelin "bugün" kartında hiç görünmüyordu.
+   * Saat dilimi yanlış kalmış bir telefon da aynı hatayı üretir. Gün
+   * hesabının tek sahibi sunucu (Ayarlar'daki saat dilimi).
+   */
+  bugun: string;
 }) {
   const [durum, eylem] = useActionState<SatisDurumu, FormData>(satisKaydet, {});
   // Bir müşteri birden çok cihaz alabiliyor; okutulan her cihaz listeye ekleniyor.
@@ -69,7 +89,7 @@ export function SatisFormu({
     sepetRef.current = sepet;
   }, [sepet]);
   const [odemeTipi, setOdemeTipi] = useState<string>(VARSAYILAN_ODEME_TIPI);
-  const [satisTarihi, setSatisTarihi] = useState(inputTarih(new Date()));
+  const [satisTarihi, setSatisTarihi] = useState(bugun);
   const [satanKullaniciId, setSatanKullaniciId] = useState(varsayilanSaticiId);
   const [not, setNot] = useState("");
 
@@ -87,10 +107,16 @@ export function SatisFormu({
   const [listeAcik, setListeAcik] = useState(false);
   const [urunSorgu, setUrunSorgu] = useState("");
   const [urunler, setUrunler] = useState<UrunGrubu[] | null>(null);
+  // Arama sınıra dayandıysa kullanıcıya söylenmeli; ölçüldü ki yaygın
+  // aramalar sessizce tam 30'da kesiliyordu.
+  const [aramaKesildi, setAramaKesildi] = useState(false);
   const [urunAraniyor, urunAramaBasla] = useTransition();
 
   // Okutulan barkod birden çok cihaza denk geldiğinde seçim listesi.
-  const [secim, setSecim] = useState<{ aranan: string; adaylar: AdayCihaz[] } | null>(null);
+  const [secim, setSecim] = useState<{
+    aranan: string;
+    adaylar: AdayCihaz[];
+  } | null>(null);
   const [secimHatasi, setSecimHatasi] = useState<string | null>(null);
   const [secimBekliyor, secimBasla] = useTransition();
 
@@ -113,7 +139,10 @@ export function SatisFormu({
   }
 
   async function okut(kod: string): Promise<OkutmaGeriBildirimi> {
-    const sonuc = await satisCihaziOkut(kod, sepetRef.current.map((c) => c.id));
+    const sonuc = await satisCihaziOkut(
+      kod,
+      sepetRef.current.map((c) => c.id),
+    );
     if (sonuc.durum === "HATA") {
       setSecim(null);
       return { tur: "hata", mesaj: sonuc.mesaj };
@@ -137,12 +166,16 @@ export function SatisFormu({
     const sorgu = urunSorgu.trim();
     if (!aramaYeterliMi(sorgu)) {
       setUrunler(null);
+      setAramaKesildi(false);
       return;
     }
     urunAramaBasla(async () => {
-      setUrunler(
-        await satisUrunleriniAra(sorgu, sepetRef.current.map((c) => c.id)),
+      const sonuc = await satisUrunleriniAra(
+        sorgu,
+        sepetRef.current.map((c) => c.id),
       );
+      setUrunler(sonuc.gruplar);
+      setAramaKesildi(sonuc.kesildi);
     });
   }
 
@@ -172,12 +205,17 @@ export function SatisFormu({
   /** Seçim listesinden bir cihaz seçildi. */
   function adaySec(adayId: number) {
     secimBasla(async () => {
-      const sonuc = await satisCihaziniSec(adayId, sepetRef.current.map((c) => c.id));
+      const sonuc = await satisCihaziniSec(
+        adayId,
+        sepetRef.current.map((c) => c.id),
+      );
       if (sonuc.durum === "BULUNDU") {
         sepeteAl(sonuc.cihaz);
         return;
       }
-      setSecimHatasi(sonuc.durum === "HATA" ? sonuc.mesaj : "Cihaz seçilemedi.");
+      setSecimHatasi(
+        sonuc.durum === "HATA" ? sonuc.mesaj : "Cihaz seçilemedi.",
+      );
     });
   }
 
@@ -219,14 +257,19 @@ export function SatisFormu({
   return (
     <div className="space-y-5">
       {durum.hata ? (
-        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+        <p
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
+        >
           {durum.hata}
         </p>
       ) : null}
 
       <OkutmaKutusu
         odakVer
-        etiket={sepet.length === 0 ? "Satılacak Cihazı Okut" : "Başka Cihaz Okut"}
+        etiket={
+          sepet.length === 0 ? "Satılacak Cihazı Okut" : "Başka Cihaz Okut"
+        }
         ipucu={
           sepet.length === 0
             ? "Cihaz kendi mağazanızda ve stokta olmalı."
@@ -247,6 +290,7 @@ export function SatisFormu({
             if (!yeni) {
               setUrunSorgu("");
               setUrunler(null);
+              setAramaKesildi(false);
             }
           }}
           className="text-sm font-medium text-blue-700 underline-offset-2 hover:underline"
@@ -283,15 +327,27 @@ export function SatisFormu({
 
             {urunler === null ? (
               <p className="text-xs text-slate-500">
-                Stoktaki ürünler arasında arar. Aynı üründen birden çok varsa tek satırda
-                toplanır; seçtiğinizde hangi cihazın satılacağı sorulur.
+                Stoktaki ürünler arasında arar. Aynı üründen birden çok varsa
+                tek satırda toplanır; seçtiğinizde hangi cihazın satılacağı
+                sorulur.
               </p>
             ) : urunler.length === 0 ? (
               <p data-test="urun-sonuc-yok" className="text-sm text-slate-500">
                 {sonucYokMesaji(urunSorgu)}
               </p>
             ) : (
-              <ul data-test="urun-listesi" className="divide-y divide-slate-100">
+              <ul
+                data-test="urun-listesi"
+                className="divide-y divide-slate-100"
+              >
+                {aramaKesildi ? (
+                  <li
+                    data-test="arama-kesildi"
+                    className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                  >
+                    {kesintiUyarisi({ kesildi: true })}
+                  </li>
+                ) : null}
                 {urunler.map((g) => (
                   <li key={g.anahtar}>
                     <button
@@ -311,7 +367,9 @@ export function SatisFormu({
                       </span>
                       <span className="shrink-0 text-right text-xs text-slate-600">
                         <span className="block">alış {grupFiyatMetni(g)}</span>
-                        <span className="block font-medium text-blue-700">+ Sepete ekle</span>
+                        <span className="block font-medium text-blue-700">
+                          + Sepete ekle
+                        </span>
                       </span>
                     </button>
                   </li>
@@ -357,7 +415,11 @@ export function SatisFormu({
             ))}
           </ul>
           {secimHatasi ? (
-            <p data-test="secim-hatasi" role="alert" className="mt-2 text-sm font-medium text-red-700">
+            <p
+              data-test="secim-hatasi"
+              role="alert"
+              className="mt-2 text-sm font-medium text-red-700"
+            >
               {secimHatasi}
             </p>
           ) : null}
@@ -376,8 +438,8 @@ export function SatisFormu({
 
       {sepet.length === 0 ? (
         <p className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
-          Satışa başlamak için cihazı okutun. Aynı müşteriye birden çok cihaz satıyorsanız
-          hepsini sırayla okutun.
+          Satışa başlamak için cihazı okutun. Aynı müşteriye birden çok cihaz
+          satıyorsanız hepsini sırayla okutun.
         </p>
       ) : (
         <form action={() => eylem(veriyiHazirla())} className="space-y-5">
@@ -420,7 +482,9 @@ export function SatisFormu({
                         id={`fiyat-${c.id}`}
                         data-test="sepet-fiyat"
                         value={c.satisFiyati}
-                        onChange={(e) => setSepet((o) => fiyatiYaz(o, c.id, e.target.value))}
+                        onChange={(e) =>
+                          setSepet((o) => fiyatiYaz(o, c.id, e.target.value))
+                        }
                         inputMode="decimal"
                         // Alan alış fiyatıyla dolu geliyor; boşaltılırsa yine
                         // alış fiyatı yazılıyor, kaydetmeyi engellemiyor.
@@ -489,7 +553,9 @@ export function SatisFormu({
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="mb-3 text-sm font-semibold text-slate-800">Satış Bilgileri</h2>
+            <h2 className="mb-3 text-sm font-semibold text-slate-800">
+              Satış Bilgileri
+            </h2>
             <p className="mb-3 text-xs text-slate-500">
               Bu bilgiler listedeki {ozet.adet} cihazın hepsine uygulanır.
             </p>
@@ -535,13 +601,15 @@ export function SatisFormu({
                 >
                   {saticilar.map((k) => (
                     <option key={k.id} value={k.id}>
-                      {k.id === varsayilanSaticiId ? `${k.adSoyad} (siz)` : k.adSoyad}
+                      {k.id === varsayilanSaticiId
+                        ? `${k.adSoyad} (siz)`
+                        : k.adSoyad}
                     </option>
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-slate-500">
-                  Satışı mağazadaki kim yaptıysa onu seçin; personel satış raporu buna göre
-                  çıkıyor.
+                  Satışı mağazadaki kim yaptıysa onu seçin; personel satış
+                  raporu buna göre çıkıyor.
                 </p>
               </div>
 
@@ -561,7 +629,9 @@ export function SatisFormu({
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="mb-3 text-sm font-semibold text-slate-800">Müşteri Bilgileri</h2>
+            <h2 className="mb-3 text-sm font-semibold text-slate-800">
+              Müşteri Bilgileri
+            </h2>
 
             <div className="mb-3">
               <label htmlFor="musteriSorgu" className={KUCUK_ETIKET}>
@@ -605,9 +675,13 @@ export function SatisFormu({
                         }}
                         className="w-full px-3 py-2 text-left text-sm transition hover:bg-blue-50"
                       >
-                        <span className="font-medium text-slate-800">{m.adSoyad}</span>
+                        <span className="font-medium text-slate-800">
+                          {m.adSoyad}
+                        </span>
                         {m.telefon ? (
-                          <span className="ml-2 text-slate-500">{m.telefon}</span>
+                          <span className="ml-2 text-slate-500">
+                            {m.telefon}
+                          </span>
                         ) : null}
                       </button>
                     </li>
@@ -619,9 +693,13 @@ export function SatisFormu({
             {seciliMusteri ? (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
                 <div className="text-sm">
-                  <span className="font-medium text-emerald-900">{seciliMusteri.adSoyad}</span>
+                  <span className="font-medium text-emerald-900">
+                    {seciliMusteri.adSoyad}
+                  </span>
                   {seciliMusteri.telefon ? (
-                    <span className="ml-2 text-emerald-800">{seciliMusteri.telefon}</span>
+                    <span className="ml-2 text-emerald-800">
+                      {seciliMusteri.telefon}
+                    </span>
                   ) : null}
                 </div>
                 <button
@@ -683,7 +761,8 @@ export function SatisFormu({
                   />
                 </div>
                 <p className="text-xs text-slate-500 sm:col-span-2 lg:col-span-4">
-                  Aynı telefon numarasıyla kayıtlı müşteri varsa yeniden oluşturulmaz, mevcut kayda bağlanır.
+                  Aynı telefon numarasıyla kayıtlı müşteri varsa yeniden
+                  oluşturulmaz, mevcut kayda bağlanır.
                 </p>
               </div>
             )}
@@ -716,13 +795,22 @@ export function SatisFormu({
                 ) : null}
               </div>
               {sorunlar.length > 0 ? (
-                <div data-test="satis-sorunlari" className="mt-0.5 font-medium text-red-700">
+                <div
+                  data-test="satis-sorunlari"
+                  className="mt-0.5 font-medium text-red-700"
+                >
                   {sorunlar[0]}
-                  {sorunlar.length > 1 ? ` (+${sorunlar.length - 1} eksik daha)` : ""}
+                  {sorunlar.length > 1
+                    ? ` (+${sorunlar.length - 1} eksik daha)`
+                    : ""}
                 </div>
               ) : null}
             </div>
-            <GonderDugmesi tur="basari" bekleyenMetin="Kaydediliyor…" disabled={!kaydedebilir}>
+            <GonderDugmesi
+              tur="basari"
+              bekleyenMetin="Kaydediliyor…"
+              disabled={!kaydedebilir}
+            >
               {ozet.adet > 1 ? `${ozet.adet} Cihazı Sat` : "Satışı Kaydet"}
             </GonderDugmesi>
           </div>

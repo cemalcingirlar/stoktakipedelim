@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { Kart } from "@/bilesenler/Kart";
+import { Sayfalama } from "@/bilesenler/Sayfalama";
 import { Rozet } from "@/bilesenler/Rozet";
 import { gorunurMagazaIdleri, magazaKosulu } from "@/lib/gorunurluk";
 import { kurusuTLYazSembollu } from "@/lib/para";
@@ -7,20 +9,51 @@ import { prisma } from "@/lib/prisma";
 import { vadeEtiketi } from "@/lib/vade";
 import { tarihYaz } from "@/lib/tarih";
 import { vadeDurumu } from "@/lib/vade";
+import {
+  SAYFA_BOYUTU,
+  atlanacak,
+  filtreOzeti,
+  gecerliSayfa,
+  listeFiltresiniCoz,
+  toplamSayfa,
+} from "@/lib/listeFiltre";
 import { adminMi, oturumGerekli } from "@/lib/yetki";
 
 export const metadata = { title: "Alış Faturaları — Stok Takip" };
 
-export default async function FaturalarSayfasi() {
+export default async function FaturalarSayfasi({
+  searchParams,
+}: PageProps<"/faturalar">) {
   const oturum = await oturumGerekli();
   const bugun = new Date();
+  const params = await searchParams;
+  const filtre = listeFiltresiniCoz(params);
 
-  // Fatura, girişinin yapıldığı depoya ait: kullanıcı yalnız kendi
-  // mağazalarının alışlarını görür, başka mağazanın maliyetlerini görmez.
+  // Liste eskiden yalnız son 100 faturayı gösteriyordu; arama ve sayfalama
+  // yoktu. Ayda ~20 fatura giren bir dükkânda beş aydan eski fatura ekrandan
+  // erişilemez hale geliyordu — kayıp değil ama bulunamaz, ki aynı şey.
+  const where = {
+    // Fatura, girişinin yapıldığı depoya ait: kullanıcı yalnız kendi
+    // mağazalarının alışlarını görür, başka mağazanın maliyetlerini görmez.
+    ...magazaKosulu(gorunurMagazaIdleri(oturum)),
+    ...(filtre.ara
+      ? {
+          OR: [
+            { faturaNo: { contains: filtre.ara } },
+            { tedarikci: { ad: { contains: filtre.ara } } },
+          ],
+        }
+      : {}),
+  };
+
+  const toplam = await prisma.alisFaturasi.count({ where });
+  const sayfa = gecerliSayfa(filtre.sayfa, toplam);
+
   const faturalar = await prisma.alisFaturasi.findMany({
-    where: magazaKosulu(gorunurMagazaIdleri(oturum)),
+    where,
     orderBy: [{ faturaTarihi: "desc" }, { id: "desc" }],
-    take: 100,
+    skip: atlanacak(sayfa),
+    take: SAYFA_BOYUTU,
     include: {
       tedarikci: { select: { ad: true } },
       magaza: { select: { ad: true } },
@@ -32,7 +65,9 @@ export default async function FaturalarSayfasi() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Alış Faturaları</h1>
+        <h1 className="text-xl font-semibold text-slate-900">
+          Alış Faturaları
+        </h1>
         {adminMi(oturum) ? (
           <div className="flex flex-wrap items-center gap-2">
             {/* Tedarikçi dosyasını buradan da yüklenebilsin: fatura girmeye
@@ -55,9 +90,48 @@ export default async function FaturalarSayfasi() {
         ) : null}
       </div>
 
+      <form
+        method="get"
+        action="/faturalar"
+        className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+      >
+        <input
+          name="ara"
+          type="search"
+          data-test="fatura-ara"
+          defaultValue={filtre.ara}
+          placeholder="Fatura no veya tedarikçi"
+          className={`min-w-0 flex-1 sm:max-w-md ${GIRDI_SINIFI}`}
+        />
+        <button
+          type="submit"
+          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-900"
+        >
+          Ara
+        </button>
+        {filtre.ara ? (
+          <Link
+            href="/faturalar"
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            Temizle
+          </Link>
+        ) : null}
+        <span
+          data-test="fatura-ozeti"
+          className="ml-auto self-center text-sm text-slate-500"
+        >
+          {filtreOzeti(toplam, filtre)}
+        </span>
+      </form>
+
       <Kart>
         {faturalar.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-500">Henüz alış faturası girilmemiş.</p>
+          <p className="py-8 text-center text-sm text-slate-500">
+            {filtre.ara
+              ? "Aramanıza uyan fatura bulunamadı."
+              : "Henüz alış faturası girilmemiş."}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
@@ -76,9 +150,15 @@ export default async function FaturalarSayfasi() {
               <tbody className="divide-y divide-slate-100">
                 {faturalar.map((f) => {
                   const vade = vadeDurumu(f, bugun);
-                  const tutar = f.kalemler.reduce((t, k) => t + k.alisFiyatiKurus, 0);
+                  const tutar = f.kalemler.reduce(
+                    (t, k) => t + k.alisFiyatiKurus,
+                    0,
+                  );
                   return (
-                    <tr key={f.id} className={vade.satirSinifi || "hover:bg-slate-50"}>
+                    <tr
+                      key={f.id}
+                      className={vade.satirSinifi || "hover:bg-slate-50"}
+                    >
                       <td className="py-2 pr-3 whitespace-nowrap text-slate-600">
                         {tarihYaz(f.faturaTarihi)}
                       </td>
@@ -89,9 +169,24 @@ export default async function FaturalarSayfasi() {
                         >
                           {f.faturaNo}
                         </Link>
+                        {/* İptal edilen fatura listede canlı görünmemeli:
+                            tutarı raporlara girmiyor, kullanıcı da bunu
+                            listede anlayabilmeli. */}
+                        {f.iptalEdildi ? (
+                          <span
+                            data-test="fatura-iptal-rozeti"
+                            className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600"
+                          >
+                            İptal
+                          </span>
+                        ) : null}
                       </td>
-                      <td className="py-2 pr-3 text-slate-700">{f.tedarikci.ad}</td>
-                      <td className="py-2 pr-3 text-slate-600">{f.magaza.ad}</td>
+                      <td className="py-2 pr-3 text-slate-700">
+                        {f.tedarikci.ad}
+                      </td>
+                      <td className="py-2 pr-3 text-slate-600">
+                        {f.magaza.ad}
+                      </td>
                       <td className="py-2 pr-3 text-right tabular-nums text-slate-700">
                         {f.kalemler.length}
                       </td>
@@ -132,6 +227,12 @@ export default async function FaturalarSayfasi() {
             </table>
           </div>
         )}
+        <Sayfalama
+          sayfa={sayfa}
+          toplamSayfa={toplamSayfa(toplam)}
+          params={params}
+          temelYol="/faturalar"
+        />
       </Kart>
     </div>
   );

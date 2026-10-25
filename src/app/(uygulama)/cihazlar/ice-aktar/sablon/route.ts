@@ -11,12 +11,15 @@ import { adminMi } from "@/lib/yetkiKurallari";
 export async function GET() {
   const oturum = await oturumuTazeOku();
   if (!oturum) return new Response("Oturum gerekli.", { status: 401 });
-  if (!adminMi(oturum)) return new Response("Bu işlem için yetkiniz yok.", { status: 403 });
+  if (!adminMi(oturum))
+    return new Response("Bu işlem için yetkiniz yok.", { status: 403 });
 
   const kategoriler = await prisma.kategori.findMany({
     where: { aktif: true },
     orderBy: { sira: "asc" },
-    include: { altKategoriler: { where: { aktif: true }, orderBy: { sira: "asc" } } },
+    include: {
+      altKategoriler: { where: { aktif: true }, orderBy: { sira: "asc" } },
+    },
   });
 
   const ornekKategori = kategoriler[0];
@@ -58,7 +61,11 @@ export async function GET() {
       ],
       satirlar: kategoriler.flatMap((k) =>
         k.altKategoriler.length > 0
-          ? k.altKategoriler.map((a) => [k.ad, a.ad, k.seriNoZorunlu ? "Evet" : "Hayır"])
+          ? k.altKategoriler.map((a) => [
+              k.ad,
+              a.ad,
+              k.seriNoZorunlu ? "Evet" : "Hayır",
+            ])
           : [[k.ad, "", k.seriNoZorunlu ? "Evet" : "Hayır"]],
       ),
     },

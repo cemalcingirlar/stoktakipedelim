@@ -5,16 +5,29 @@ import { z } from "zod";
 import { logYaz } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 import { LOG_ISLEM, ROLLER, type Rol } from "@/lib/sabitler";
+import {
+  SAAT_DILIMI_ANAHTARI,
+  saatDiliminiUygula,
+  saatDilimiOnbelleginiBosalt,
+} from "@/lib/saatDilimiAyari";
+import { saatDilimiCoz } from "@/lib/saatDilimi";
 import { sifreHashle } from "@/lib/sifre";
+import { sifreSorunu } from "@/lib/sifrePolitikasi";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
 
 export type AyarDurumu = { hata?: string; basari?: string };
 
-const adSemasi = z.string().trim().min(1, "Ad boş olamaz.").max(60, "Ad çok uzun.");
+const adSemasi = z
+  .string()
+  .trim()
+  .min(1, "Ad boş olamaz.")
+  .max(60, "Ad çok uzun.");
 
 /** Server action'larda tekrar eden yetki + hata sarmalayıcısı. */
 async function calistir(
-  isIslem: (oturum: Awaited<ReturnType<typeof adminZorunlu>>) => Promise<AyarDurumu>,
+  isIslem: (
+    oturum: Awaited<ReturnType<typeof adminZorunlu>>,
+  ) => Promise<AyarDurumu>,
 ): Promise<AyarDurumu> {
   try {
     const oturum = await adminZorunlu();
@@ -75,9 +88,59 @@ export async function firmaAdiGuncelle(
   });
 }
 
+// --------------------------------------------------------------- Saat dilimi
+
+/**
+ * Gün/hafta/ay hesaplarının yapılacağı saat dilimi.
+ *
+ * Eskiden yalnız sunucuda `timedatectl` ile ayarlanıyordu; yönetici
+ * ekrandan göremiyor, değiştiremiyordu. Yanlış dilim, gün sınırına yakın
+ * satışların yanlış güne yazılması demek — yöneticinin kendi düzeltebilmesi
+ * gerekiyor.
+ *
+ * Kaydedilen dilim yazan süreçte hemen uygulanıyor; diğer işçi süreçler
+ * kendi isteklerinin başında en çok on saniye içinde yakalıyor.
+ */
+export async function saatDiliminiGuncelle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
+  return calistir(async (oturum) => {
+    const dilim = saatDilimiCoz(form.get("saatDilimi"));
+    if (!dilim) return { hata: "Geçerli bir saat dilimi seçin." };
+
+    await prisma.ayar.upsert({
+      where: { anahtar: SAAT_DILIMI_ANAHTARI },
+      update: { deger: dilim },
+      create: { anahtar: SAAT_DILIMI_ANAHTARI, deger: dilim },
+    });
+    saatDilimiOnbelleginiBosalt();
+    const uygulanan = await saatDiliminiUygula();
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.AYAR_DEGISTIR,
+      hedefTip: "Ayar",
+      detay: `Saat dilimi: ${dilim}`,
+    });
+    tazele();
+    // Tarihler her ekranda yazılı; menü dahil her şey yeniden render olmalı.
+    revalidatePath("/", "layout");
+    revalidatePath("/rapor");
+    return {
+      basari:
+        uygulanan === dilim
+          ? `Saat dilimi "${dilim}" olarak kaydedildi.`
+          : `Dilim "${dilim}" olarak kaydedildi ama sürece uygulanamadı; sayfayı yenileyin.`,
+    };
+  });
+}
+
 // ------------------------------------------------------------------ Kategori
 
-export async function kategoriEkle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function kategoriEkle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const ad = adSemasi.safeParse(form.get("ad"));
     if (!ad.success) return { hata: ad.error.issues[0].message };
@@ -103,15 +166,22 @@ export async function kategoriEkle(_onceki: AyarDurumu, form: FormData): Promise
   });
 }
 
-export async function kategoriGuncelle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function kategoriGuncelle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
     const ad = adSemasi.safeParse(form.get("ad"));
-    if (!Number.isInteger(id) || id <= 0) return { hata: "Kategori bulunamadı." };
+    if (!Number.isInteger(id) || id <= 0)
+      return { hata: "Kategori bulunamadı." };
     if (!ad.success) return { hata: ad.error.issues[0].message };
 
-    const cakisan = await prisma.kategori.findUnique({ where: { ad: ad.data } });
-    if (cakisan && cakisan.id !== id) return { hata: "Bu isimde başka bir kategori var." };
+    const cakisan = await prisma.kategori.findUnique({
+      where: { ad: ad.data },
+    });
+    if (cakisan && cakisan.id !== id)
+      return { hata: "Bu isimde başka bir kategori var." };
 
     await prisma.kategori.update({
       where: { id },
@@ -133,10 +203,14 @@ export async function kategoriGuncelle(_onceki: AyarDurumu, form: FormData): Pro
   });
 }
 
-export async function kategoriSil(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function kategoriSil(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
-    if (!Number.isInteger(id) || id <= 0) return { hata: "Kategori bulunamadı." };
+    if (!Number.isInteger(id) || id <= 0)
+      return { hata: "Kategori bulunamadı." };
 
     const kategori = await prisma.kategori.findUnique({
       where: { id },
@@ -173,11 +247,15 @@ export async function kategoriSil(_onceki: AyarDurumu, form: FormData): Promise<
 
 // -------------------------------------------------------------- Alt kategori
 
-export async function altKategoriEkle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function altKategoriEkle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const kategoriId = Number(form.get("kategoriId"));
     const ad = adSemasi.safeParse(form.get("ad"));
-    if (!Number.isInteger(kategoriId) || kategoriId <= 0) return { hata: "Kategori seçin." };
+    if (!Number.isInteger(kategoriId) || kategoriId <= 0)
+      return { hata: "Kategori seçin." };
     if (!ad.success) return { hata: ad.error.issues[0].message };
 
     const mevcut = await prisma.altKategori.findUnique({
@@ -204,10 +282,14 @@ export async function altKategoriEkle(_onceki: AyarDurumu, form: FormData): Prom
   });
 }
 
-export async function altKategoriSil(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function altKategoriSil(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
-    if (!Number.isInteger(id) || id <= 0) return { hata: "Alt kategori bulunamadı." };
+    if (!Number.isInteger(id) || id <= 0)
+      return { hata: "Alt kategori bulunamadı." };
 
     const alt = await prisma.altKategori.findUnique({
       where: { id },
@@ -216,7 +298,10 @@ export async function altKategoriSil(_onceki: AyarDurumu, form: FormData): Promi
     if (!alt) return { hata: "Alt kategori bulunamadı." };
 
     if (alt._count.stokKalemleri > 0) {
-      await prisma.altKategori.update({ where: { id }, data: { aktif: false } });
+      await prisma.altKategori.update({
+        where: { id },
+        data: { aktif: false },
+      });
       tazele();
       return {
         basari: `"${alt.ad}" alt kategorisine bağlı cihaz olduğu için silinmedi, pasife alındı.`,
@@ -259,12 +344,17 @@ function tedarikciFormunuOku(form: FormData) {
   });
 }
 
-export async function tedarikciEkle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function tedarikciEkle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const sonuc = tedarikciFormunuOku(form);
     if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
 
-    const mevcut = await prisma.tedarikci.findUnique({ where: { ad: sonuc.data.ad } });
+    const mevcut = await prisma.tedarikci.findUnique({
+      where: { ad: sonuc.data.ad },
+    });
     if (mevcut) return { hata: "Bu isimde bir tedarikçi zaten var." };
 
     const tedarikci = await prisma.tedarikci.create({ data: sonuc.data });
@@ -279,16 +369,23 @@ export async function tedarikciEkle(_onceki: AyarDurumu, form: FormData): Promis
   });
 }
 
-export async function tedarikciGuncelle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function tedarikciGuncelle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
-    if (!Number.isInteger(id) || id <= 0) return { hata: "Tedarikçi bulunamadı." };
+    if (!Number.isInteger(id) || id <= 0)
+      return { hata: "Tedarikçi bulunamadı." };
 
     const sonuc = tedarikciFormunuOku(form);
     if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
 
-    const cakisan = await prisma.tedarikci.findUnique({ where: { ad: sonuc.data.ad } });
-    if (cakisan && cakisan.id !== id) return { hata: "Bu isimde başka bir tedarikçi var." };
+    const cakisan = await prisma.tedarikci.findUnique({
+      where: { ad: sonuc.data.ad },
+    });
+    if (cakisan && cakisan.id !== id)
+      return { hata: "Bu isimde başka bir tedarikçi var." };
 
     await prisma.tedarikci.update({
       where: { id },
@@ -314,7 +411,10 @@ const magazaSemasi = z.object({
     .trim()
     .min(1, "Mağaza kodu boş olamaz.")
     .max(10, "Mağaza kodu en fazla 10 karakter olabilir.")
-    .regex(/^[A-Za-z0-9-]+$/, "Mağaza kodu yalnız harf, rakam ve tire içerebilir.")
+    .regex(
+      /^[A-Za-z0-9-]+$/,
+      "Mağaza kodu yalnız harf, rakam ve tire içerebilir.",
+    )
     .transform((v) => v.toUpperCase()),
   ad: adSemasi,
   adres: z.string().trim().max(200).nullable(),
@@ -325,7 +425,10 @@ const magazaSemasi = z.object({
     .string()
     .trim()
     .max(20, "Dükkân kodu en fazla 20 karakter olabilir.")
-    .regex(/^[A-Za-z0-9-]+$/, "Dükkân kodu yalnız harf, rakam ve tire içerebilir.")
+    .regex(
+      /^[A-Za-z0-9-]+$/,
+      "Dükkân kodu yalnız harf, rakam ve tire içerebilir.",
+    )
     .transform((v) => v.toUpperCase())
     .nullable(),
 });
@@ -344,13 +447,19 @@ function magazaFormunuOku(form: FormData) {
   });
 }
 
-export async function magazaEkle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function magazaEkle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const sonuc = magazaFormunuOku(form);
     if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
 
-    const mevcut = await prisma.magaza.findUnique({ where: { kod: sonuc.data.kod } });
-    if (mevcut) return { hata: `"${sonuc.data.kod}" kodlu bir mağaza zaten var.` };
+    const mevcut = await prisma.magaza.findUnique({
+      where: { kod: sonuc.data.kod },
+    });
+    if (mevcut)
+      return { hata: `"${sonuc.data.kod}" kodlu bir mağaza zaten var.` };
 
     const magaza = await prisma.magaza.create({ data: sonuc.data });
 
@@ -361,11 +470,16 @@ export async function magazaEkle(_onceki: AyarDurumu, form: FormData): Promise<A
       detay: `Mağaza eklendi: ${sonuc.data.kod} · ${sonuc.data.ad}`,
     });
     tazele();
-    return { basari: `"${sonuc.data.ad}" eklendi. Kullanıcı atamasını unutmayın.` };
+    return {
+      basari: `"${sonuc.data.ad}" eklendi. Kullanıcı atamasını unutmayın.`,
+    };
   });
 }
 
-export async function magazaGuncelle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function magazaGuncelle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
     if (!Number.isInteger(id) || id <= 0) return { hata: "Mağaza bulunamadı." };
@@ -373,8 +487,11 @@ export async function magazaGuncelle(_onceki: AyarDurumu, form: FormData): Promi
     const sonuc = magazaFormunuOku(form);
     if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
 
-    const cakisan = await prisma.magaza.findUnique({ where: { kod: sonuc.data.kod } });
-    if (cakisan && cakisan.id !== id) return { hata: `"${sonuc.data.kod}" kodu başka mağazada.` };
+    const cakisan = await prisma.magaza.findUnique({
+      where: { kod: sonuc.data.kod },
+    });
+    if (cakisan && cakisan.id !== id)
+      return { hata: `"${sonuc.data.kod}" kodu başka mağazada.` };
 
     const aktif = form.get("aktif") === "on";
     const merkezMi = form.get("merkezMi") === "on";
@@ -422,7 +539,8 @@ export async function magazaYetkileriGuncelle(
 ): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const magazaId = Number(form.get("id"));
-    if (!Number.isInteger(magazaId) || magazaId <= 0) return { hata: "Mağaza bulunamadı." };
+    if (!Number.isInteger(magazaId) || magazaId <= 0)
+      return { hata: "Mağaza bulunamadı." };
 
     const magaza = await prisma.magaza.findUnique({ where: { id: magazaId } });
     if (!magaza) return { hata: "Mağaza bulunamadı." };
@@ -473,7 +591,9 @@ export async function magazaYetkileriGuncelle(
     ]);
 
     const parcalar = [
-      eklenecek.length > 0 ? `eklendi: ${eklenecek.map((k) => k.adSoyad).join(", ")}` : "",
+      eklenecek.length > 0
+        ? `eklendi: ${eklenecek.map((k) => k.adSoyad).join(", ")}`
+        : "",
       cikarilacak.length > 0
         ? `kaldırıldı: ${cikarilacak.map((k) => k.adSoyad).join(", ")}`
         : "",
@@ -492,7 +612,10 @@ export async function magazaYetkileriGuncelle(
   });
 }
 
-export async function magazaSil(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function magazaSil(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
     if (!Number.isInteger(id) || id <= 0) return { hata: "Mağaza bulunamadı." };
@@ -599,7 +722,11 @@ function kullaniciFormunuOku(form: FormData) {
  * Formda işaretlenen ek mağazalar. Ana mağaza zaten ayrı tutulduğu için
  * listeden çıkarılır; yönetici tüm mağazalarda yetkili olduğundan boş döner.
  */
-function ekMagazalariOku(form: FormData, rol: string, anaMagazaId: number | null): number[] {
+function ekMagazalariOku(
+  form: FormData,
+  rol: string,
+  anaMagazaId: number | null,
+): number[] {
   if (rol === ROLLER.ADMIN) return [];
   const secilen = form
     .getAll("ekMagazalar")
@@ -611,20 +738,32 @@ function ekMagazalariOku(form: FormData, rol: string, anaMagazaId: number | null
 /** Yönetici dışındaki roller mutlaka bir mağazaya bağlı olmalı. */
 function magazaKurali(rol: string, magazaId: number | null): string | null {
   if (rol === ROLLER.ADMIN) return null;
-  if (!magazaId) return "Mağaza sorumlusu ve personeli bir mağazaya bağlanmalı.";
+  if (!magazaId)
+    return "Mağaza sorumlusu ve personeli bir mağazaya bağlanmalı.";
   return null;
 }
 
-export async function kullaniciEkle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function kullaniciEkle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const sonuc = kullaniciFormunuOku(form);
     if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
 
     const sifre = String(form.get("sifre") ?? "");
     const sifreTekrar = String(form.get("sifreTekrar") ?? "");
-    if (sifre.length < 8) return { hata: "Şifre en az 8 karakter olmalı." };
+    // Kurallar src/lib/sifrePolitikasi.ts'te; kullanıcı adı ve ad soyad da
+    // veriliyor, çünkü "ahmet2026" gibi şifreler ilk denemede kırılıyor.
+    const sifreHatasi = sifreSorunu(
+      sifre,
+      sonuc.data.kullaniciAdi,
+      sonuc.data.adSoyad,
+    );
+    if (sifreHatasi) return { hata: sifreHatasi };
     // Yazım hatası kullanıcıyı kilitler; hatanın ne olduğu da anlaşılmaz.
-    if (sifre !== sifreTekrar) return { hata: "Şifreler eşleşmiyor. İki alana da aynı şifreyi yazın." };
+    if (sifre !== sifreTekrar)
+      return { hata: "Şifreler eşleşmiyor. İki alana da aynı şifreyi yazın." };
 
     const kuralHatasi = magazaKurali(sonuc.data.rol, sonuc.data.magazaId);
     if (kuralHatasi) return { hata: kuralHatasi };
@@ -634,7 +773,8 @@ export async function kullaniciEkle(_onceki: AyarDurumu, form: FormData): Promis
     });
     if (mevcut) return { hata: "Bu kullanıcı adı zaten kullanılıyor." };
 
-    const anaMagazaId = sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId;
+    const anaMagazaId =
+      sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId;
     const ekMagazaIdleri = ekMagazalariOku(form, sonuc.data.rol, anaMagazaId);
 
     const kullanici = await prisma.kullanici.create({
@@ -644,6 +784,7 @@ export async function kullaniciEkle(_onceki: AyarDurumu, form: FormData): Promis
         rol: sonuc.data.rol,
         magazaId: anaMagazaId,
         sifreHash: await sifreHashle(sifre),
+        sifreDegisikligi: new Date(),
         ekMagazalar: { connect: ekMagazaIdleri.map((id) => ({ id })) },
       },
     });
@@ -654,17 +795,23 @@ export async function kullaniciEkle(_onceki: AyarDurumu, form: FormData): Promis
       hedefId: kullanici.id,
       detay:
         `Kullanıcı eklendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})` +
-        (ekMagazaIdleri.length > 0 ? ` · ${ekMagazaIdleri.length} ek mağaza` : ""),
+        (ekMagazaIdleri.length > 0
+          ? ` · ${ekMagazaIdleri.length} ek mağaza`
+          : ""),
     });
     tazele();
     return { basari: `"${sonuc.data.adSoyad}" eklendi.` };
   });
 }
 
-export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function kullaniciGuncelle(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
-    if (!Number.isInteger(id) || id <= 0) return { hata: "Kullanıcı bulunamadı." };
+    if (!Number.isInteger(id) || id <= 0)
+      return { hata: "Kullanıcı bulunamadı." };
 
     const sonuc = kullaniciFormunuOku(form);
     if (!sonuc.success) return { hata: sonuc.error.issues[0].message };
@@ -675,13 +822,17 @@ export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Pr
     const cakisan = await prisma.kullanici.findUnique({
       where: { kullaniciAdi: sonuc.data.kullaniciAdi },
     });
-    if (cakisan && cakisan.id !== id) return { hata: "Bu kullanıcı adı başkasında." };
+    if (cakisan && cakisan.id !== id)
+      return { hata: "Bu kullanıcı adı başkasında." };
 
     const aktif = form.get("aktif") === "on";
 
     // Son yönetici kilitlenmesin: sistemde en az bir aktif yönetici kalmalı.
     if (sonuc.data.rol !== ROLLER.ADMIN || !aktif) {
-      const mevcut = await prisma.kullanici.findUnique({ where: { id }, select: { rol: true } });
+      const mevcut = await prisma.kullanici.findUnique({
+        where: { id },
+        select: { rol: true },
+      });
       if (mevcut?.rol === ROLLER.ADMIN) {
         const digerAdminler = await prisma.kullanici.count({
           where: { rol: ROLLER.ADMIN, aktif: true, id: { not: id } },
@@ -692,7 +843,8 @@ export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Pr
       }
     }
 
-    const anaMagazaId = sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId;
+    const anaMagazaId =
+      sonuc.data.rol === ROLLER.ADMIN ? null : sonuc.data.magazaId;
     const ekMagazaIdleri = ekMagazalariOku(form, sonuc.data.rol, anaMagazaId);
 
     await prisma.kullanici.update({
@@ -704,7 +856,9 @@ export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Pr
         magazaId: anaMagazaId,
         aktif,
         // set: işaretlenmeyenler listeden çıkar, işaretlenenler kalır.
-        ekMagazalar: { set: ekMagazaIdleri.map((magazaId) => ({ id: magazaId })) },
+        ekMagazalar: {
+          set: ekMagazaIdleri.map((magazaId) => ({ id: magazaId })),
+        },
       },
     });
 
@@ -714,7 +868,9 @@ export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Pr
       hedefId: id,
       detay:
         `Kullanıcı güncellendi: ${sonuc.data.kullaniciAdi} (${sonuc.data.rol})` +
-        (ekMagazaIdleri.length > 0 ? ` · ${ekMagazaIdleri.length} ek mağaza` : "") +
+        (ekMagazaIdleri.length > 0
+          ? ` · ${ekMagazaIdleri.length} ek mağaza`
+          : "") +
         (aktif ? "" : " · pasif"),
     });
     tazele();
@@ -728,12 +884,17 @@ export async function kullaniciGuncelle(_onceki: AyarDurumu, form: FormData): Pr
  * İşlem kaydı (Log) kullanıcı adını metin olarak da tuttuğu için silme
  * sonrasında loglar okunur kalır; yalnız bağlantısı kopar.
  */
-export async function kullaniciSil(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function kullaniciSil(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
-    if (!Number.isInteger(id) || id <= 0) return { hata: "Kullanıcı bulunamadı." };
+    if (!Number.isInteger(id) || id <= 0)
+      return { hata: "Kullanıcı bulunamadı." };
 
-    if (id === oturum.kullaniciId) return { hata: "Kendi hesabınızı silemezsiniz." };
+    if (id === oturum.kullaniciId)
+      return { hata: "Kendi hesabınızı silemezsiniz." };
 
     const kullanici = await prisma.kullanici.findUnique({
       where: { id },
@@ -763,7 +924,8 @@ export async function kullaniciSil(_onceki: AyarDurumu, form: FormData): Promise
       const digerAdminler = await prisma.kullanici.count({
         where: { rol: ROLLER.ADMIN, aktif: true, id: { not: id } },
       });
-      if (digerAdminler === 0) return { hata: "Sistemde en az bir aktif yönetici kalmalı." };
+      if (digerAdminler === 0)
+        return { hata: "Sistemde en az bir aktif yönetici kalmalı." };
     }
 
     const sayac = kullanici._count;
@@ -799,7 +961,10 @@ export async function kullaniciSil(_onceki: AyarDurumu, form: FormData): Promise
     // Log satırları kullanıcı adını metin olarak da taşır; bağlantıyı koparıp
     // kaydı bırakıyoruz.
     await prisma.$transaction([
-      prisma.log.updateMany({ where: { kullaniciId: id }, data: { kullaniciId: null } }),
+      prisma.log.updateMany({
+        where: { kullaniciId: id },
+        data: { kullaniciId: null },
+      }),
       prisma.kullanici.delete({ where: { id } }),
     ]);
 
@@ -814,24 +979,41 @@ export async function kullaniciSil(_onceki: AyarDurumu, form: FormData): Promise
   });
 }
 
-export async function sifreSifirla(_onceki: AyarDurumu, form: FormData): Promise<AyarDurumu> {
+export async function sifreSifirla(
+  _onceki: AyarDurumu,
+  form: FormData,
+): Promise<AyarDurumu> {
   return calistir(async (oturum) => {
     const id = Number(form.get("id"));
     const sifre = String(form.get("yeniSifre") ?? "");
     const sifreTekrar = String(form.get("yeniSifreTekrar") ?? "");
-    if (!Number.isInteger(id) || id <= 0) return { hata: "Kullanıcı bulunamadı." };
-    if (sifre.length < 8) return { hata: "Şifre en az 8 karakter olmalı." };
-    if (sifre !== sifreTekrar) return { hata: "Şifreler eşleşmiyor. İki alana da aynı şifreyi yazın." };
+    if (!Number.isInteger(id) || id <= 0)
+      return { hata: "Kullanıcı bulunamadı." };
+    if (sifre !== sifreTekrar)
+      return { hata: "Şifreler eşleşmiyor. İki alana da aynı şifreyi yazın." };
 
     const kullanici = await prisma.kullanici.findUnique({
       where: { id },
-      select: { kullaniciAdi: true },
+      select: { kullaniciAdi: true, adSoyad: true },
     });
     if (!kullanici) return { hata: "Kullanıcı bulunamadı." };
 
+    // Kural kontrolü kullanıcı okunduktan sonra: adını içeren şifreyi
+    // reddedebilmek için adını bilmek gerekiyor.
+    const sifreHatasi = sifreSorunu(
+      sifre,
+      kullanici.kullaniciAdi,
+      kullanici.adSoyad,
+    );
+    if (sifreHatasi) return { hata: sifreHatasi };
+
     await prisma.kullanici.update({
       where: { id },
-      data: { sifreHash: await sifreHashle(sifre) },
+      data: {
+        sifreHash: await sifreHashle(sifre),
+        // Eski oturumlar düşsün: sıfırlamanın amacı zaten bu.
+        sifreDegisikligi: new Date(),
+      },
     });
 
     await logYaz(oturum, {

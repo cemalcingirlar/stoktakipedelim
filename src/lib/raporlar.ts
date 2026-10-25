@@ -99,6 +99,8 @@ export async function vadeRaporu(
 ) {
   const faturalar = await prisma.alisFaturasi.findMany({
     where: {
+      // İptal edilen fatura borç değil; vade raporuna girmemeli.
+      iptalEdildi: false,
       vadeOdendi: false,
       vadeGun: { gt: 0 },
       vadeTarihi: { not: null },

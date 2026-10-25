@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { aramaNormalize, kodNormalize } from "./metin";
 import { tlyiKurusaCevir } from "./para";
+import { gunOrtasi } from "./tarih";
 
 /**
  * Tedarikçi portalından indirilen "Seri No Kontrolü" Excel dosyasını okur.
@@ -85,13 +86,18 @@ export type TedarikciDosyaSonucu = {
 function hucreMetni(deger: ExcelJS.CellValue): string {
   if (deger === null || deger === undefined) return "";
   if (typeof deger === "string") return deger.trim();
-  if (typeof deger === "number" || typeof deger === "boolean") return String(deger);
+  if (typeof deger === "number" || typeof deger === "boolean")
+    return String(deger);
   if (deger instanceof Date) return deger.toISOString();
   if (typeof deger === "object") {
-    if ("text" in deger && typeof deger.text === "string") return deger.text.trim();
+    if ("text" in deger && typeof deger.text === "string")
+      return deger.text.trim();
     if ("result" in deger) return hucreMetni(deger.result as ExcelJS.CellValue);
     if ("richText" in deger && Array.isArray(deger.richText)) {
-      return deger.richText.map((p) => p.text).join("").trim();
+      return deger.richText
+        .map((p) => p.text)
+        .join("")
+        .trim();
     }
   }
   return String(deger).trim();
@@ -122,14 +128,15 @@ export function tarihiCoz(ham: string): Date | null {
   const noktali = ham.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
   if (noktali) {
     const [, gun, ay, yil] = noktali;
-    const d = new Date(Number(yil), Number(ay) - 1, Number(gun));
+    const d = gunOrtasi(Number(yil), Number(ay) - 1, Number(gun));
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
   const d = new Date(ham);
   if (Number.isNaN(d.getTime())) return null;
-  // ISO dizesi gece yarısı UTC olarak gelir; yerel güne sabitle.
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  // ISO dizesi gece yarısı UTC olarak gelir; yerel günün ortasına sabitle
+  // (gece yarısı, tarayıcı/sunucu dilim farkında bir gün kaydırıyordu).
+  return gunOrtasi(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
 /**
@@ -156,13 +163,19 @@ function enSikDeger(sayilar: number[]): number {
   return enIyi;
 }
 
-export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<TedarikciDosyaSonucu> {
+export async function tedarikciDosyasiniOku(
+  veri: ArrayBuffer,
+): Promise<TedarikciDosyaSonucu> {
   const kitap = new ExcelJS.Workbook();
   await kitap.xlsx.load(veri);
 
   const sayfa = kitap.worksheets[0];
   if (!sayfa) {
-    return { faturalar: [], hatalar: ["Dosyada sayfa bulunamadı."], basliklarTamam: false };
+    return {
+      faturalar: [],
+      hatalar: ["Dosyada sayfa bulunamadı."],
+      basliklarTamam: false,
+    };
   }
 
   // Başlık satırı: seri no ve ürün kodu sütunlarını birlikte taşıyan ilk satır.
@@ -179,7 +192,8 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
         readonly string[],
       ][]) {
         if (bulunan[anahtar]) continue;
-        if (esler.some((e) => metin === e || metin.startsWith(e))) bulunan[anahtar] = sutunNo;
+        if (esler.some((e) => metin === e || metin.startsWith(e)))
+          bulunan[anahtar] = sutunNo;
       }
     });
     if (bulunan.seriNo && bulunan.urunKodu) {
@@ -205,7 +219,10 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
     return sutunNo ? hucreMetni(satir.getCell(sutunNo).value) : "";
   };
   /** Ham hücre değeri — sayısal hücreler metne çevrilmeden kullanılsın diye. */
-  const hamOku = (satir: ExcelJS.Row, anahtar: BaslikAnahtari): ExcelJS.CellValue => {
+  const hamOku = (
+    satir: ExcelJS.Row,
+    anahtar: BaslikAnahtari,
+  ): ExcelJS.CellValue => {
     const sutunNo = yer[anahtar];
     return sutunNo ? satir.getCell(sutunNo).value : null;
   };
@@ -236,7 +253,8 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
     const tutarHam = oku(satir, "birimTutar");
     const dovizTipi = oku(satir, "dovizTipi").trim().toUpperCase();
 
-    if (![seriNoHam, barkodHam, urunAdi, tutarHam].some((d) => d !== "")) continue;
+    if (![seriNoHam, barkodHam, urunAdi, tutarHam].some((d) => d !== ""))
+      continue;
 
     const satirHatalari: string[] = [];
 
@@ -254,12 +272,14 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
     const seriNo = kodNormalize(seriNoHam) || null;
     if (seriNo) {
       const onceki = gorulenSeriNolar.get(seriNo);
-      if (onceki) satirHatalari.push(`Seri no ${seriNo} ${onceki}. satırda da var.`);
+      if (onceki)
+        satirHatalari.push(`Seri no ${seriNo} ${onceki}. satırda da var.`);
       else gorulenSeriNolar.set(seriNo, i);
     }
 
     const birim = tutariCoz(hamOku(satir, "birimTutar"));
-    if (birim === null) satirHatalari.push(`Birim tutar okunamadı: "${tutarHam}".`);
+    if (birim === null)
+      satirHatalari.push(`Birim tutar okunamadı: "${tutarHam}".`);
 
     // Program yalnız TL fatura işler; döviz satırı yanlış fiyatla kaydedilmesin.
     if (dovizTipi && !TL_KODLARI.has(dovizTipi)) {
@@ -270,7 +290,9 @@ export async function tedarikciDosyasiniOku(veri: ArrayBuffer): Promise<Tedarikc
 
     const adet = adetHam ? Number(adetHam.replace(/[^\d]/g, "")) || 1 : 1;
     if (seriNo && adet !== 1) {
-      satirHatalari.push(`Seri numaralı satırda adet 1 olmalı, ${adet} yazıyor.`);
+      satirHatalari.push(
+        `Seri numaralı satırda adet 1 olmalı, ${adet} yazıyor.`,
+      );
     }
 
     if (satirHatalari.length > 0) {

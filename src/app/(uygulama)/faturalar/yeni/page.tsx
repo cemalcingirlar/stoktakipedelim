@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { inputTarih } from "@/lib/tarih";
 import { adminSayfasi } from "@/lib/yetki";
 import { FaturaFormu } from "./FaturaFormu";
 
@@ -17,7 +18,10 @@ export default async function YeniFaturaSayfasi() {
         altKategoriler: { where: { aktif: true }, orderBy: { sira: "asc" } },
       },
     }),
-    prisma.tedarikci.findMany({ where: { aktif: true }, orderBy: { ad: "asc" } }),
+    prisma.tedarikci.findMany({
+      where: { aktif: true },
+      orderBy: { ad: "asc" },
+    }),
     prisma.magaza.findMany({ where: { aktif: true }, orderBy: { kod: "asc" } }),
   ]);
 
@@ -25,7 +29,9 @@ export default async function YeniFaturaSayfasi() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Yeni Alış Faturası</h1>
+          <h1 className="text-xl font-semibold text-slate-900">
+            Yeni Alış Faturası
+          </h1>
           <p className="mt-0.5 text-sm text-slate-500">
             Faturadaki her cihaz ayrı bir stok kaydı olarak depoya girer.
           </p>
@@ -39,6 +45,7 @@ export default async function YeniFaturaSayfasi() {
       </div>
 
       <FaturaFormu
+        bugun={inputTarih(new Date())}
         kategoriler={kategoriler.map((k) => ({
           id: k.id,
           ad: k.ad,

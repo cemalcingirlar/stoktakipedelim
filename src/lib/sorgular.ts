@@ -20,7 +20,9 @@ export type MagazaOzeti = {
  * sayıları kısıtlamak, kullanıcıya göremediği mağazaları "0 adet" diye
  * gösterirdi.
  */
-export async function magazaStokOzeti(gorunur: number[] | null): Promise<MagazaOzeti[]> {
+export async function magazaStokOzeti(
+  gorunur: number[] | null,
+): Promise<MagazaOzeti[]> {
   const [tumMagazalar, gruplar] = await Promise.all([
     prisma.magaza.findMany({ where: { aktif: true }, orderBy: { kod: "asc" } }),
     prisma.stokKalemi.groupBy({
@@ -47,14 +49,23 @@ export async function magazaStokOzeti(gorunur: number[] | null): Promise<MagazaO
 }
 
 /** Ödenmemiş ve vadesi geçmiş alış faturaları. */
-export async function vadesiGecenFaturalar(gorunur: number[] | null, bugun: Date = new Date()) {
+export async function vadesiGecenFaturalar(
+  gorunur: number[] | null,
+  bugun: Date = new Date(),
+) {
   return prisma.alisFaturasi.findMany({
     where: {
+      // İptal edilen fatura borç değil; vade raporlarına girmemeli.
+      iptalEdildi: false,
       vadeOdendi: false,
       vadeTarihi: { not: null, lt: bugun },
       ...magazaKosulu(gorunur),
     },
-    include: { tedarikci: true, magaza: true, _count: { select: { kalemler: true } } },
+    include: {
+      tedarikci: true,
+      magaza: true,
+      _count: { select: { kalemler: true } },
+    },
     orderBy: { vadeTarihi: "asc" },
   });
 }
@@ -72,12 +83,21 @@ export async function vadesiGecenCihazSayisi(
   bugun: Date = new Date(),
 ) {
   const vadeKosulu: Prisma.StokKalemiWhereInput = {
-    alisFaturasi: { is: { vadeOdendi: false, vadeTarihi: { not: null, lt: bugun } } },
+    alisFaturasi: {
+      // İptal edilen fatura borç değil.
+      is: {
+        iptalEdildi: false,
+        vadeOdendi: false,
+        vadeTarihi: { not: null, lt: bugun },
+      },
+    },
     ...magazaKosulu(gorunur),
   };
   const [toplam, stokta] = await Promise.all([
     prisma.stokKalemi.count({ where: vadeKosulu }),
-    prisma.stokKalemi.count({ where: { ...vadeKosulu, durum: STOK_DURUM.STOKTA } }),
+    prisma.stokKalemi.count({
+      where: { ...vadeKosulu, durum: STOK_DURUM.STOKTA },
+    }),
   ]);
   return { toplam, stokta };
 }
@@ -110,7 +130,10 @@ export type BugunSatisSatiri = {
  * listesinde "satıldı" olarak görünmüyorlar, bu yüzden burada ayrıca
  * işaretleniyorlar.
  */
-export async function bugunSatilanlar(magazaIdleri: number[] | null, bugun: Date = new Date()) {
+export async function bugunSatilanlar(
+  magazaIdleri: number[] | null,
+  bugun: Date = new Date(),
+) {
   const aralik = { gte: gunBasi(bugun), lte: gunSonu(bugun) };
 
   const [kalemler, aktarimlar] = await Promise.all([
@@ -148,7 +171,9 @@ export async function bugunSatilanlar(magazaIdleri: number[] | null, bugun: Date
         magaza: { select: { ad: true } },
         satanKullanici: { select: { adSoyad: true } },
         musteri: { select: { adSoyad: true } },
-        stokKalemi: { select: { id: true, marka: true, model: true, seriNo: true } },
+        stokKalemi: {
+          select: { id: true, marka: true, model: true, seriNo: true },
+        },
       },
     }),
   ]);
@@ -182,7 +207,9 @@ export async function bugunSatilanlar(magazaIdleri: number[] | null, bugun: Date
       musteriAdSoyad: a.musteri?.adSoyad ?? null,
       aktarimMi: true,
     })),
-  ].sort((a, b) => (b.satisTarihi?.getTime() ?? 0) - (a.satisTarihi?.getTime() ?? 0));
+  ].sort(
+    (a, b) => (b.satisTarihi?.getTime() ?? 0) - (a.satisTarihi?.getTime() ?? 0),
+  );
 
   const ciroKurus = satirlar.reduce((t, s) => t + s.satisFiyatiKurus, 0);
   const karKurus = satirlar.reduce((t, s) => t + s.karKurus, 0);
@@ -221,7 +248,9 @@ export async function sonHareketler(gorunur: number[] | null, adet = 10) {
     take: adet,
     orderBy: { tarih: "desc" },
     include: {
-      stokKalemi: { select: { id: true, marka: true, model: true, seriNo: true } },
+      stokKalemi: {
+        select: { id: true, marka: true, model: true, seriNo: true },
+      },
       kullanici: { select: { adSoyad: true } },
       kaynakMagaza: { select: { ad: true } },
       hedefMagaza: { select: { ad: true } },

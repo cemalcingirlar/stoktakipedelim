@@ -22,13 +22,15 @@ export type OturumBilgisi = {
 
 /** JWT yükünden sayı dizisi okur; yoksa tek değere düşer. */
 function sayiDizisi(deger: unknown, tekil: unknown): number[] {
-  if (Array.isArray(deger)) return deger.filter((d): d is number => typeof d === "number");
+  if (Array.isArray(deger))
+    return deger.filter((d): d is number => typeof d === "number");
   return typeof tekil === "number" ? [tekil] : [];
 }
 
 /** JWT yükünden metin dizisi okur; yoksa tek değere düşer. */
 function metinDizisi(deger: unknown, tekil: unknown): string[] {
-  if (Array.isArray(deger)) return deger.filter((d): d is string => typeof d === "string");
+  if (Array.isArray(deger))
+    return deger.filter((d): d is string => typeof d === "string");
   return typeof tekil === "string" ? [tekil] : [];
 }
 
@@ -50,11 +52,19 @@ export async function oturumJetonuUret(bilgi: OturumBilgisi): Promise<string> {
     .sign(gizliAnahtar());
 }
 
-export async function oturumJetonunuCoz(jeton: string): Promise<OturumBilgisi | null> {
+export type CozulmusOturum = OturumBilgisi & {
+  /** Jetonun üretilme anı (JWT iat). Şifre değişikliği denetiminde kullanılıyor. */
+  jetonAniSn?: number;
+};
+
+export async function oturumJetonunuCoz(
+  jeton: string,
+): Promise<CozulmusOturum | null> {
   try {
     const { payload } = await jwtVerify(jeton, gizliAnahtar());
     if (typeof payload.kullaniciId !== "number") return null;
     return {
+      jetonAniSn: typeof payload.iat === "number" ? payload.iat : undefined,
       kullaniciId: payload.kullaniciId,
       kullaniciAdi: String(payload.kullaniciAdi ?? ""),
       adSoyad: String(payload.adSoyad ?? ""),
@@ -90,7 +100,7 @@ export async function oturumKapat(): Promise<void> {
 }
 
 /** Geçerli oturumu döner; oturum yoksa null. */
-export async function oturumuOku(): Promise<OturumBilgisi | null> {
+export async function oturumuOku(): Promise<CozulmusOturum | null> {
   const cerezler = await cookies();
   const jeton = cerezler.get(OTURUM_CEREZI)?.value;
   if (!jeton) return null;

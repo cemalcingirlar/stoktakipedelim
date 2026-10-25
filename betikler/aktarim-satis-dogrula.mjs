@@ -4,6 +4,7 @@
 // satış anındaki maliyete göre mi hesaplanıyor? Geri alış fiyatı kâra karışırsa
 // satıştan kazanılan tutar kaybolur, bu yüzden sayılar tek tek kontrol ediliyor.
 import { chromium } from "@playwright/test";
+import { gunKaydir, gunMetni } from "./ortak-tarih.mjs";
 
 const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
 const cikti = process.env.CIKTI ?? "/tmp/aktarim-satis";
@@ -23,16 +24,10 @@ const MUSTERI = `Aktarim Musteri ${damga}`;
 // Tutarlar birinci satıştan farklı seçildi ki raporda karışmasın.
 const GECMIS_SATIS = "17.777,00";
 const GECMIS_GERI_ALIS = "11.111,00";
-const gunOnce = (gun) => {
-  const d = new Date();
-  d.setDate(d.getDate() - gun);
-  return d;
-};
-/** "2026-10-16" — tarih girdisi ve rapor sorgusu biçimi. */
-const girdiTarihi = (d) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const GECMIS_TARIH = girdiTarihi(gunOnce(5));
-const BUGUN_TARIH = girdiTarihi(new Date());
+// Tarihler uygulamanın saat dilimine göre: test süreci UTC'de koşuyor ve
+// gece yarısından sonra kendi günü sunucununkinden farklı oluyordu.
+const GECMIS_TARIH = gunKaydir(-5);
+const BUGUN_TARIH = gunMetni();
 
 const tarayici = await chromium.launch(
   process.env.CHROME_YOLU ? { executablePath: process.env.CHROME_YOLU } : {},
@@ -362,7 +357,8 @@ try {
   );
 
   // ------------------------------------------ 9) /rapor ekranı da aynı sayı
-  const bugunISO = new Date().toISOString().slice(0, 10);
+  // Rapor aralığı da uygulamanın dilimine göre: test süreci UTC'de.
+  const bugunISO = gunMetni();
   await sayfa.goto(`${hedef}/rapor?bas=${bugunISO}&bit=${bugunISO}`, {
     waitUntil: "networkidle",
   });

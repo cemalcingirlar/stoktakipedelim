@@ -6,11 +6,15 @@ import { Kart } from "@/bilesenler/Kart";
 import { prisma } from "@/lib/prisma";
 import { adminSayfasi } from "@/lib/yetki";
 import {
+  SAAT_DILIMI_SECENEKLERI,
+  mevcutSaatDilimi,
   saatDilimiDurumu,
   saatDilimiOzeti,
   saatDilimiUyarisi,
 } from "@/lib/saatDilimi";
-import { firmaAdiGuncelle } from "./eylemler";
+import { secilenSaatDilimi } from "@/lib/saatDilimiAyari";
+import { sistemOlcumu } from "@/lib/sistemOlcumu";
+import { firmaAdiGuncelle, saatDiliminiGuncelle } from "./eylemler";
 
 export const metadata = { title: "Ayarlar — Stok Takip" };
 
@@ -81,10 +85,19 @@ export default async function AyarlarSayfasi() {
     prisma.ayar.findUnique({ where: { anahtar: "firma_adi" } }),
   ]);
 
-  // Saat dilimi sunucu ayarı; yanlışsa gün sınırına yakın satışlar yanlış
-  // güne yazılır. Sessiz bir günlük satırı yerine yöneticinin göreceği yere
-  // konuyor, çünkü düzeltmesi gereken kişi o.
-  const saatDurumu = saatDilimiDurumu();
+  // Saat dilimi yöneticinin seçtiği ayar; yanlışsa gün sınırına yakın
+  // satışlar yanlış güne yazılır. Sessiz bir günlük satırı yerine
+  // yöneticinin göreceği yere konuyor, çünkü düzeltmesi gereken kişi o.
+  //
+  // Durum, sürecin o an kullandığı dilimi SEÇİLENLE karşılaştırıyor: ikisi
+  // ayrıysa seçim sürece uygulanamamış demektir (uygulama src/lib/
+  // saatDilimiAyari.ts, istek başında).
+  // Disk, veritabanı boyutu ve yedek yaşı hiçbir yerde görünmüyordu. Disk
+  // dolduğunda SQLite yazamaz ve bu, satış ekranında sebebi yazmayan bir
+  // "işlem tamamlanamadı" olarak çıkar.
+  const sistem = await sistemOlcumu();
+  const secilen = await secilenSaatDilimi();
+  const saatDurumu = saatDilimiDurumu(mevcutSaatDilimi(), secilen);
   const saatUyarisi = saatDilimiUyarisi(saatDurumu);
   const saatOzeti = saatDilimiOzeti(saatDurumu);
 
@@ -129,17 +142,67 @@ export default async function AyarlarSayfasi() {
           data-test="saat-dilimi-uyarisi"
           className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
         >
-          <p className="font-semibold">Sunucu saat dilimi beklenenden farklı</p>
+          <p className="font-semibold">
+            Çalışan dilim, seçilen dilimden farklı
+          </p>
           <p className="mt-1">{saatUyarisi}</p>
           <p className="mt-2 text-xs">
-            Düzeltmek için sunucuda{" "}
+            Seçim her isteğin başında sürece uygulanıyor; bu uyarı duruyorsa
+            sayfayı yenileyin. Geçmezse sunucuda{" "}
             <code className="rounded bg-amber-100 px-1">
-              sudo /opt/stok/app/betikler/sunucu-guncelle.sh
+              sudo systemctl restart stok
             </code>{" "}
-            çalıştırın; betik saat dilimini servis birimine sabitler.
+            çalıştırmak yeter.
           </p>
         </div>
       ) : null}
+
+      <Kart baslik="Sistem Durumu">
+        <ul
+          data-test="sistem-durumu"
+          data-siddet={sistem.durum}
+          className="space-y-2"
+        >
+          {sistem.satirlar.map((satir) => (
+            <li
+              key={satir.etiket}
+              className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 pb-2 last:border-0 last:pb-0"
+            >
+              <span className="text-sm text-slate-600">{satir.etiket}</span>
+              <span className="flex items-center gap-2 text-sm">
+                <span
+                  className={
+                    satir.siddet === "kritik"
+                      ? "font-medium text-red-700"
+                      : satir.siddet === "uyari"
+                        ? "font-medium text-amber-700"
+                        : "text-slate-800"
+                  }
+                >
+                  {satir.deger}
+                </span>
+                {satir.siddet !== "iyi" ? (
+                  <span
+                    aria-hidden
+                    className={
+                      satir.siddet === "kritik"
+                        ? "rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700"
+                        : "rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                    }
+                  >
+                    {satir.siddet === "kritik" ? "kritik" : "dikkat"}
+                  </span>
+                ) : null}
+              </span>
+              {satir.oneri ? (
+                <span className="w-full text-xs text-slate-500">
+                  {satir.oneri}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </Kart>
 
       <Kart baslik="Firma Adı">
         <EylemFormu eylem={firmaAdiGuncelle}>
@@ -165,6 +228,52 @@ export default async function AyarlarSayfasi() {
               Kaydet
             </GonderDugmesi>
           </div>
+        </EylemFormu>
+      </Kart>
+
+      <Kart baslik="Saat Dilimi">
+        {/* Gün/hafta/ay hesapları bu dilime göre: "bugün satılanlar", panel
+            grafiği, vade günleri ve fatura formunun varsayılan tarihi. */}
+        <EylemFormu eylem={saatDiliminiGuncelle}>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[260px] flex-1">
+              <label
+                htmlFor="saatDilimi"
+                className="mb-1 block text-xs font-medium text-slate-600"
+              >
+                Gün, hafta ve ay hesaplarının yapılacağı dilim
+              </label>
+              <select
+                id="saatDilimi"
+                name="saatDilimi"
+                data-test="saat-dilimi-secimi"
+                key={secilen}
+                defaultValue={secilen}
+                className={GIRDI_SINIFI}
+              >
+                {/* Seçili dilim listede yoksa (elle girilmiş bir ad)
+                    kaybolmasın: başa kendisi ekleniyor. */}
+                {SAAT_DILIMI_SECENEKLERI.some(
+                  (s) => s.deger === secilen,
+                ) ? null : (
+                  <option value={secilen}>{secilen}</option>
+                )}
+                {SAAT_DILIMI_SECENEKLERI.map((s) => (
+                  <option key={s.deger} value={s.deger}>
+                    {s.etiket}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <GonderDugmesi tur="ikincil" bekleyenMetin="Kaydediliyor…">
+              Kaydet
+            </GonderDugmesi>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Şu an çalışan dilim: <strong>{saatDurumu.mevcut}</strong> · yerel
+            saat <strong>{saatDurumu.yerelSaat}</strong>. Yanlış dilim, gece
+            yapılan satışların bir önceki güne yazılmasına yol açar.
+          </p>
         </EylemFormu>
       </Kart>
 

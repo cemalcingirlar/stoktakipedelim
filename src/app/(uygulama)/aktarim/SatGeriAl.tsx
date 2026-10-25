@@ -46,9 +46,10 @@ export function SatGeriAl({
   const [satisFiyati, setSatisFiyati] = useState("");
   const [yeniAlis, setYeniAlis] = useState(kurusuTLYaz(baslangicAlisKurus));
   const [hata, setHata] = useState<string | null>(null);
-  const [kayitli, setKayitli] = useState<
-    { musteriAdi: string | null; alisKurus: number } | null
-  >(null);
+  const [kayitli, setKayitli] = useState<{
+    musteriAdi: string | null;
+    alisKurus: number;
+  } | null>(null);
   const [bekliyor, basla] = useTransition();
 
   const satisKurus = tlyiKurusaCevir(satisFiyati);
@@ -76,7 +77,11 @@ export function SatGeriAl({
 
     basla(async () => {
       if (yalnizFiyat) {
-        const sonuc = await aktarilanCihaziDuzelt(cihazId, alisKurus!, not ?? "");
+        const sonuc = await aktarilanCihaziDuzelt(
+          cihazId,
+          alisKurus!,
+          not ?? "",
+        );
         if (sonuc.durum === "HATA") {
           setHata(sonuc.mesaj);
           return;
@@ -102,7 +107,10 @@ export function SatGeriAl({
         setHata(sonuc.mesaj);
         return;
       }
-      setKayitli({ musteriAdi: sonuc.musteriAdi, alisKurus: sonuc.alisFiyatiKurus });
+      setKayitli({
+        musteriAdi: sonuc.musteriAdi,
+        alisKurus: sonuc.alisFiyatiKurus,
+      });
     });
   }
 
@@ -114,16 +122,21 @@ export function SatGeriAl({
       >
         {kayitli.musteriAdi ? (
           <>
-            <strong>{kayitli.musteriAdi}</strong> müşterisine {satisFiyati} TL&apos;ye satılıp
-            geri alındı. Yeni alış fiyatı{" "}
-            <strong className="tabular-nums">{kurusuTLYaz(kayitli.alisKurus)} TL</strong>. Satış
-            raporlarına yansıdı.
+            <strong>{kayitli.musteriAdi}</strong> müşterisine {satisFiyati}{" "}
+            TL&apos;ye satılıp geri alındı. Yeni alış fiyatı{" "}
+            <strong className="tabular-nums">
+              {kurusuTLYaz(kayitli.alisKurus)} TL
+            </strong>
+            . Satış raporlarına yansıdı.
           </>
         ) : (
           <>
             Alış fiyatı{" "}
-            <strong className="tabular-nums">{kurusuTLYaz(kayitli.alisKurus)} TL</strong> olarak
-            güncellendi. Satış fiyatı girilmediği için satış kaydı açılmadı.
+            <strong className="tabular-nums">
+              {kurusuTLYaz(kayitli.alisKurus)} TL
+            </strong>{" "}
+            olarak güncellendi. Satış fiyatı girilmediği için satış kaydı
+            açılmadı.
           </>
         )}
       </div>
@@ -135,7 +148,9 @@ export function SatGeriAl({
       data-test="sat-geri-al"
       className="mt-2 w-full space-y-2 rounded-lg border border-amber-300 bg-amber-50/70 p-2"
     >
-      <p className="text-xs font-medium text-amber-900">{etiket} · kaydedilmedi</p>
+      <p className="text-xs font-medium text-amber-900">
+        {etiket} · kaydedilmedi
+      </p>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
         <div>
@@ -143,7 +158,10 @@ export function SatGeriAl({
             htmlFor={`satis-${cihazId}`}
             className="mb-1 block text-xs font-medium text-slate-600"
           >
-            Satış Fiyatı (TL) <span className="font-normal text-slate-500">— boş bırakılabilir</span>
+            Satış Fiyatı (TL){" "}
+            <span className="font-normal text-slate-500">
+              — boş bırakılabilir
+            </span>
           </label>
           <input
             id={`satis-${cihazId}`}
@@ -156,7 +174,15 @@ export function SatGeriAl({
           />
           <p className="mt-1 text-xs text-slate-500">
             Kâr:{" "}
-            <span className={kar === null ? "" : kar < 0 ? "text-red-600" : "text-emerald-700"}>
+            <span
+              className={
+                kar === null
+                  ? ""
+                  : kar < 0
+                    ? "text-red-600"
+                    : "text-emerald-700"
+              }
+            >
               {kar === null ? "—" : `${kurusuTLYaz(kar)} TL`}
             </span>
           </p>
@@ -177,7 +203,9 @@ export function SatGeriAl({
             inputMode="decimal"
             className={`${GIRDI_SINIFI} text-right tabular-nums`}
           />
-          <p className="mt-1 text-xs text-slate-500">Stok bu fiyattan takip edilir.</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Stok bu fiyattan takip edilir.
+          </p>
         </div>
 
         <div className="flex items-start pt-5">
@@ -204,7 +232,11 @@ export function SatGeriAl({
       </p>
 
       {hata ? (
-        <p data-test="satis-hata" role="alert" className="text-xs font-medium text-red-700">
+        <p
+          data-test="satis-hata"
+          role="alert"
+          className="text-xs font-medium text-red-700"
+        >
           {hata}
         </p>
       ) : null}

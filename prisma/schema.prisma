@@ -46,6 +46,9 @@ model Magaza {
   @@index([dukkanKodu])
 }
 
+/// Şifre değiştiğinde o kullanıcının eski oturumları düşer:
+/// sifreDegisikligi, jetonun üretilme anıyla karşılaştırılıyor
+/// (src/lib/oturumGecerlilik.ts).
 model Kullanici {
   id           Int     @id @default(autoincrement())
   kullaniciAdi String  @unique
@@ -59,6 +62,10 @@ model Kullanici {
   sonGiris  DateTime?
   createdAt DateTime  @default(now())
 
+  /// Şifrenin en son ne zaman değiştiği. Bu andan önce üretilmiş jetonlar
+  /// geçersiz sayılıyor; şifre sıfırlamak eski oturumları da kesiyor.
+  sifreDegisikligi DateTime?
+
   magaza Magaza? @relation(fields: [magazaId], references: [id])
 
   /// Ana mağazasına ek olarak yetkili olduğu mağazalar. Bir kişi birden çok
@@ -66,6 +73,8 @@ model Kullanici {
   ekMagazalar Magaza[] @relation("KullaniciEkMagaza")
 
   olusturulanFaturalar   AlisFaturasi[]  @relation("FaturaOlusturan")
+  iceAktarimlar          IceAktarim[]    @relation("IceAktarimYapan")
+  iptalEdilenFaturalar   AlisFaturasi[]  @relation("FaturaIptalEden")
   gonderilenTransferler  Transfer[]      @relation("TransferGonderen")
   kabulEdilenTransferler Transfer[]      @relation("TransferKabulEden")
   satislar               StokKalemi[]    @relation("SatanKullanici")
@@ -159,12 +168,21 @@ model AlisFaturasi {
   olusturanId Int
   createdAt   DateTime @default(now())
 
+  /// Yanlış girilen fatura silinmiyor, iptal ediliyor: tutarı vade ve borç
+  /// raporlarından düşüyor ama kaydın kendisi ve gerekçesi duruyor.
+  iptalEdildi  Boolean   @default(false)
+  iptalTarihi  DateTime?
+  iptalGerekce String?
+  iptalEdenId  Int?
+
   tedarikci Tedarikci    @relation(fields: [tedarikciId], references: [id])
   magaza    Magaza       @relation(fields: [magazaId], references: [id])
   olusturan Kullanici    @relation("FaturaOlusturan", fields: [olusturanId], references: [id])
+  iptalEden Kullanici?   @relation("FaturaIptalEden", fields: [iptalEdenId], references: [id])
   kalemler  StokKalemi[]
 
   @@unique([tedarikciId, faturaNo])
+  @@index([iptalEdildi])
   @@index([vadeTarihi])
   @@index([faturaTarihi])
 }
@@ -186,6 +204,8 @@ model StokKalemi {
   kapasite String?
 
   alisFaturasiId  Int?
+  /// Envanter dökümü partisi; toplu geri alma bunun üzerinden yapılıyor.
+  iceAktarimId    Int?
   tedarikciId     Int?
   alisFiyatiKurus Int      @default(0)
   girisTarihi     DateTime @default(now())
@@ -213,6 +233,7 @@ model StokKalemi {
   kategori       Kategori      @relation(fields: [kategoriId], references: [id])
   altKategori    AltKategori?  @relation(fields: [altKategoriId], references: [id])
   alisFaturasi   AlisFaturasi? @relation(fields: [alisFaturasiId], references: [id])
+  iceAktarim     IceAktarim?   @relation(fields: [iceAktarimId], references: [id])
   tedarikci      Tedarikci?    @relation(fields: [tedarikciId], references: [id])
   magaza         Magaza        @relation(fields: [magazaId], references: [id])
   satanKullanici Kullanici?    @relation("SatanKullanici", fields: [satanKullaniciId], references: [id])
@@ -424,6 +445,30 @@ model GirisDenemesi {
   @@index([kilitBitis])
 }
 
+/// Envanter dökümünden toplu giriş partisi.
+///
+/// Toplu yüklemenin geri alınabilmesi için gerekli: yüklenen cihazların
+/// hangi partiden geldiği başka türlü bilinmiyordu (bu yol fatura
+/// oluşturmuyor). Excel yüklemesi fatura açtığı için oraya gerek yok.
+model IceAktarim {
+  id          Int      @id @default(autoincrement())
+  aciklama    String
+  dosyaAdi    String?
+  adet        Int
+  kullaniciId Int
+  tarih       DateTime @default(now())
+
+  geriAlindi      Boolean   @default(false)
+  geriAlmaTarihi  DateTime?
+  geriAlmaGerekce String?
+
+  kullanici Kullanici    @relation("IceAktarimYapan", fields: [kullaniciId], references: [id])
+  kalemler  StokKalemi[]
+
+  @@index([tarih])
+  @@index([geriAlindi])
+}
+
 model Log {
   id           Int      @id @default(autoincrement())
   kullaniciId  Int?
@@ -455,6 +500,15 @@ model Yedek {
   durum        String // BASARILI | HATA
   hata         String?
   tarih        DateTime @default(now())
+
+  /// Yedek alındıktan sonra sınandı mı: bütünlük kontrolü + yüklenen boyut.
+  /// Yedek almakla yedeği olmak aynı şey değil; doğrulanmamış yedek,
+  /// bozukluğu felaket günü anlaşılan yedektir.
+  dogrulandi Boolean @default(false)
+  /// Doğrulamanın insan okunur özeti ("Bütünlük ve yüklenen boyut doğrulandı").
+  dogrulama  String?
+  /// Drive'ın bildirdiği dosya boyutu; yereldekiyle aynı olmalı.
+  uzakBoyutBayt Int?
 
   @@index([tarih])
 }

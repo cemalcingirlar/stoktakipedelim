@@ -23,7 +23,10 @@ import { dirname, join } from "node:path";
  * sayı dönüyor. Bulunamazsa undefined dönülüyor — gömülü fontlu PDF'ler yine
  * okunur, yalnız gömmeyenler okunamaz.
  */
-function pdfjsVeriYollari(): { standardFontDataUrl?: string; cMapUrl?: string } {
+function pdfjsVeriYollari(): {
+  standardFontDataUrl?: string;
+  cMapUrl?: string;
+} {
   let dizin = process.cwd();
   for (let i = 0; i < 6; i++) {
     const kok = join(dizin, "node_modules", "pdfjs-dist");
@@ -45,15 +48,18 @@ export async function pdfMetniCikar(veri: ArrayBuffer): Promise<string> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const yollar = pdfjsVeriYollari();
 
-  const belge = await pdfjs.getDocument({
+  // pdfjs 6 ile iki değişiklik: `isEvalSupported` seçeneği kalktı (eval
+  // desteği motordan tümden çıkarıldı, yani artık varsayılan olarak kapalı)
+  // ve belge yerine YÜKLEME GÖREVİ kapatılıyor.
+  const yukleme = pdfjs.getDocument({
     data: new Uint8Array(veri),
     // Sistem fontlarına ve harici kaynaklara gidilmesin: yüklenen dosya
     // güvenilmez, ağ isteği tetiklememeli.
     useSystemFonts: false,
-    isEvalSupported: false,
     ...yollar,
     cMapPacked: true,
-  }).promise;
+  });
+  const belge = await yukleme.promise;
 
   try {
     const parcalar: string[] = [];
@@ -67,6 +73,6 @@ export async function pdfMetniCikar(veri: ArrayBuffer): Promise<string> {
     }
     return parcalar.join("\n");
   } finally {
-    await belge.destroy();
+    await yukleme.destroy();
   }
 }

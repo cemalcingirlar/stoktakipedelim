@@ -19,6 +19,7 @@
  */
 import { aramaNormalize, kodNormalize } from "./metin";
 import { tlyiKurusaCevir } from "./para";
+import { gunOrtasi } from "./tarih";
 import {
   markayiTuret,
   type TedarikciDosyaSonucu,
@@ -65,17 +66,23 @@ export type EFaturaOkumasi = {
   uyarilar: string[];
 };
 
-/** "12 - 10 - 2026" / "12.10.2026" / "12/10/2026" -> yerel Date. */
+/**
+ * "12 - 10 - 2026" / "12.10.2026" / "12/10/2026" -> yerel Date (öğlen).
+ *
+ * Öğlene sabitleniyor: tarayıcı sunucudan farklı dilimdeyse gece yarısına
+ * sabitlenen tarih bir gün kayıyordu (bkz. gunOrtasi).
+ */
 export function efaturaTarihiCoz(ham: string): Date | null {
   const eslesme = ham
     .replace(/\s+/g, "")
     .match(/^(\d{1,2})[-./](\d{1,2})[-./](\d{4})$/);
   if (!eslesme) return null;
   const [, gun, ay, yil] = eslesme;
-  const tarih = new Date(Number(yil), Number(ay) - 1, Number(gun));
+  const tarih = gunOrtasi(Number(yil), Number(ay) - 1, Number(gun));
   if (Number.isNaN(tarih.getTime())) return null;
   // 31.02.2026 gibi taşan tarihler sessizce kaymasın.
-  if (tarih.getDate() !== Number(gun) || tarih.getMonth() !== Number(ay) - 1) return null;
+  if (tarih.getDate() !== Number(gun) || tarih.getMonth() !== Number(ay) - 1)
+    return null;
   return tarih;
 }
 
@@ -94,7 +101,10 @@ function etiketDegeri(satirlar: string[], etiket: string): string {
 
     // Etiket ve değer aynı satırdaysa ("Vergi No:1234567890").
     if (kucuk.startsWith(hedef)) {
-      const kalan = satir.slice(etiket.length).replace(/^[:\s]+/, "").trim();
+      const kalan = satir
+        .slice(etiket.length)
+        .replace(/^[:\s]+/, "")
+        .trim();
       if (kalan) return kalan;
       // Değer sonraki satırlarda; boş parçaları atla.
       for (let j = i + 1; j < Math.min(satirlar.length, i + 5); j++) {
@@ -172,7 +182,8 @@ const EAN_KALIBI = /^\d{8,14}[A-ZÇĞİÖŞÜ]{0,4}$/;
  * bir harf bulunmalı, ayrıca bir ayraç (/ - _) taşımalı. "128GB" gibi açıklama
  * parçaları ayraç taşımadığı için eleniyor.
  */
-const URUN_KODU_KALIBI = /^(?=.*\d)(?=.*[A-ZÇĞİÖŞÜ])[A-ZÇĞİÖŞÜ0-9][A-ZÇĞİÖŞÜ0-9/\-_.]*[/\-_][A-ZÇĞİÖŞÜ0-9/\-_.]*$/;
+const URUN_KODU_KALIBI =
+  /^(?=.*\d)(?=.*[A-ZÇĞİÖŞÜ])[A-ZÇĞİÖŞÜ0-9][A-ZÇĞİÖŞÜ0-9/\-_.]*[/\-_][A-ZÇĞİÖŞÜ0-9/\-_.]*$/;
 
 /**
  * Ayraçsız ürün kodu: "JBJBLTFLEX2GWHT" gibi.
@@ -334,7 +345,10 @@ export function seriNolariTopla(
 
   const bitir = () => {
     if (!aktif) return;
-    sonuc.set(aktif.siraNo, { kod: aktif.kod, seriler: serileriCikar(aktif.parcalar) });
+    sonuc.set(aktif.siraNo, {
+      kod: aktif.kod,
+      seriler: serileriCikar(aktif.parcalar),
+    });
     aktif = null;
   };
 
@@ -362,7 +376,11 @@ export function seriNolariTopla(
       // bir satır yanlışlıkla seri biçimine uysa bile listeye giremiyor:
       // liste zaten dolmuş oluyor. Adet bilinmiyorsa eski davranış sürüyor.
       const hedef = beklenenAdet?.get(aktif.siraNo);
-      if (hedef !== undefined && hedef > 0 && seriSayisi(aktif.parcalar) >= hedef) {
+      if (
+        hedef !== undefined &&
+        hedef > 0 &&
+        seriSayisi(aktif.parcalar) >= hedef
+      ) {
         bitir();
       }
       continue;
@@ -394,7 +412,10 @@ export function efaturaMi(metin: string): boolean {
  * değil önek araması yapılıyor. Ters yön de kabul ediliyor: bazı faturalarda
  * notta kısaltılmış kod, satırda uzunu oluyor.
  */
-export function kodTeyitEdildi(notKodu: string, satirKodlari: string[]): boolean {
+export function kodTeyitEdildi(
+  notKodu: string,
+  satirKodlari: string[],
+): boolean {
   const not = kodNormalize(notKodu);
   if (!not) return true; // teyit edecek bir şey yok
   const kodlar = satirKodlari.map((k) => kodNormalize(k)).filter(Boolean);
@@ -410,7 +431,10 @@ export function kodTeyitEdildi(notKodu: string, satirKodlari: string[]): boolean
  * (uzun ürün adları satır atlıyor), bu yüzden akış kelime kelime taranıyor ve
  * açıklama "n,nn" biçimli ilk parçaya (adet) kadar toplanıyor.
  */
-function kalemleriOku(parcalar: string[]): { kalemler: Omit<EFaturaKalemi, "seriNolar">[]; hatalar: string[] } {
+function kalemleriOku(parcalar: string[]): {
+  kalemler: Omit<EFaturaKalemi, "seriNolar">[];
+  hatalar: string[];
+} {
   const kalemler: Omit<EFaturaKalemi, "seriNolar">[] = [];
   const hatalar: string[] = [];
 
@@ -419,7 +443,10 @@ function kalemleriOku(parcalar: string[]): { kalemler: Omit<EFaturaKalemi, "seri
 
   while (i < parcalar.length) {
     // Satır başlangıcı: beklenen sıra numarası + hemen ardından bir ürün kodu.
-    if (parcalar[i] !== String(beklenenSira) || !EAN_KALIBI.test(parcalar[i + 1] ?? "")) {
+    if (
+      parcalar[i] !== String(beklenenSira) ||
+      !EAN_KALIBI.test(parcalar[i + 1] ?? "")
+    ) {
       i += 1;
       continue;
     }
@@ -453,7 +480,9 @@ function kalemleriOku(parcalar: string[]): { kalemler: Omit<EFaturaKalemi, "seri
       break;
     }
 
-    const adet = Math.round(Number(parcalar[j].replace(".", "").replace(",", ".")));
+    const adet = Math.round(
+      Number(parcalar[j].replace(".", "").replace(",", ".")),
+    );
     j += 1;
 
     // Kalan sayısal alanlar: birim fiyat, KDV tutarı, tutar. "TL" ve "%20"
@@ -529,7 +558,9 @@ export function efaturaCoz(metin: string): EFaturaOkumasi {
 
   const faturaNo = etiketDegeri(satirlar, "Fatura No");
   const siparisNo = etiketDegeri(satirlar, "Sipariş No");
-  const faturaTarihi = efaturaTarihiCoz(etiketDegeri(satirlar, "Fatura Tarihi"));
+  const faturaTarihi = efaturaTarihiCoz(
+    etiketDegeri(satirlar, "Fatura Tarihi"),
+  );
   const vadeTarihi = efaturaTarihiCoz(etiketDegeri(satirlar, "Vade Tarihi"));
 
   const araToplamKurus = tlyiKurusaCevir(
@@ -557,7 +588,9 @@ export function efaturaCoz(metin: string): EFaturaOkumasi {
   // eşleştirilmek üzere ayrılıyor. Numaralandırma bozuksa (ör. not bloğu
   // faturadaki sırayı izlemiyorsa) seriler yine de doğru kaleme bağlansın.
   const kalemSiralari = new Set(hamKalemler.map((k) => k.siraNo));
-  const sahipsizNotlar = [...seriHarita.entries()].filter(([sira]) => !kalemSiralari.has(sira));
+  const sahipsizNotlar = [...seriHarita.entries()].filter(
+    ([sira]) => !kalemSiralari.has(sira),
+  );
   const kullanilanSahipsiz = new Set<number>();
 
   const gorulenSeriler = new Map<string, number>();
@@ -569,7 +602,9 @@ export function efaturaCoz(metin: string): EFaturaOkumasi {
     if (!kayit) {
       const eslesen = sahipsizNotlar.find(
         ([sira, n]) =>
-          !kullanilanSahipsiz.has(sira) && n.kod && kodTeyitEdildi(n.kod, k.urunKodlari),
+          !kullanilanSahipsiz.has(sira) &&
+          n.kod &&
+          kodTeyitEdildi(n.kod, k.urunKodlari),
       );
       if (eslesen) {
         kullanilanSahipsiz.add(eslesen[0]);
@@ -615,7 +650,9 @@ export function efaturaCoz(metin: string): EFaturaOkumasi {
     for (const seri of seriNolar) {
       const onceki = gorulenSeriler.get(seri);
       if (onceki !== undefined) {
-        hatalar.push(`${seri} seri numarası ${onceki}. ve ${k.siraNo}. kalemde birden fazla var.`);
+        hatalar.push(
+          `${seri} seri numarası ${onceki}. ve ${k.siraNo}. kalemde birden fazla var.`,
+        );
       } else {
         gorulenSeriler.set(seri, k.siraNo);
       }
@@ -631,8 +668,10 @@ export function efaturaCoz(metin: string): EFaturaOkumasi {
       );
     }
 
-    if (k.adet <= 0) hatalar.push(`${k.siraNo}. kalemde adet geçersiz: ${k.adet}.`);
-    if (!k.barkod) hatalar.push(`${k.siraNo}. kalemde ürün kodu (EAN) okunamadı.`);
+    if (k.adet <= 0)
+      hatalar.push(`${k.siraNo}. kalemde adet geçersiz: ${k.adet}.`);
+    if (!k.barkod)
+      hatalar.push(`${k.siraNo}. kalemde ürün kodu (EAN) okunamadı.`);
     if (!k.urunAdi) hatalar.push(`${k.siraNo}. kalemde ürün adı okunamadı.`);
 
     return { ...k, seriNolar };
@@ -717,14 +756,15 @@ function tedarikciVergiNoBul(satirlar: string[]): string {
   return "";
 }
 
-
 /**
  * Okunan e-Faturayı, tedarikçi dosyası ekranının beklediği yapıya çevirir.
  *
  * Böylece PDF kendi ekranını açmıyor: kategori eşleme, seri no çakışma
  * denetimi, önizleme ve kayıt yolu Excel ile aynı kalıyor.
  */
-export function efaturadanTedarikciFaturasi(okuma: EFaturaOkumasi): TedarikciDosyaSonucu {
+export function efaturadanTedarikciFaturasi(
+  okuma: EFaturaOkumasi,
+): TedarikciDosyaSonucu {
   // Denetimlerden biri bile tutmuyorsa fatura üretilmiyor ve okuma başarısız
   // sayılıyor: ekran hatayı gösterip kullanıcıyı Excel'e yönlendirsin, yanlış
   // okunmuş bir faturadan stok açılmasın.
@@ -745,14 +785,17 @@ export function efaturadanTedarikciFaturasi(okuma: EFaturaOkumasi): TedarikciDos
             marka: markayiTuret(kalem.urunAdi),
             alisFiyatiKurus: kalem.birimFiyatKurus,
           }))
-        : Array.from({ length: Math.max(1, Math.min(500, kalem.adet)) }, () => ({
-            excelSatiri: kalem.siraNo,
-            seriNo: null,
-            barkod: kalem.barkod,
-            urunAdi: kalem.urunAdi,
-            marka: markayiTuret(kalem.urunAdi),
-            alisFiyatiKurus: kalem.birimFiyatKurus,
-          }));
+        : Array.from(
+            { length: Math.max(1, Math.min(500, kalem.adet)) },
+            () => ({
+              excelSatiri: kalem.siraNo,
+              seriNo: null,
+              barkod: kalem.barkod,
+              urunAdi: kalem.urunAdi,
+              marka: markayiTuret(kalem.urunAdi),
+              alisFiyatiKurus: kalem.birimFiyatKurus,
+            }),
+          );
 
     return {
       barkod: kalem.barkod,
@@ -772,7 +815,10 @@ export function efaturadanTedarikciFaturasi(okuma: EFaturaOkumasi): TedarikciDos
     tedarikciAdi: okuma.tedarikciAdi,
     gruplar,
     cihazSayisi: gruplar.reduce((t, g) => t + g.cihazlar.length, 0),
-    toplamKurus: gruplar.reduce((t, g) => t + g.alisFiyatiKurus * g.cihazlar.length, 0),
+    toplamKurus: gruplar.reduce(
+      (t, g) => t + g.alisFiyatiKurus * g.cihazlar.length,
+      0,
+    ),
   };
 
   return { faturalar: [fatura], hatalar: okuma.uyarilar, basliklarTamam: true };

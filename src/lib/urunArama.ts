@@ -89,9 +89,16 @@ export function gruplaUrunler(cihazlar: AranabilirCihaz[]): UrunGrubu[] {
 
     mevcut.adet += 1;
     mevcut.cihazIdleri.push(cihaz.id);
-    mevcut.enDusukAlisKurus = Math.min(mevcut.enDusukAlisKurus, cihaz.alisFiyatiKurus);
-    mevcut.enYuksekAlisKurus = Math.max(mevcut.enYuksekAlisKurus, cihaz.alisFiyatiKurus);
-    if (!mevcut.magazalar.includes(cihaz.magazaAdi)) mevcut.magazalar.push(cihaz.magazaAdi);
+    mevcut.enDusukAlisKurus = Math.min(
+      mevcut.enDusukAlisKurus,
+      cihaz.alisFiyatiKurus,
+    );
+    mevcut.enYuksekAlisKurus = Math.max(
+      mevcut.enYuksekAlisKurus,
+      cihaz.alisFiyatiKurus,
+    );
+    if (!mevcut.magazalar.includes(cihaz.magazaAdi))
+      mevcut.magazalar.push(cihaz.magazaAdi);
   }
 
   // Ada göre sırala: kullanıcı aradığı ürünü tahmin edilebilir bir yerde
@@ -133,7 +140,11 @@ export function grupFiyatMetni(grup: UrunGrubu): string {
 
 /** Satır altındaki açıklama: adet ve mağazalar. */
 export function grupAciklamasi(grup: UrunGrubu): string {
-  const parcalar = [`${grup.adet} adet`, grup.kategori, grup.magazalar.join(", ")];
+  const parcalar = [
+    `${grup.adet} adet`,
+    grup.kategori,
+    grup.magazalar.join(", "),
+  ];
   if (grup.barkod) parcalar.push(grup.barkod);
   return parcalar.filter(Boolean).join(" · ");
 }
@@ -243,5 +254,58 @@ export function gecmisUrunAciklamasi(urun: GecmisUrun): string {
   const kategori = urun.altKategoriAdi
     ? `${urun.kategoriAdi} / ${urun.altKategoriAdi}`
     : urun.kategoriAdi;
-  return [kategori, urun.barkod, `${urun.toplamAdet} adet girilmiş`].join(" · ");
+  return [kategori, urun.barkod, `${urun.toplamAdet} adet girilmiş`].join(
+    " · ",
+  );
+}
+
+/**
+ * Kısaltılmış arama sonucu.
+ *
+ * Arama hem veritabanında (ilk 500 cihaz) hem gruplamada (ilk 30 ürün)
+ * kesiliyordu ve ekranda bunu söyleyen hiçbir şey yoktu. Gerçek veride
+ * ölçüldü: "SAMSUNG", "A5", "PRO" gibi yaygın aramaların hepsi tam 30'da
+ * duruyor. Satıcı müşterinin önünde 30 ürün görüp aradığını bulamayınca
+ * "yok" diyor — oysa var. Bu doğrudan satış kaybı.
+ */
+export type AramaSonucu<T> = {
+  gruplar: T[];
+  /** Sonuç sınıra dayandı mı? */
+  kesildi: boolean;
+};
+
+/**
+ * Aramada veritabanından çekilen en çok cihaz sayısı.
+ *
+ * Gruplama veritabanında değil burada yapıldığı için önce cihazlar çekiliyor.
+ * 500 cihaz 30 gruptan azına da düşebilir (aynı modelden çok adet varsa), bu
+ * yüzden grup sınırına bakmak yetmiyor: bu sınıra dayanmak da "daha fazlası
+ * var" demek.
+ */
+export const EN_COK_CIHAZ = 500;
+
+/**
+ * Listeyi sınıra kısaltır ve kesilip kesilmediğini bildirir.
+ *
+ * `oncedenKesildi`, gruplamadan önceki cihaz sınırına dayanıldığını söyler;
+ * grup sayısı sınırın altında kalsa bile sonuç eksik demektir.
+ */
+export function sonucuKisalt<T>(
+  tumu: T[],
+  limit: number = EN_COK_GRUP,
+  oncedenKesildi = false,
+): AramaSonucu<T> {
+  return {
+    gruplar: tumu.slice(0, limit),
+    kesildi: oncedenKesildi || tumu.length > limit,
+  };
+}
+
+/** Kesilme varsa kullanıcıya gösterilecek uyarı; yoksa null. */
+export function kesintiUyarisi(
+  sonuc: { kesildi: boolean },
+  limit: number = EN_COK_GRUP,
+): string | null {
+  if (!sonuc.kesildi) return null;
+  return `İlk ${limit} ürün gösteriliyor; daha fazlası var. Aramayı daraltın.`;
 }

@@ -47,7 +47,10 @@ export async function exceliOnizle(
         id: true,
         ad: true,
         seriNoZorunlu: true,
-        altKategoriler: { where: { aktif: true }, select: { id: true, ad: true } },
+        altKategoriler: {
+          where: { aktif: true },
+          select: { id: true, ad: true },
+        },
       },
     });
 
@@ -65,25 +68,39 @@ export async function exceliOnizle(
       });
       const cakisanKume = new Set(cakisan.map((c) => c.seriNo));
       if (cakisanKume.size > 0) {
-        const temiz = sonuc.satirlar.filter((s) => !s.seriNo || !cakisanKume.has(s.seriNo));
+        const temiz = sonuc.satirlar.filter(
+          (s) => !s.seriNo || !cakisanKume.has(s.seriNo),
+        );
         for (const s of sonuc.satirlar) {
           if (s.seriNo && cakisanKume.has(s.seriNo)) {
-            sonuc.hatalar.push(`${s.excelSatiri}. satır: ${s.seriNo} sistemde zaten kayıtlı.`);
+            sonuc.hatalar.push(
+              `${s.excelSatiri}. satır: ${s.seriNo} sistemde zaten kayıtlı.`,
+            );
           }
         }
         sonuc.satirlar = temiz;
       }
     }
 
-    return { satirlar: sonuc.satirlar, hatalar: sonuc.hatalar, dosyaAdi: dosya.name };
+    return {
+      satirlar: sonuc.satirlar,
+      hatalar: sonuc.hatalar,
+      dosyaAdi: dosya.name,
+    };
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Excel okunamadı:", hata);
-    return { hata: "Dosya okunamadı. Şablonu indirip doldurduğunuz dosyayı yükleyin." };
+    return {
+      hata: "Dosya okunamadı. Şablonu indirip doldurduğunuz dosyayı yükleyin.",
+    };
   }
 }
 
-export type KayitDurumu = { hata?: string; alanHatalari?: string[]; faturaId?: number };
+export type KayitDurumu = {
+  hata?: string;
+  alanHatalari?: string[];
+  faturaId?: number;
+};
 
 /**
  * Önizlemesi onaylanan satırları tek bir alış faturası altında kaydeder.

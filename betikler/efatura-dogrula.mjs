@@ -5,6 +5,7 @@
 // eşleme, vade tarihinin faturadan gelmesi ve kaydın doğru cihazları açması
 // kontrol ediliyor.
 import { chromium } from "@playwright/test";
+import { gunKaydir } from "./ortak-tarih.mjs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -48,12 +49,15 @@ async function giris(kullanici) {
   await Promise.all([sayfa.waitForURL("**/panel"), sayfa.click('button[type="submit"]')]);
 }
 
-/** Bugünden N gün sonrası, "GG - AA - YYYY" biçiminde. */
+/**
+ * Bugünden N gün sonrası, "GG - AA - YYYY" biçiminde.
+ *
+ * Gün uygulamanın saat diliminde hesaplanıyor: test süreci UTC'de koşuyor ve
+ * gece yarısından sonra kendi günü sunucununkinden farklı oluyordu.
+ */
 function gunSonra(gun) {
-  const t = new Date();
-  t.setDate(t.getDate() + gun);
-  const iki = (n) => String(n).padStart(2, "0");
-  return `${iki(t.getDate())} - ${iki(t.getMonth() + 1)} - ${t.getFullYear()}`;
+  const [yil, ay, g] = gunKaydir(gun).split("-");
+  return `${g} - ${ay} - ${yil}`;
 }
 
 const klasor = await mkdtemp(join(tmpdir(), "efatura-"));
@@ -332,12 +336,7 @@ try {
   kontrol("vade seçimi 'özel tarih' olarak geldi", vadeSecimi === "ozel", vadeSecimi);
 
   const vadeDegeri = await sayfa.locator("#vadeTarihi").inputValue();
-  const beklenenVade = (() => {
-    const t = new Date();
-    t.setDate(t.getDate() + 45);
-    const iki = (n) => String(n).padStart(2, "0");
-    return `${t.getFullYear()}-${iki(t.getMonth() + 1)}-${iki(t.getDate())}`;
-  })();
+  const beklenenVade = gunKaydir(45);
   kontrol("vade tarihi faturadan doldu", vadeDegeri === beklenenVade, `${vadeDegeri} / ${beklenenVade}`);
 
   // ------------------------------------------------ 5) kaydet

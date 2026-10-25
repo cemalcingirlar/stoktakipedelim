@@ -31,7 +31,10 @@ export function UstMenu({
   return (
     <header className="bg-slate-900 text-slate-200">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-        <Link href="/panel" className="text-base font-semibold tracking-tight text-white">
+        <Link
+          href="/panel"
+          className="text-base font-semibold tracking-tight text-white"
+        >
           {firmaAdi}
         </Link>
 
@@ -76,6 +79,14 @@ export function UstMenu({
               {magazaAdi ? ` · ${magazaAdi}` : ""}
             </div>
           </div>
+          {/* Kendi şifresini değiştirme yolu: geçici şifre kalıcı olmasın. */}
+          <Link
+            href="/sifre"
+            data-test="sifre-baglantisi"
+            className="rounded-md px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
+          >
+            Şifre
+          </Link>
           <form action={cikisEylemi}>
             <button
               type="submit"

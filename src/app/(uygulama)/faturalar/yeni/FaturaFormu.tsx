@@ -1,6 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import {
@@ -9,12 +15,13 @@ import {
   gecmisUrunEtiketi,
   sonucYokMesaji,
   type GecmisUrun,
+  kesintiUyarisi,
 } from "@/lib/urunArama";
 import { KameraDugmesi } from "@/bilesenler/KameraOkuyucu";
 import { TedarikciSecici } from "@/bilesenler/TedarikciSecici";
 import { VadeAlani } from "@/bilesenler/VadeAlani";
 import { kurusuTLYaz, tlyiKurusaCevir } from "@/lib/para";
-import { inputTarih, tarihYaz } from "@/lib/tarih";
+import { tarihYaz } from "@/lib/tarih";
 import type { FaturaSatiriGirdisi } from "../dogrulama";
 import {
   barkodBilgisiGetir,
@@ -93,17 +100,22 @@ export function FaturaFormu({
   tedarikciler,
   magazalar,
   varsayilanMagazaId,
+  bugun,
 }: {
+  bugun: string;
   kategoriler: KategoriSecimi[];
   tedarikciler: { id: number; ad: string }[];
   magazalar: { id: number; kod: string; ad: string }[];
   varsayilanMagazaId: number | null;
 }) {
-  const [durum, eylem] = useActionState<FaturaDurumu, FormData>(faturaKaydet, {});
+  const [durum, eylem] = useActionState<FaturaDurumu, FormData>(
+    faturaKaydet,
+    {},
+  );
   const [urunler, setUrunler] = useState<Urun[]>([]);
   const [barkod, setBarkod] = useState("");
   const [barkodUyarisi, setBarkodUyarisi] = useState("");
-  const [faturaTarihi, setFaturaTarihi] = useState(inputTarih(new Date()));
+  const [faturaTarihi, setFaturaTarihi] = useState(bugun);
   const [barkodBekliyor, barkodBasla] = useTransition();
   const barkodRef = useRef<HTMLInputElement>(null);
   // Barkod okutulunca odak o ürünün IMEI kutusuna gitsin diye.
@@ -117,7 +129,8 @@ export function FaturaFormu({
     setUrunler((mevcut) =>
       mevcut.map((u) => {
         if (u.anahtar !== anahtar) return u;
-        if (alan === "kategoriId") return { ...u, kategoriId: deger, altKategoriId: "" };
+        if (alan === "kategoriId")
+          return { ...u, kategoriId: deger, altKategoriId: "" };
         return { ...u, [alan]: deger };
       }),
     );
@@ -126,7 +139,9 @@ export function FaturaFormu({
   /** Seri no zorunlu olmayan kategoride seri girme modunu açar/kapatır. */
   function seriModunuDegistir(anahtar: number, deger: boolean) {
     setUrunler((mevcut) =>
-      mevcut.map((u) => (u.anahtar === anahtar ? { ...u, seriGirilecek: deger } : u)),
+      mevcut.map((u) =>
+        u.anahtar === anahtar ? { ...u, seriGirilecek: deger } : u,
+      ),
     );
   }
 
@@ -146,7 +161,9 @@ export function FaturaFormu({
 
     const mevcutUrun = urunler.find((u) => u.barkod === kod);
     if (mevcutUrun) {
-      setBarkodUyarisi(`${kod} bu faturada zaten var — IMEI'leri o kartın altına okutun.`);
+      setBarkodUyarisi(
+        `${kod} bu faturada zaten var — IMEI'leri o kartın altına okutun.`,
+      );
       setBarkod("");
       odakAnahtari.current = mevcutUrun.anahtar;
       document.getElementById(`imei-${mevcutUrun.anahtar}`)?.focus();
@@ -167,7 +184,9 @@ export function FaturaFormu({
         renk: bilgi.renk,
         kapasite: bilgi.kapasite,
         alisFiyati:
-          bilgi.alisFiyatiKurus !== null ? kurusuTLYaz(bilgi.alisFiyatiKurus) : "",
+          bilgi.alisFiyatiKurus !== null
+            ? kurusuTLYaz(bilgi.alisFiyatiKurus)
+            : "",
         bilgi: bilgi.bulundu
           ? `Bilgiler en son ${tarihYaz(bilgi.sonGirisTarihi)} tarihli girişten alındı. Değiştirebilirsiniz.`
           : "Bu barkod ilk kez giriliyor; bilgileri doldurun.",
@@ -192,6 +211,8 @@ export function FaturaFormu({
   const [listeAcik, setListeAcik] = useState(false);
   const [urunSorgu, setUrunSorgu] = useState("");
   const [gecmisUrunler, setGecmisUrunler] = useState<GecmisUrun[] | null>(null);
+  // Arama sınıra dayandıysa söylenmeli.
+  const [aramaKesildi, setAramaKesildi] = useState(false);
   const [urunAraniyor, urunAramaBasla] = useTransition();
 
   function urunAramayiCalistir() {
@@ -201,7 +222,9 @@ export function FaturaFormu({
       return;
     }
     urunAramaBasla(async () => {
-      setGecmisUrunler(await faturaUrunleriniAra(sorgu));
+      const sonuc = await faturaUrunleriniAra(sorgu);
+      setGecmisUrunler(sonuc.gruplar);
+      setAramaKesildi(sonuc.kesildi);
     });
   }
 
@@ -215,7 +238,9 @@ export function FaturaFormu({
     }
     setImeiUyarisi("");
     setUrunler((mevcut) =>
-      mevcut.map((u) => (u.anahtar === anahtar ? { ...u, imeiler: [...u.imeiler, kod] } : u)),
+      mevcut.map((u) =>
+        u.anahtar === anahtar ? { ...u, imeiler: [...u.imeiler, kod] } : u,
+      ),
     );
 
     // Sistemde kayıtlı mı? Kayıt anında değil, okutma anında uyarmak için.
@@ -224,7 +249,9 @@ export function FaturaFormu({
       setImeiUyarisi(sonuc.aciklama ?? `${kod} sistemde zaten kayıtlı.`);
       setUrunler((mevcut) =>
         mevcut.map((u) =>
-          u.anahtar === anahtar ? { ...u, imeiler: u.imeiler.filter((x) => x !== kod) } : u,
+          u.anahtar === anahtar
+            ? { ...u, imeiler: u.imeiler.filter((x) => x !== kod) }
+            : u,
         ),
       );
     });
@@ -233,7 +260,9 @@ export function FaturaFormu({
   function imeiSil(anahtar: number, kod: string) {
     setUrunler((mevcut) =>
       mevcut.map((u) =>
-        u.anahtar === anahtar ? { ...u, imeiler: u.imeiler.filter((x) => x !== kod) } : u,
+        u.anahtar === anahtar
+          ? { ...u, imeiler: u.imeiler.filter((x) => x !== kod) }
+          : u,
       ),
     );
   }
@@ -288,7 +317,10 @@ export function FaturaFormu({
   return (
     <form action={(form) => eylem(veriyiHazirla(form))} className="space-y-5">
       {durum.hata ? (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3"
+        >
           <p className="text-sm font-medium text-red-800">{durum.hata}</p>
           {durum.alanHatalari?.length ? (
             <ul className="mt-2 list-inside list-disc space-y-0.5 text-sm text-red-700">
@@ -302,7 +334,9 @@ export function FaturaFormu({
 
       {/* ---------------------------------------------------------- Fatura başlığı */}
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-slate-800">Fatura Bilgileri</h2>
+        <h2 className="mb-3 text-sm font-semibold text-slate-800">
+          Fatura Bilgileri
+        </h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <TedarikciSecici baslangic={tedarikciler} />
 
@@ -310,7 +344,13 @@ export function FaturaFormu({
             <label htmlFor="faturaNo" className={KUCUK_ETIKET}>
               Fatura No *
             </label>
-            <input id="faturaNo" name="faturaNo" required maxLength={40} className={GIRDI_SINIFI} />
+            <input
+              id="faturaNo"
+              name="faturaNo"
+              required
+              maxLength={40}
+              className={GIRDI_SINIFI}
+            />
           </div>
 
           <div>
@@ -354,14 +394,22 @@ export function FaturaFormu({
             <label htmlFor="not" className={KUCUK_ETIKET}>
               Fatura Notu
             </label>
-            <input id="not" name="not" maxLength={500} className={GIRDI_SINIFI} />
+            <input
+              id="not"
+              name="not"
+              maxLength={500}
+              className={GIRDI_SINIFI}
+            />
           </div>
         </div>
       </section>
 
       {/* ---------------------------------------------------------- Barkod okutma */}
       <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-        <label htmlFor="okutma" className="mb-1 block text-sm font-medium text-blue-900">
+        <label
+          htmlFor="okutma"
+          className="mb-1 block text-sm font-medium text-blue-900"
+        >
           Barkod Okut
         </label>
         <div className="flex flex-wrap gap-2">
@@ -388,12 +436,16 @@ export function FaturaFormu({
             {barkodBekliyor ? "Aranıyor…" : "Ürün Ekle"}
           </button>
           {/* Barkod tek okunur; okunduktan sonra kamera kapanıp ürün kartı açılır. */}
-          <KameraDugmesi onKod={barkodOkundu} surekli={false} baslik="Barkod Okut" />
+          <KameraDugmesi
+            onKod={barkodOkundu}
+            surekli={false}
+            baslik="Barkod Okut"
+          />
         </div>
         <p className="mt-1.5 text-xs text-blue-800">
-          Barkod daha önce girilmişse marka, model, kategori ve son alış fiyatı otomatik gelir.
-          Ardından o ürünün IMEI&apos;lerini arka arkaya okutun — her barkodu bir kez okutmanız
-          yeterli.
+          Barkod daha önce girilmişse marka, model, kategori ve son alış fiyatı
+          otomatik gelir. Ardından o ürünün IMEI&apos;lerini arka arkaya okutun
+          — her barkodu bir kez okutmanız yeterli.
         </p>
         {barkodUyarisi ? (
           <p role="alert" className="mt-1.5 text-xs font-medium text-amber-800">
@@ -441,15 +493,29 @@ export function FaturaFormu({
 
           {gecmisUrunler === null ? (
             <p className="mt-2 text-xs text-slate-500">
-              Daha önce girilmiş ürünler arasında arar. Stokta olmayanlar da listede —
-              yeniden alınan ürün tam da bu.
+              Daha önce girilmiş ürünler arasında arar. Stokta olmayanlar da
+              listede — yeniden alınan ürün tam da bu.
             </p>
           ) : gecmisUrunler.length === 0 ? (
-            <p data-test="fatura-urun-sonuc-yok" className="mt-2 text-sm text-slate-500">
+            <p
+              data-test="fatura-urun-sonuc-yok"
+              className="mt-2 text-sm text-slate-500"
+            >
               {sonucYokMesaji(urunSorgu)}
             </p>
           ) : (
-            <ul data-test="fatura-urun-listesi" className="mt-2 divide-y divide-slate-100">
+            <ul
+              data-test="fatura-urun-listesi"
+              className="mt-2 divide-y divide-slate-100"
+            >
+              {aramaKesildi ? (
+                <li
+                  data-test="arama-kesildi"
+                  className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                >
+                  {kesintiUyarisi({ kesildi: true })}
+                </li>
+              ) : null}
               {gecmisUrunler.map((u) => (
                 <li key={u.barkod}>
                   <button
@@ -467,8 +533,12 @@ export function FaturaFormu({
                       </span>
                     </span>
                     <span className="shrink-0 text-right text-xs text-slate-600">
-                      <span className="block">son alış {kurusuTLYaz(u.sonAlisKurus)} TL</span>
-                      <span className="block font-medium text-blue-700">+ Faturaya ekle</span>
+                      <span className="block">
+                        son alış {kurusuTLYaz(u.sonAlisKurus)} TL
+                      </span>
+                      <span className="block font-medium text-blue-700">
+                        + Faturaya ekle
+                      </span>
                     </span>
                   </button>
                 </li>
@@ -504,7 +574,9 @@ export function FaturaFormu({
             </button>
             <button
               type="button"
-              onClick={() => setUrunler((m) => [...m, bosUrun({ bilgi: "Barkodsuz ürün." })])}
+              onClick={() =>
+                setUrunler((m) => [...m, bosUrun({ bilgi: "Barkodsuz ürün." })])
+              }
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               + Barkodsuz Ürün
@@ -538,11 +610,18 @@ export function FaturaFormu({
       {/* ---------------------------------------------------------- Kaydet */}
       <section className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
         <div className="text-sm text-slate-600">
-          <span className="font-semibold text-slate-900">{satirlar.length}</span> cihaz ·{" "}
-          <span className="font-semibold text-slate-900">{kurusuTLYaz(toplamKurus)} TL</span> toplam
-          alış
+          <span className="font-semibold text-slate-900">
+            {satirlar.length}
+          </span>{" "}
+          cihaz ·{" "}
+          <span className="font-semibold text-slate-900">
+            {kurusuTLYaz(toplamKurus)} TL
+          </span>{" "}
+          toplam alış
         </div>
-        <GonderDugmesi bekleyenMetin="Kaydediliyor…">Faturayı Kaydet</GonderDugmesi>
+        <GonderDugmesi bekleyenMetin="Kaydediliyor…">
+          Faturayı Kaydet
+        </GonderDugmesi>
       </section>
     </form>
   );
@@ -588,7 +667,9 @@ function UrunKarti({
     <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-slate-500">{sira + 1}. ürün</span>
+          <span className="text-xs font-medium text-slate-500">
+            {sira + 1}. ürün
+          </span>
           {urun.barkod ? (
             <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-700">
               {urun.barkod}
@@ -607,14 +688,18 @@ function UrunKarti({
         </button>
       </div>
 
-      {urun.bilgi ? <p className="mb-2 text-xs text-slate-500">{urun.bilgi}</p> : null}
+      {urun.bilgi ? (
+        <p className="mb-2 text-xs text-slate-500">{urun.bilgi}</p>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label className={KUCUK_ETIKET}>Barkod</label>
           <input
             value={urun.barkod}
-            onChange={(e) => urunGuncelle(urun.anahtar, "barkod", e.target.value.toUpperCase())}
+            onChange={(e) =>
+              urunGuncelle(urun.anahtar, "barkod", e.target.value.toUpperCase())
+            }
             className={`${GIRDI_SINIFI} font-mono`}
           />
         </div>
@@ -623,7 +708,9 @@ function UrunKarti({
           <label className={KUCUK_ETIKET}>Kategori *</label>
           <select
             value={urun.kategoriId}
-            onChange={(e) => urunGuncelle(urun.anahtar, "kategoriId", e.target.value)}
+            onChange={(e) =>
+              urunGuncelle(urun.anahtar, "kategoriId", e.target.value)
+            }
             className={GIRDI_SINIFI}
           >
             <option value="">Seçin…</option>
@@ -639,7 +726,9 @@ function UrunKarti({
           <label className={KUCUK_ETIKET}>Alt Kategori</label>
           <select
             value={urun.altKategoriId}
-            onChange={(e) => urunGuncelle(urun.anahtar, "altKategoriId", e.target.value)}
+            onChange={(e) =>
+              urunGuncelle(urun.anahtar, "altKategoriId", e.target.value)
+            }
             disabled={!kategori}
             className={GIRDI_SINIFI}
           >
@@ -656,7 +745,9 @@ function UrunKarti({
           <label className={KUCUK_ETIKET}>Marka *</label>
           <input
             value={urun.marka}
-            onChange={(e) => urunGuncelle(urun.anahtar, "marka", e.target.value)}
+            onChange={(e) =>
+              urunGuncelle(urun.anahtar, "marka", e.target.value)
+            }
             className={GIRDI_SINIFI}
           />
         </div>
@@ -665,7 +756,9 @@ function UrunKarti({
           <label className={KUCUK_ETIKET}>Model *</label>
           <input
             value={urun.model}
-            onChange={(e) => urunGuncelle(urun.anahtar, "model", e.target.value)}
+            onChange={(e) =>
+              urunGuncelle(urun.anahtar, "model", e.target.value)
+            }
             className={GIRDI_SINIFI}
           />
         </div>
@@ -683,7 +776,9 @@ function UrunKarti({
           <label className={KUCUK_ETIKET}>Kapasite</label>
           <input
             value={urun.kapasite}
-            onChange={(e) => urunGuncelle(urun.anahtar, "kapasite", e.target.value)}
+            onChange={(e) =>
+              urunGuncelle(urun.anahtar, "kapasite", e.target.value)
+            }
             placeholder="128 GB"
             className={GIRDI_SINIFI}
           />
@@ -693,7 +788,9 @@ function UrunKarti({
           <label className={KUCUK_ETIKET}>Birim Alış Fiyatı (TL) *</label>
           <input
             value={urun.alisFiyati}
-            onChange={(e) => urunGuncelle(urun.anahtar, "alisFiyati", e.target.value)}
+            onChange={(e) =>
+              urunGuncelle(urun.anahtar, "alisFiyati", e.target.value)
+            }
             inputMode="decimal"
             placeholder="0,00"
             className={`${GIRDI_SINIFI} text-right tabular-nums`}
@@ -715,8 +812,12 @@ function UrunKarti({
         {seriGerekli ? (
           <>
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-              <label htmlFor={`imei-${urun.anahtar}`} className="block text-xs font-medium text-blue-900">
-                IMEI / Seri No okutun — bu barkoda ait tüm cihazları arka arkaya okutabilirsiniz
+              <label
+                htmlFor={`imei-${urun.anahtar}`}
+                className="block text-xs font-medium text-blue-900"
+              >
+                IMEI / Seri No okutun — bu barkoda ait tüm cihazları arka arkaya
+                okutabilirsiniz
               </label>
               {/* Kategori zorunlu kılmıyorsa seçim geri alınabilir olmalı:
                   yanlışlıkla açan kullanıcı adete dönebilsin. */}
@@ -788,20 +889,26 @@ function UrunKarti({
         ) : (
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <label htmlFor={`adet-${urun.anahtar}`} className="mb-1 block text-xs font-medium text-blue-900">
+              <label
+                htmlFor={`adet-${urun.anahtar}`}
+                className="mb-1 block text-xs font-medium text-blue-900"
+              >
                 Adet
               </label>
               <input
                 id={`adet-${urun.anahtar}`}
                 value={urun.adet}
-                onChange={(e) => urunGuncelle(urun.anahtar, "adet", e.target.value)}
+                onChange={(e) =>
+                  urunGuncelle(urun.anahtar, "adet", e.target.value)
+                }
                 inputMode="numeric"
                 className={`w-28 text-right tabular-nums ${GIRDI_SINIFI}`}
               />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs text-blue-800">
-                {kategori?.ad} kategorisinde seri no zorunlu değil; adet kadar kayıt açılır.
+                {kategori?.ad} kategorisinde seri no zorunlu değil; adet kadar
+                kayıt açılır.
               </p>
               {/* Bazı aksesuarın seri numarası var ve takip edilmek isteniyor.
                   Kategoriyi değiştirmek yerine bu ürün için seri girmeyi

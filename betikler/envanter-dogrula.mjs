@@ -352,6 +352,45 @@ try {
   );
 
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
+
+  // ---------------------------------------- Toplu yüklemenin geri alınması
+  // Yanlış bir döküm yüklendiğinde tek çare eski yedeği geri yüklemekti; o da
+  // aradaki bütün işi siler. Kontrol "düğme var" ile yetinmiyor: cihazların
+  // gerçekten stok toplamından düştüğü ölçülüyor.
+  const stokAdedi = async () => {
+    await sayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
+    const govde = ((await sayfa.locator("main").textContent()) ?? "").replace(/\s+/g, " ");
+    return Number((govde.match(/Toplam Stok\s*([0-9.]+)/) ?? [0, "0"])[1].replace(/\./g, ""));
+  };
+
+  const geriAlmaOncesi = await stokAdedi();
+  await sayfa.goto(`${hedef}/cihazlar/envanter`, { waitUntil: "networkidle" });
+  const partiSatiri = sayfa.locator('[data-test="parti-satiri"]').first();
+  kontrol("yükleme geçmişi listeleniyor", (await partiSatiri.count()) === 1);
+  const partiMetni = ((await partiSatiri.textContent()) ?? "").replace(/\s+/g, " ").trim();
+  kontrol("yüklemenin adedi yazıyor", /\d+ cihaz/.test(partiMetni), partiMetni.slice(0, 70));
+
+  await sayfa.locator('[data-test="parti-geri-al"]').first().click();
+  await sayfa.waitForTimeout(400);
+  await sayfa.fill('[data-test="parti-geri-al-formu"] input[name="gerekce"]', "Yanlis dokum yuklendi");
+  await sayfa.click('button:has-text("Evet, Geri Al")');
+  await sayfa.waitForTimeout(2500);
+
+  await sayfa.goto(`${hedef}/cihazlar/envanter`, { waitUntil: "networkidle" });
+  kontrol(
+    "yükleme 'Geri Alındı' olarak işaretlendi",
+    (await sayfa.locator('[data-test="parti-geri-alinmis"]').count()) >= 1,
+  );
+  const geriAlmaSonrasi = await stokAdedi();
+  kontrol(
+    "geri alınan cihazlar stok toplamından düştü",
+    geriAlmaSonrasi < geriAlmaOncesi,
+    `${geriAlmaOncesi} -> ${geriAlmaSonrasi}`,
+  );
+  kontrol(
+    "geri alınmış yüklemede tekrar geri alma düğmesi yok",
+    (await sayfa.locator('[data-test="parti-geri-al"]').count()) === 0,
+  );
 } catch (hata) {
   kontrol("betik tamamlandı", false, String(hata).slice(0, 300));
   await sayfa.screenshot({ path: `${cikti}-hata.png`, fullPage: true }).catch(() => {});

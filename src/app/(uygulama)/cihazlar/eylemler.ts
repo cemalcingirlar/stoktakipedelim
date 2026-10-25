@@ -12,7 +12,11 @@ import { logYaz } from "@/lib/log";
 import { aramaMetniUret } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
 import { HAREKET_TIP, LOG_ISLEM } from "@/lib/sabitler";
-import { SUTUN_ANAHTARLARI, sutunlariSirala, type SutunAnahtari } from "@/lib/sutunlar";
+import {
+  SUTUN_ANAHTARLARI,
+  sutunlariSirala,
+  type SutunAnahtari,
+} from "@/lib/sutunlar";
 import { YetkiHatasi, adminZorunlu, oturumZorunlu } from "@/lib/yetki";
 
 export type SutunDurumu = { hata?: string };
@@ -31,7 +35,9 @@ export async function sutunTercihiKaydet(
     const secilenler = form
       .getAll("sutun")
       .map(String)
-      .filter((a): a is SutunAnahtari => SUTUN_ANAHTARLARI.includes(a as SutunAnahtari));
+      .filter((a): a is SutunAnahtari =>
+        SUTUN_ANAHTARLARI.includes(a as SutunAnahtari),
+      );
 
     if (secilenler.length === 0) {
       return { hata: "En az bir sütun seçili kalmalı." };
@@ -60,7 +66,6 @@ export async function sutunTercihiSifirla(): Promise<void> {
   });
   revalidatePath("/cihazlar");
 }
-
 
 // ------------------------------------------------- Künye (marka / kategori)
 
@@ -208,7 +213,9 @@ export async function cihazKunyesiniDuzenle(girdi: {
       hedefId: cihaz.id,
       detay:
         `${hedefler.length} cihaz · ${ozet}` +
-        (girdi.kapsam === "BARKOD" && cihaz.barkod ? ` · barkod ${cihaz.barkod}` : ""),
+        (girdi.kapsam === "BARKOD" && cihaz.barkod
+          ? ` · barkod ${cihaz.barkod}`
+          : ""),
     });
 
     revalidatePath("/cihazlar");
@@ -221,7 +228,8 @@ export async function cihazKunyesiniDuzenle(girdi: {
       etkilenen: hedefler.length,
     };
   } catch (hata) {
-    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
+    if (hata instanceof YetkiHatasi)
+      return { durum: "HATA", mesaj: hata.message };
     console.error("Cihaz künyesi düzeltilemedi:", hata);
     return { durum: "HATA", mesaj: "Düzeltme kaydedilemedi. Tekrar deneyin." };
   }

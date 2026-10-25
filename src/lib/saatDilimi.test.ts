@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   BEKLENEN_SAAT_DILIMI,
+  SAAT_DILIMI_SECENEKLERI,
+  saatDilimiCoz,
+  saatDilimiGecerliMi,
   saatDilimiDurumu,
   saatDilimiOzeti,
   saatDilimiUyarisi,
@@ -93,4 +96,62 @@ test("özet ile uyarı birbiriyle tutarlı", () => {
       `${dilim} için özet ve uyarı çelişiyor`,
     );
   }
+});
+
+test("seçenek listesinde Türkiye ve UTC var", () => {
+  const degerler = SAAT_DILIMI_SECENEKLERI.map((s) => s.deger);
+  assert.ok(degerler.includes("Europe/Istanbul"));
+  assert.ok(degerler.includes("UTC"));
+});
+
+test("listedeki her dilim Node'un tanıdığı bir ad", () => {
+  // Listeye yazım hatasıyla eklenen bir ad, seçildiğinde her sayfayı
+  // düşürürdü: Intl tanımadığı dilimle fırlatıyor.
+  for (const { deger, etiket } of SAAT_DILIMI_SECENEKLERI) {
+    assert.ok(saatDilimiGecerliMi(deger), `${deger} geçersiz`);
+    assert.ok(etiket.includes(deger), `${etiket} dilim adını yazmıyor`);
+  }
+});
+
+test("geçersiz dilim adı reddedilir", () => {
+  assert.equal(saatDilimiGecerliMi("Mars/Olympus"), false);
+  assert.equal(saatDilimiGecerliMi(""), false);
+  assert.equal(saatDilimiGecerliMi("   "), false);
+});
+
+test("dilim çözümü boşlukları atıyor, geçersizi null veriyor", () => {
+  assert.equal(saatDilimiCoz("  Europe/Istanbul  "), "Europe/Istanbul");
+  assert.equal(saatDilimiCoz("Mars/Olympus"), null);
+  assert.equal(saatDilimiCoz(null), null);
+  assert.equal(saatDilimiCoz(undefined), null);
+  assert.equal(saatDilimiCoz(42), null);
+  assert.equal(saatDilimiCoz(""), null);
+});
+
+test("durum çalışan dilimdeki saati yazıyor", () => {
+  // AN: UTC 22:00 → Türkiye 01:00.
+  assert.equal(
+    saatDilimiDurumu("Europe/Istanbul", "Europe/Istanbul", AN).yerelSaat,
+    "01:00",
+  );
+  assert.equal(
+    saatDilimiDurumu("UTC", "Europe/Istanbul", AN).yerelSaat,
+    "22:00",
+  );
+});
+
+test("tanınmayan dilimde bile saat alanı dolu geliyor", () => {
+  const durum = saatDilimiDurumu("Mars/Olympus", "Europe/Istanbul", AN);
+  assert.equal(durum.dogru, false);
+  assert.equal(durum.yerelSaat, "—");
+});
+
+test("uyarı seçilen dilimden söz ediyor", () => {
+  const uyari = saatDilimiUyarisi(
+    saatDilimiDurumu("UTC", "Europe/Istanbul", AN),
+  );
+  assert.ok(uyari);
+  assert.match(uyari, /seçilen/);
+  assert.match(uyari, /UTC/);
+  assert.match(uyari, /Europe\/Istanbul/);
 });

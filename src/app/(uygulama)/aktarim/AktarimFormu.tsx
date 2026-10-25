@@ -2,7 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
-import { OkutmaKutusu, type OkutmaGeriBildirimi } from "@/bilesenler/OkutmaKutusu";
+import {
+  OkutmaKutusu,
+  type OkutmaGeriBildirimi,
+} from "@/bilesenler/OkutmaKutusu";
 import { Rozet } from "@/bilesenler/Rozet";
 import { ayniDukkandakiler, type DukkanMagazasi } from "@/lib/dukkan";
 import { ODEME_TIPI, ODEME_TIPI_ETIKET, type OdemeTipi } from "@/lib/sabitler";
@@ -10,7 +13,6 @@ import type { MusteriOzeti } from "../satis/eylemler";
 import { aktarimUrunleriniAra, dukkanIciAktar } from "./eylemler";
 import { FiyatDuzeltme } from "./FiyatDuzeltme";
 import { MusteriBlogu } from "./MusteriBlogu";
-import { inputTarih } from "@/lib/tarih";
 import {
   aramaYeterliMi,
   grupAciklamasi,
@@ -18,6 +20,7 @@ import {
   grupFiyatMetni,
   sonucYokMesaji,
   type UrunGrubu,
+  kesintiUyarisi,
 } from "@/lib/urunArama";
 import { SatGeriAl, type SatisBasligi } from "./SatGeriAl";
 
@@ -44,7 +47,9 @@ export function AktarimFormu({
   varsayilanKaynakId,
   saticilar,
   varsayilanSaticiId,
+  bugun,
 }: {
+  bugun: string;
   magazalar: Magaza[];
   varsayilanKaynakId: number | null;
   /** Satışı yapan olarak seçilebilecek kişiler. */
@@ -62,8 +67,9 @@ export function AktarimFormu({
 
   // Tek hedef varsa seçim sorusu anlamsız; doğrudan onu kullan.
   const [elleHedefId, setElleHedefId] = useState(0);
-  const hedefId =
-    hedefler.some((h) => h.id === elleHedefId) ? elleHedefId : (hedefler[0]?.id ?? 0);
+  const hedefId = hedefler.some((h) => h.id === elleHedefId)
+    ? elleHedefId
+    : (hedefler[0]?.id ?? 0);
   const hedef = hedefler.find((h) => h.id === hedefId) ?? null;
 
   const [satirlar, setSatirlar] = useState<Satir[]>([]);
@@ -78,7 +84,7 @@ export function AktarimFormu({
   const [not, setNot] = useState("");
   // Tek tarih hem aktarım hareketine hem sat-geri al satışına yazılıyor:
   // ikisi aynı işlemin parçası, ayrı tarih tutmak tarihçeyi tutarsız yapardı.
-  const [islemTarihi, setIslemTarihi] = useState(inputTarih(new Date()));
+  const [islemTarihi, setIslemTarihi] = useState(bugun);
 
   // ---------------------------------------------- müşteriye sat, geri al
   // Dükkân içinde cihaz taşınırken ürün fiilen müşteriye satılıp geri
@@ -113,10 +119,21 @@ export function AktarimFormu({
    * aranır: listeden seçimde kullanıcının seçtiği cihaz gelmeli, aynı
    * barkodtaki "ilk" cihaz değil.
    */
-  async function aktarVeEkle(kod: string, cihazId?: number): Promise<OkutmaGeriBildirimi> {
-    if (!kaynak || !hedef) return { tur: "hata", mesaj: "Önce mağazaları seçin." };
+  async function aktarVeEkle(
+    kod: string,
+    cihazId?: number,
+  ): Promise<OkutmaGeriBildirimi> {
+    if (!kaynak || !hedef)
+      return { tur: "hata", mesaj: "Önce mağazaları seçin." };
 
-    const sonuc = await dukkanIciAktar(kod, kaynak.id, hedef.id, not, islemTarihi, cihazId);
+    const sonuc = await dukkanIciAktar(
+      kod,
+      kaynak.id,
+      hedef.id,
+      not,
+      islemTarihi,
+      cihazId,
+    );
     if (sonuc.durum === "HATA") return { tur: "hata", mesaj: sonuc.mesaj };
 
     setSatirlar((mevcut) => [
@@ -144,6 +161,9 @@ export function AktarimFormu({
   const [listeAcik, setListeAcik] = useState(false);
   const [urunSorgu, setUrunSorgu] = useState("");
   const [urunler, setUrunler] = useState<UrunGrubu[] | null>(null);
+  // Arama sınıra dayandıysa söylenmeli; sessizce kesilince kullanıcı
+  // "ürün yok" sanıyor.
+  const [aramaKesildi, setAramaKesildi] = useState(false);
   const [urunAraniyor, urunAramaBasla] = useTransition();
   const [listeHatasi, setListeHatasi] = useState<string | null>(null);
 
@@ -151,16 +171,17 @@ export function AktarimFormu({
     const sorgu = urunSorgu.trim();
     if (!kaynak || !aramaYeterliMi(sorgu)) {
       setUrunler(null);
+      setAramaKesildi(false);
       return;
     }
     urunAramaBasla(async () => {
-      setUrunler(
-        await aktarimUrunleriniAra(
-          sorgu,
-          kaynak.id,
-          satirlar.filter((s) => !s.geriAlindi).map((s) => s.anahtar),
-        ),
+      const sonuc = await aktarimUrunleriniAra(
+        sorgu,
+        kaynak.id,
+        satirlar.filter((s) => !s.geriAlindi).map((s) => s.anahtar),
       );
+      setUrunler(sonuc.gruplar);
+      setAramaKesildi(sonuc.kesildi);
     });
   }
 
@@ -194,7 +215,9 @@ export function AktarimFormu({
     setGeriAlinan(null);
     if (sonuc.durum === "TAMAM") {
       setSatirlar((mevcut) =>
-        mevcut.map((s) => (s.anahtar === satir.anahtar ? { ...s, geriAlindi: true } : s)),
+        mevcut.map((s) =>
+          s.anahtar === satir.anahtar ? { ...s, geriAlindi: true } : s,
+        ),
       );
     }
   }
@@ -264,9 +287,9 @@ export function AktarimFormu({
         </div>
 
         <p className="mt-2 text-xs text-slate-500">
-          Okuttuğun cihaz <strong>anında</strong> taşınır; sevkiyat açılmaz, karşı tarafın
-          kabulü beklenmez. Yanlış okutursan aşağıdaki <strong>Geri al</strong> düğmesi cihazı
-          yerine döndürür.
+          Okuttuğun cihaz <strong>anında</strong> taşınır; sevkiyat açılmaz,
+          karşı tarafın kabulü beklenmez. Yanlış okutursan aşağıdaki{" "}
+          <strong>Geri al</strong> düğmesi cihazı yerine döndürür.
         </p>
       </div>
 
@@ -275,7 +298,10 @@ export function AktarimFormu({
             tarihçesine geçiyor. Aktarımın nedeni sonradan okunabilsin. */}
         <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_11rem]">
           <div>
-            <label htmlFor="aktarimNotu" className="mb-1 block text-xs font-medium text-slate-600">
+            <label
+              htmlFor="aktarimNotu"
+              className="mb-1 block text-xs font-medium text-slate-600"
+            >
               Not (bu aktarıma ait açıklama)
             </label>
             <input
@@ -288,13 +314,17 @@ export function AktarimFormu({
               className={GIRDI_SINIFI}
             />
             <p className="mt-1 text-xs text-slate-500">
-              Yazdığınız not, bundan sonra okuttuğunuz cihazların tarihçesine eklenir.
+              Yazdığınız not, bundan sonra okuttuğunuz cihazların tarihçesine
+              eklenir.
             </p>
           </div>
           {/* Geçmişe dönük kayıt: dün yapılan aktarım bugün olmuş gibi
               görünmesin. Aynı tarih sat-geri al satışına da yazılıyor. */}
           <div>
-            <label htmlFor="aktarimTarihi" className="mb-1 block text-xs font-medium text-slate-600">
+            <label
+              htmlFor="aktarimTarihi"
+              className="mb-1 block text-xs font-medium text-slate-600"
+            >
               İşlem Tarihi
             </label>
             <input
@@ -325,10 +355,11 @@ export function AktarimFormu({
                 Alış Fiyatını Revize Et
               </span>
               <span className="block text-xs text-amber-800">
-                Okutulan her cihaz için yeni alış fiyatı sorulur. Müşteriye satıp geri
-                aldıysanız satış fiyatını da yazın — o zaman satış, paneldeki mağaza ve
-                personel satış raporlarına yansır. Satış fiyatı boş bırakılırsa yalnız alış
-                fiyatı güncellenir. Cihaz her durumda stokta kalır.
+                Okutulan her cihaz için yeni alış fiyatı sorulur. Müşteriye
+                satıp geri aldıysanız satış fiyatını da yazın — o zaman satış,
+                paneldeki mağaza ve personel satış raporlarına yansır. Satış
+                fiyatı boş bırakılırsa yalnız alış fiyatı güncellenir. Cihaz her
+                durumda stokta kalır.
               </span>
             </span>
           </label>
@@ -456,22 +487,40 @@ export function AktarimFormu({
               </div>
 
               {listeHatasi ? (
-                <p data-test="aktarim-liste-hatasi" role="alert" className="text-sm font-medium text-red-700">
+                <p
+                  data-test="aktarim-liste-hatasi"
+                  role="alert"
+                  className="text-sm font-medium text-red-700"
+                >
                   {listeHatasi}
                 </p>
               ) : null}
 
               {urunler === null ? (
                 <p className="text-xs text-slate-500">
-                  {kaynak?.ad} stoğunda arar. Aynı üründen birden çok varsa tek satırda
-                  toplanır; seçtiğinizde biri aktarılır.
+                  {kaynak?.ad} stoğunda arar. Aynı üründen birden çok varsa tek
+                  satırda toplanır; seçtiğinizde biri aktarılır.
                 </p>
               ) : urunler.length === 0 ? (
-                <p data-test="aktarim-urun-sonuc-yok" className="text-sm text-slate-500">
+                <p
+                  data-test="aktarim-urun-sonuc-yok"
+                  className="text-sm text-slate-500"
+                >
                   {sonucYokMesaji(urunSorgu)}
                 </p>
               ) : (
-                <ul data-test="aktarim-urun-listesi" className="divide-y divide-slate-100">
+                <ul
+                  data-test="aktarim-urun-listesi"
+                  className="divide-y divide-slate-100"
+                >
+                  {aramaKesildi ? (
+                    <li
+                      data-test="arama-kesildi"
+                      className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                    >
+                      {kesintiUyarisi({ kesildi: true })}
+                    </li>
+                  ) : null}
                   {urunler.map((g) => (
                     <li key={g.anahtar}>
                       <button
@@ -490,8 +539,12 @@ export function AktarimFormu({
                           </span>
                         </span>
                         <span className="shrink-0 text-right text-xs text-slate-600">
-                          <span className="block">alış {grupFiyatMetni(g)}</span>
-                          <span className="block font-medium text-blue-700">+ Aktar</span>
+                          <span className="block">
+                            alış {grupFiyatMetni(g)}
+                          </span>
+                          <span className="block font-medium text-blue-700">
+                            + Aktar
+                          </span>
                         </span>
                       </button>
                     </li>
@@ -507,7 +560,9 @@ export function AktarimFormu({
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="mb-3 text-sm font-semibold text-slate-900">
             Bu oturumda aktarılanlar{" "}
-            <span className="font-normal text-slate-500">({aktarilan} cihaz)</span>
+            <span className="font-normal text-slate-500">
+              ({aktarilan} cihaz)
+            </span>
           </h2>
           <ul className="space-y-2">
             {satirlar.map((s) => (
@@ -517,12 +572,18 @@ export function AktarimFormu({
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
               >
                 <div className="min-w-0">
-                  <span className="text-sm font-medium text-slate-900">{s.etiket}</span>
+                  <span className="text-sm font-medium text-slate-900">
+                    {s.etiket}
+                  </span>
                   {s.kod ? (
-                    <span className="ml-2 font-mono text-xs text-slate-500">{s.kod}</span>
+                    <span className="ml-2 font-mono text-xs text-slate-500">
+                      {s.kod}
+                    </span>
                   ) : null}
                   <span className="ml-2 text-xs text-slate-500">
-                    {s.geriAlindi ? `${s.hedefAd} → ${s.kaynakAd}` : `${s.kaynakAd} → ${s.hedefAd}`}
+                    {s.geriAlindi
+                      ? `${s.hedefAd} → ${s.kaynakAd}`
+                      : `${s.kaynakAd} → ${s.hedefAd}`}
                   </span>
                 </div>
                 {s.geriAlindi ? (

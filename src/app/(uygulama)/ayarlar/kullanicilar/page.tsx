@@ -6,9 +6,15 @@ import { Kart } from "@/bilesenler/Kart";
 import { Rozet } from "@/bilesenler/Rozet";
 import { prisma } from "@/lib/prisma";
 import { ROLLER, ROL_ETIKET, type Rol } from "@/lib/sabitler";
+import { SIFRE_EN_AZ, sifreKuralOzeti } from "@/lib/sifrePolitikasi";
 import { tarihSaatYaz } from "@/lib/tarih";
 import { adminSayfasi } from "@/lib/yetki";
-import { kullaniciEkle, kullaniciGuncelle, kullaniciSil, sifreSifirla } from "../eylemler";
+import {
+  kullaniciEkle,
+  kullaniciGuncelle,
+  kullaniciSil,
+  sifreSifirla,
+} from "../eylemler";
 
 export const metadata = { title: "Kullanıcılar — Stok Takip" };
 
@@ -22,7 +28,10 @@ export default async function KullanicilarSayfasi() {
       orderBy: [{ aktif: "desc" }, { rol: "asc" }, { kullaniciAdi: "asc" }],
       include: {
         magaza: { select: { ad: true } },
-        ekMagazalar: { select: { id: true, ad: true }, orderBy: { kod: "asc" } },
+        ekMagazalar: {
+          select: { id: true, ad: true },
+          orderBy: { kod: "asc" },
+        },
       },
     }),
     prisma.magaza.findMany({ where: { aktif: true }, orderBy: { kod: "asc" } }),
@@ -36,12 +45,14 @@ export default async function KullanicilarSayfasi() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Kullanıcılar ve Roller</h1>
+          <h1 className="text-xl font-semibold text-slate-900">
+            Kullanıcılar ve Roller
+          </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Yönetici tüm mağazalarda işlem yapar. Sorumlu ve personel yalnız yetkili olduğu
-            mağazalarda sevkiyat, kabul ve satış yapabilir; stok girişi ve silme yetkisi yoktur.
-            Bir kişi birden çok şubede çalışıyorsa ana mağazasının yanında diğerlerini de
-            işaretleyin.
+            Yönetici tüm mağazalarda işlem yapar. Sorumlu ve personel yalnız
+            yetkili olduğu mağazalarda sevkiyat, kabul ve satış yapabilir; stok
+            girişi ve silme yetkisi yoktur. Bir kişi birden çok şubede
+            çalışıyorsa ana mağazasının yanında diğerlerini de işaretleyin.
           </p>
         </div>
         <Link
@@ -72,13 +83,25 @@ export default async function KullanicilarSayfasi() {
               <label htmlFor="yeniAdSoyad" className={KUCUK_ETIKET}>
                 Ad Soyad *
               </label>
-              <input id="yeniAdSoyad" name="adSoyad" required maxLength={80} className={GIRDI_SINIFI} />
+              <input
+                id="yeniAdSoyad"
+                name="adSoyad"
+                required
+                maxLength={80}
+                className={GIRDI_SINIFI}
+              />
             </div>
             <div>
               <label htmlFor="yeniRol" className={KUCUK_ETIKET}>
                 Rol *
               </label>
-              <select id="yeniRol" name="rol" required defaultValue={ROLLER.MAGAZA_PERSONELI} className={GIRDI_SINIFI}>
+              <select
+                id="yeniRol"
+                name="rol"
+                required
+                defaultValue={ROLLER.MAGAZA_PERSONELI}
+                className={GIRDI_SINIFI}
+              >
                 {Object.values(ROLLER).map((r) => (
                   <option key={r} value={r}>
                     {ROL_ETIKET[r as Rol]}
@@ -101,14 +124,14 @@ export default async function KullanicilarSayfasi() {
             </div>
             <div>
               <label htmlFor="yeniSifre" className={KUCUK_ETIKET}>
-                Şifre * (en az 8)
+                Şifre * (en az {SIFRE_EN_AZ} karakter)
               </label>
               <input
                 id="yeniSifre"
                 name="sifre"
                 type="password"
                 required
-                minLength={8}
+                minLength={SIFRE_EN_AZ}
                 autoComplete="new-password"
                 className={GIRDI_SINIFI}
               />
@@ -122,17 +145,28 @@ export default async function KullanicilarSayfasi() {
                 name="sifreTekrar"
                 type="password"
                 required
-                minLength={8}
+                minLength={SIFRE_EN_AZ}
                 autoComplete="new-password"
                 className={GIRDI_SINIFI}
               />
             </div>
           </div>
+          {/* Kurallar formda yazılı olsun: reddedilince "neden" diye
+              uğraşmak yerine baştan doğru şifre konsun. */}
+          <p
+            data-test="sifre-kurallari"
+            className="mt-2 text-xs text-slate-500"
+          >
+            {sifreKuralOzeti()}
+          </p>
           <div className="mt-3">
             <span className={KUCUK_ETIKET}>Ek mağazalar (isteğe bağlı)</span>
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               {magazalar.map((m) => (
-                <label key={m.id} className="flex items-center gap-2 text-sm text-slate-700">
+                <label
+                  key={m.id}
+                  className="flex items-center gap-2 text-sm text-slate-700"
+                >
                   <input
                     type="checkbox"
                     name="ekMagazalar"
@@ -145,16 +179,23 @@ export default async function KullanicilarSayfasi() {
             </div>
           </div>
           <div className="mt-3">
-            <GonderDugmesi bekleyenMetin="Ekleniyor…">Kullanıcı Ekle</GonderDugmesi>
+            <GonderDugmesi bekleyenMetin="Ekleniyor…">
+              Kullanıcı Ekle
+            </GonderDugmesi>
           </div>
         </EylemFormu>
       </Kart>
 
       <div className="space-y-3">
         {kullanicilar.map((k) => (
-          <div key={k.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div
+            key={k.id}
+            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Rozet ton={k.aktif ? "yesil" : "nötr"}>{k.aktif ? "Aktif" : "Pasif"}</Rozet>
+              <Rozet ton={k.aktif ? "yesil" : "nötr"}>
+                {k.aktif ? "Aktif" : "Pasif"}
+              </Rozet>
               <Rozet ton={k.rol === ROLLER.ADMIN ? "mor" : "mavi"}>
                 {ROL_ETIKET[k.rol as Rol] ?? k.rol}
               </Rozet>
@@ -164,7 +205,9 @@ export default async function KullanicilarSayfasi() {
                   + {m.ad}
                 </Rozet>
               ))}
-              {k.id === oturum.kullaniciId ? <Rozet ton="sari">Bu sizsiniz</Rozet> : null}
+              {k.id === oturum.kullaniciId ? (
+                <Rozet ton="sari">Bu sizsiniz</Rozet>
+              ) : null}
               <span className="text-xs text-slate-400">
                 Son giriş: {k.sonGiris ? tarihSaatYaz(k.sonGiris) : "—"}
               </span>
@@ -252,8 +295,8 @@ export default async function KullanicilarSayfasi() {
                   })}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  Ana mağaza yukarıdaki listeden seçilir; burada yalnız ek şubeler işaretlenir.
-                  Yönetici rolünde bu seçimler yok sayılır.
+                  Ana mağaza yukarıdaki listeden seçilir; burada yalnız ek
+                  şubeler işaretlenir. Yönetici rolünde bu seçimler yok sayılır.
                 </p>
               </div>
 
@@ -285,26 +328,29 @@ export default async function KullanicilarSayfasi() {
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="min-w-[200px]">
                     <label htmlFor={`sifre-${k.id}`} className={KUCUK_ETIKET}>
-                      Yeni şifre (en az 8 karakter)
+                      Yeni şifre (en az {SIFRE_EN_AZ} karakter)
                     </label>
                     <input
                       id={`sifre-${k.id}`}
                       name="yeniSifre"
                       type="password"
-                      minLength={8}
+                      minLength={SIFRE_EN_AZ}
                       autoComplete="new-password"
                       className={GIRDI_SINIFI}
                     />
                   </div>
                   <div className="min-w-[200px]">
-                    <label htmlFor={`sifre-tekrar-${k.id}`} className={KUCUK_ETIKET}>
+                    <label
+                      htmlFor={`sifre-tekrar-${k.id}`}
+                      className={KUCUK_ETIKET}
+                    >
                       Yeni şifre (tekrar)
                     </label>
                     <input
                       id={`sifre-tekrar-${k.id}`}
                       name="yeniSifreTekrar"
                       type="password"
-                      minLength={8}
+                      minLength={SIFRE_EN_AZ}
                       autoComplete="new-password"
                       className={GIRDI_SINIFI}
                     />
@@ -312,6 +358,9 @@ export default async function KullanicilarSayfasi() {
                   <GonderDugmesi tur="ikincil" bekleyenMetin="Kaydediliyor…">
                     Şifreyi Sıfırla
                   </GonderDugmesi>
+                  <p className="w-full text-xs text-slate-500">
+                    {sifreKuralOzeti()}
+                  </p>
                 </div>
               </EylemFormu>
             </div>
@@ -324,8 +373,9 @@ export default async function KullanicilarSayfasi() {
                     Kullanıcıyı Sil
                   </GonderDugmesi>
                   <p className="mt-1.5 text-xs text-slate-500">
-                    İşlem kaydı olan hesap silinmez, pasife alınır — fatura, sevkiyat ve satış
-                    kayıtlarında kimin yaptığı bilgisi korunur.
+                    İşlem kaydı olan hesap silinmez, pasife alınır — fatura,
+                    sevkiyat ve satış kayıtlarında kimin yaptığı bilgisi
+                    korunur.
                   </p>
                 </EylemFormu>
               </div>

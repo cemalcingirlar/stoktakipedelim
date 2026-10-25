@@ -29,13 +29,37 @@ else
   PORT=$(( 3100 + TOPLAM % 700 ))
 fi
 
+# Port boş olmalı. Önceki bir çalıştırmadan kalan sunucu aynı portu
+# tutuyorsa curl hemen cevap alır ve süit ESKİ derlemeye karşı koşar —
+# sonuçlar sessizce yanlış çıkar. Boş port bulunana kadar ilerliyoruz.
+for _ in $(seq 1 60); do
+  if curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$PORT/" 2>/dev/null; then
+    PORT=$(( PORT + 1 ))
+  else
+    break
+  fi
+done
+
 CALISMA="$(mktemp -d "${TMPDIR:-/tmp}/e2e-${SUIT}-XXXXXX")"
 VT="$CALISMA/test.db"
 GUNLUK="$CALISMA/sunucu.log"
 SUNUCU_PID=""
 
+# Sunucu KENDİ süreç grubunda başlatılıyor (setsid) ve temizlikte grubun
+# tamamı öldürülüyor.
+#
+# Neden: `npm start` bir sarmalayıcı; asıl sunucu onun çocuğu ve Next üretimde
+# ayrıca işçi süreçler açıyor. Yalnız npm'in PID'ini öldürmek çocukları öksüz
+# bırakıyordu. Ölçüldü: art arda koşturmalardan sonra 47 artık next-server
+# süreci kalmıştı ve bellek 15 GB'ın 13'ünü yemişti; sonraki süitler
+# "Target crashed" / zaman aşımıyla SAHTE başarısızlık veriyordu.
 temizle() {
-  [ -n "$SUNUCU_PID" ] && kill -9 "$SUNUCU_PID" 2>/dev/null
+  if [ -n "$SUNUCU_PID" ]; then
+    # Önce gruba nazik bitirme, sonra kalanlara kesin.
+    kill -TERM "-$SUNUCU_PID" 2>/dev/null
+    sleep 0.5
+    kill -9 "-$SUNUCU_PID" 2>/dev/null
+  fi
   rm -rf "$CALISMA"
 }
 trap temizle EXIT
@@ -49,7 +73,9 @@ export YEDEK_ANAHTARI="${YEDEK_ANAHTARI:-e2e-test-anahtari-0123456789}"
 npx prisma migrate deploy >/dev/null 2>&1 || { echo "$SUIT :: MIGRATE HATASI"; exit 2; }
 npx tsx prisma/seed.ts >/dev/null 2>&1 || { echo "$SUIT :: SEED HATASI"; exit 2; }
 
-PORT="$PORT" npm start >"$GUNLUK" 2>&1 &
+# setsid: süreç grubu lideri olsun ki yukarıdaki temizlik bütün çocukları
+# tek seferde alabilsin.
+setsid env PORT="$PORT" npm start >"$GUNLUK" 2>&1 &
 SUNUCU_PID=$!
 
 HAZIR=0
@@ -72,22 +98,26 @@ CHROME_YOLU="${CHROME_YOLU:-/opt/pw-browsers/chromium}" \
   timeout "${SUIT_ZAMAN_ASIMI:-420}" node "$BETIK" >"$CIKTI_DOSYA" 2>&1
 KOD=$?
 
-# İki tip betik var:
-#  - Yeni tip: kontrol() kullanır ve "N/M kontrol geçti" özeti basar.
-#  - Eski "gezinti" tipi (faz2..faz6, ayarlar, magaza): özet basmaz, beklenti
-#    tutmazsa fırlatıp çıkış kodunu bozar. Bu yüzden ASIL ölçüt çıkış kodu;
-#    özet satırı varsa ek bilgi olarak gösteriliyor. Önce yalnız özete
-#    bakılıyordu ve sorunsuz çalışan eski betikler "çöktü" sanılıyordu.
+# Her betik kontrol() kullanıp "N/M kontrol geçti" özeti basar ve bir kontrol
+# tutmazsa çıkış kodunu bozar. Eskiden bir kısmı (faz2..faz6, ayarlar, magaza)
+# yalnız ✓/✗ yazdırıyor, hiçbir beklentiyi saymıyordu: ✗ yazan bir kontrol
+# aylarca "geçti" görünebiliyordu. O yüzden özet satırının YOKLUĞU da artık
+# bir hata — betik yarıda ölmüş ya da eski tipte kalmış demektir.
 OZET="$(grep -oE '[0-9]+/[0-9]+ kontrol geçti' "$CIKTI_DOSYA" | tail -1)"
 
 if [ "$KOD" = "0" ]; then
-  echo "$SUIT :: ${OZET:-geçti (özet satırı yok — eski tip betik)}"
+  if [ -z "$OZET" ]; then
+    echo "$SUIT :: ÖZET YOK — betik kontrol() kullanmıyor ya da yarıda bitti"
+    [ "${AYRINTI:-0}" = "1" ] && sed 's/^/    /' "$CIKTI_DOSYA" | tail -25
+    exit 1
+  fi
+  echo "$SUIT :: $OZET"
   exit 0
 fi
 
 if [ -n "$OZET" ]; then
   echo "$SUIT :: $OZET"
-  grep -E '^  ✗' "$CIKTI_DOSYA" | head -8 | sed 's/^/  /'
+  grep -E '^ *✗' "$CIKTI_DOSYA" | head -8 | sed 's/^/  /'
   exit 1
 fi
 

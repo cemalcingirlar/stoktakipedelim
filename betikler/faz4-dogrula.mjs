@@ -15,7 +15,11 @@ const sayfa = await tarayici.newPage({
   acceptDownloads: true,
 });
 const hatalar = [];
-sayfa.on("console", (m) => { if (m.type() === "error") hatalar.push(m.text()); });
+sayfa.on("console", (m) => {
+  // Yetkisiz kullanıcı sayıma girmeye çalışırken bilerek 404 alıyor;
+  // tarayıcının bunu konsola yazması hata değil.
+  if (m.type() === "error" && !/status of 404/.test(m.text())) hatalar.push(m.text());
+});
 sayfa.on("pageerror", (e) => hatalar.push(String(e)));
 
 async function giris(kullanici) {
@@ -32,6 +36,14 @@ async function okut(kod) {
   await sayfa.locator('[role="status"]').first().waitFor({ state: "visible", timeout: 15000 });
   await sayfa.waitForTimeout(500);
   return (await sayfa.locator('[role="status"]').first().textContent())?.trim();
+}
+
+// Betik eskiden beklentileri saymıyordu: ✗ yazan bir kontrol bile çıkış
+// kodunu bozmuyor, süit "geçti" görünüyordu.
+const sonuclar = [];
+function kontrol(ad, gecti, ek = "") {
+  sonuclar.push({ ad, gecti, ek });
+  console.log(`${gecti ? "✓" : "✗"} ${ad}${ek ? ` — ${ek}` : ""}`);
 }
 
 async function sayaclar() {
@@ -71,7 +83,11 @@ await Promise.all([
   sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 30000 }),
   sayfa.click('button:has-text("Faturayı Kaydet")'),
 ]);
-console.log("0) hazırlık: 4 cihaz 3 Nolu Mağaza'ya girildi ✓");
+kontrol(
+  "hazırlık: 4 cihaz 3 Nolu Mağaza'ya girildi",
+  /\/faturalar\/\d+$/.test(sayfa.url()),
+  sayfa.url(),
+);
 
 // ------------------------------------------------- 1) Sayım başlat
 await giris("sorumlu3");
@@ -91,14 +107,21 @@ for (let i = 0; i < (await magazaKutulari.count()); i += 1) {
     break;
   }
 }
+kontrol("sayım ekranında 3 Nolu Mağaza seçilebiliyor", secildi);
 if (!secildi) throw new Error("3 Nolu Mağaza sayım ekranında bulunamadı");
 await Promise.all([
   sayfa.waitForURL(/\/sayim\/\d+$/, { timeout: 20000 }),
   sayfa.click('button:has-text("Sayımı Başlat")'),
 ]);
 const sayimUrl = sayfa.url();
-console.log("1) sayım başlatıldı ->", new URL(sayimUrl).pathname, "✓");
-console.log("   sayaçlar:", await sayaclar());
+kontrol(
+  "sayım başlatıldı",
+  /\/sayim\/\d+$/.test(new URL(sayimUrl).pathname),
+  new URL(sayimUrl).pathname,
+);
+const ilkSayaclar = (await sayaclar()) ?? "";
+// Sayım 4 cihazla açılıyor; hiçbiri henüz okutulmadı.
+kontrol("sayım beklenen cihaz sayısıyla açıldı", /4/.test(ilkSayaclar), ilkSayaclar);
 
 // ------------------------------------------------- 2) Aynı mağazaya ikinci sayım açılamaz
 await sayfa.goto(`${hedef}/sayim`, { waitUntil: "networkidle" });
@@ -116,16 +139,32 @@ for (let i = 0; i < (await ikinciKutular.count()); i += 1) {
     break;
   }
 }
-console.log("2) ikinci sayım engeli:", secenekMetni, "| devre dışı:", devreDisi ? "✓" : "✗");
-if (!devreDisi) throw new Error("devam eden sayımı olan mağaza ikinci kez seçilebiliyor");
+kontrol(
+  "devam eden sayımı olan mağaza ikinci kez seçilemiyor",
+  devreDisi,
+  secenekMetni,
+);
 
 // ------------------------------------------------- 3) Okutma senaryoları
 await sayfa.goto(sayimUrl, { waitUntil: "networkidle" });
-console.log("3) stokta bulundu:", await okut(imei[0]));
-console.log("   tekrar okutma:", await okut(imei[0]));
-console.log("   ikinci cihaz:", await okut(imei[1]));
-console.log("   sayaçlar:", await sayaclar());
-console.log("   kayıtsız kod:", await okut("999888777666555"));
+const ilkOkutma = await okut(imei[0]);
+kontrol("stoktaki cihaz sayımda bulundu", /bulundu|sayıldı/i.test(ilkOkutma ?? ""), ilkOkutma);
+const tekrarOkutma = await okut(imei[0]);
+kontrol(
+  "aynı cihaz iki kez sayılmıyor",
+  /tekrar sayılmadı|zaten/i.test(tekrarOkutma ?? ""),
+  tekrarOkutma,
+);
+const ikinciOkutma = await okut(imei[1]);
+kontrol("ikinci cihaz da sayıldı", /bulundu|sayıldı/i.test(ikinciOkutma ?? ""), ikinciOkutma);
+const okutmaSonrasi = (await sayaclar()) ?? "";
+kontrol("sayaçlar iki okutmayı gösteriyor", /2/.test(okutmaSonrasi), okutmaSonrasi);
+const kayitsizKod = await okut("999888777666555");
+kontrol(
+  "kayıtsız kod sayımda reddediliyor",
+  /bulunamadı|kayıtlı değil|fazla/i.test(kayitsizKod ?? ""),
+  kayitsizKod,
+);
 await sayfa.screenshot({ path: `${cikti}-sayim-ekrani.png`, fullPage: true });
 
 // Başka mağazanın cihazını okut (1 Nolu Mağaza'daki bir cihazın IMEI'sini bul)
@@ -137,26 +176,34 @@ const baskaImei =
   (await baskaHucre.count()) > 0 ? ((await baskaHucre.textContent()) ?? "").trim() : "";
 await sayfa.goto(sayimUrl, { waitUntil: "networkidle" });
 if (baskaImei && baskaImei !== "—") {
-  console.log("   başka mağaza cihazı:", await okut(baskaImei));
+  const baskaMesaj = await okut(baskaImei);
+  kontrol(
+    "başka mağazanın cihazı fazlalık sayılıyor",
+    /fazla|başka/i.test(baskaMesaj ?? ""),
+    baskaMesaj,
+  );
 } else {
   console.log("   başka mağaza cihazı: (1 Nolu Mağaza'da stok yok, atlandı)");
 }
-console.log("   sayaçlar:", await sayaclar());
 
 // ------------------------------------------------- 4) Başka mağaza kullanıcısı sayamaz
 await giris("sorumlu2");
 await sayfa.goto(sayimUrl, { waitUntil: "networkidle" });
-console.log("4) 2 Nolu kullanıcı okutma kutusu:", (await sayfa.locator("#okutmaKutusu").count()) === 0 ? "✓ yok" : "✗ var");
+kontrol(
+  "başka mağaza sorumlusuna okutma kutusu verilmiyor",
+  (await sayfa.locator("#okutmaKutusu").count()) === 0,
+);
 // Mağaza görünürlüğü eklendikten sonra yetkisiz kullanıcı uyarı metni yerine
 // "kayıt bulunamadı" ekranını görüyor; ikisini de kabul edip ne görüldüğünü
 // yazıyoruz.
 {
   const govde = ((await sayfa.locator("main").textContent()) ?? "").replace(/\s+/g, " ").trim();
   const bulunamadi = (await sayfa.locator('[data-test="bulunamadi-ekrani"]').count()) > 0;
-  console.log("   yetkisiz kullanıcı:", bulunamadi ? "bulunamadı ekranı ✓" : govde.slice(0, 80));
-  if (!bulunamadi && !/yalnızca/i.test(govde)) {
-    throw new Error("yetkisiz kullanıcı sayıma erişebiliyor");
-  }
+  kontrol(
+    "yetkisiz kullanıcı sayıma erişemiyor",
+    bulunamadi || /yalnızca/i.test(govde),
+    bulunamadi ? "bulunamadı ekranı" : govde.slice(0, 80),
+  );
 }
 
 // ------------------------------------------------- 5) Sayımı kapat
@@ -165,14 +212,20 @@ await sayfa.goto(sayimUrl, { waitUntil: "networkidle" });
 await sayfa.click('button:has-text("Sayımı Kapat")');
 await sayfa.locator("text=Tamamlandı").first().waitFor({ timeout: 15000 });
 await sayfa.waitForTimeout(800);
-console.log("5) sayım kapatıldı, özet:", await sayaclar());
-const eksikBasligi = await sayfa.locator("h2", { hasText: "Eksikler" }).textContent();
-const fazlaBasligi = await sayfa.locator("h2", { hasText: "Fazlalar" }).textContent();
-console.log("   ", eksikBasligi?.trim(), "|", fazlaBasligi?.trim());
+const kapanisOzeti = (await sayaclar()) ?? "";
+kontrol("sayım kapatıldı", /Tamamlandı/.test((await sayfa.locator("main").textContent()) ?? ""), kapanisOzeti);
+const eksikBasligi = (await sayfa.locator("h2", { hasText: "Eksikler" }).textContent())?.trim() ?? "";
+const fazlaBasligi = (await sayfa.locator("h2", { hasText: "Fazlalar" }).textContent())?.trim() ?? "";
+// 4 cihazın 2'si okutuldu: kapanışta 2 eksik çıkmalı.
+kontrol("okutulmayan cihazlar eksik olarak raporlandı", /2/.test(eksikBasligi), eksikBasligi);
+kontrol("fazlalar bölümü raporda var", fazlaBasligi.length > 0, fazlaBasligi);
 await sayfa.screenshot({ path: `${cikti}-sayim-raporu.png`, fullPage: true });
 
 // Kapatılmış sayımda okutma yapılamaz
-console.log("6) kapalı sayımda okutma kutusu:", (await sayfa.locator("#okutmaKutusu").count()) === 0 ? "✓ yok" : "✗ var");
+kontrol(
+  "kapalı sayımda okutma yapılamıyor",
+  (await sayfa.locator("#okutmaKutusu").count()) === 0,
+);
 
 // ------------------------------------------------- 7) Excel raporu
 const indirme = await Promise.all([
@@ -184,15 +237,23 @@ const yol = `${cikti}-rapor.xlsx`;
 if (existsSync(yol)) rmSync(yol);
 await dosya.saveAs(yol);
 const boyut = readFileSync(yol).length;
-console.log("7) Excel indirildi:", dosya.suggestedFilename(), `${boyut} bayt`, boyut > 3000 ? "✓" : "✗");
+kontrol(
+  "sayım raporu Excel olarak iniyor",
+  boyut > 3000,
+  `${dosya.suggestedFilename()} · ${boyut} bayt`,
+);
 
 // ------------------------------------------------- 8) Mobil
 await sayfa.setViewportSize({ width: 390, height: 844 });
 for (const yolAdi of ["/sayim", new URL(sayimUrl).pathname]) {
   await sayfa.goto(`${hedef}${yolAdi}`, { waitUntil: "networkidle" });
   const tasma = await sayfa.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-  console.log(`8) 390px ${yolAdi}:`, tasma ? "✗ taşma" : "✓");
+  kontrol(`390px ${yolAdi} ekranında yatay taşma yok`, !tasma);
 }
 
-console.log("konsol hataları:", hatalar.length ? hatalar : "yok");
+kontrol("tarayıcı konsolunda hata yok", hatalar.length === 0, hatalar.slice(0, 3).join(" | "));
 await tarayici.close();
+
+const gecen = sonuclar.filter((s) => s.gecti).length;
+console.log(`\n${gecen}/${sonuclar.length} kontrol geçti`);
+if (gecen !== sonuclar.length) process.exit(1);

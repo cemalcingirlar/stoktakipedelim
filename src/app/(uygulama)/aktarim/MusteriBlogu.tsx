@@ -87,8 +87,12 @@ export function MusteriBlogu({
                   }}
                   className="w-full px-3 py-2 text-left text-sm transition hover:bg-blue-50"
                 >
-                  <span className="font-medium text-slate-800">{m.adSoyad}</span>
-                  {m.telefon ? <span className="ml-2 text-slate-500">{m.telefon}</span> : null}
+                  <span className="font-medium text-slate-800">
+                    {m.adSoyad}
+                  </span>
+                  {m.telefon ? (
+                    <span className="ml-2 text-slate-500">{m.telefon}</span>
+                  ) : null}
                 </button>
               </li>
             ))}
@@ -102,8 +106,12 @@ export function MusteriBlogu({
           className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"
         >
           <div className="text-sm">
-            <span className="font-medium text-emerald-900">{secili.adSoyad}</span>
-            {secili.telefon ? <span className="ml-2 text-emerald-800">{secili.telefon}</span> : null}
+            <span className="font-medium text-emerald-900">
+              {secili.adSoyad}
+            </span>
+            {secili.telefon ? (
+              <span className="ml-2 text-emerald-800">{secili.telefon}</span>
+            ) : null}
           </div>
           <button
             type="button"
