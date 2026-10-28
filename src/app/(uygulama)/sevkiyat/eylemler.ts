@@ -6,7 +6,8 @@ import { z } from "zod";
 import { logYaz } from "@/lib/log";
 import { kodNormalize } from "@/lib/metin";
 import { hepsiOkutulduNotu, ilerlemeNotu, siradakiOkutma } from "@/lib/okutmaSirasi";
-import { cihazSec, type AdayCihaz } from "@/lib/cihazSecimi";
+import { cihazSec, uygunMu, type AdayCihaz } from "@/lib/cihazSecimi";
+import { adediSinirla, adetliMi, adetSonucNotu } from "@/lib/adetSecimi";
 import { prisma } from "@/lib/prisma";
 import {
   kabulDurumu,
@@ -65,6 +66,12 @@ export type OkutmaSonucu =
       };
     }
   | { durum: "SECIM"; aranan: string; adaylar: AdayCihaz[] }
+  /**
+   * Adetle izlenen ürün: aynı barkodtaki cihazlar birbirinin tıpatıp aynısı,
+   * hangisinin sevk edildiği fark etmiyor. Tek tek seçtirmek yerine kaç adet
+   * gideceği soruluyor.
+   */
+  | { durum: "ADET"; aranan: string; etiket: string; mevcut: number }
   | { durum: "HATA"; mesaj: string };
 
 /**
@@ -145,6 +152,18 @@ export async function sevkiyatCihaziOkut(
     });
 
     if (secim.durum === "SECIM") {
+      // Adetle izlenen üründe seçim anlamsız: 20 tıpatıp aynı satırdan birini
+      // tıklatmak, sonra bunu 20 kez tekrarlatmak demek. Kaç adet gideceği
+      // soruluyor.
+      if (adetliMi(aranan, secim.adaylar)) {
+        const ilk = secim.adaylar[0];
+        return {
+          durum: "ADET",
+          aranan,
+          etiket: `${ilk.marka} ${ilk.model}`.replace(/\s+/g, " ").trim(),
+          mevcut: secim.adaylar.length,
+        };
+      }
       return { durum: "SECIM", aranan, adaylar: secim.adaylar };
     }
 
@@ -194,6 +213,99 @@ export async function sevkiyatCihaziOkut(
 }
 
 // -------------------------------------------------------- Sevkiyat gönderme
+
+/** Sevkiyat listesine eklenen cihazın ekranda gereken alanları. */
+export type SevkCihazi = {
+  id: number;
+  marka: string;
+  model: string;
+  seriNo: string | null;
+  barkod: string | null;
+  kategori: string;
+  magazaAdi: string;
+  alisFiyatiKurus: number;
+};
+
+export type AdetEklemeSonucu =
+  | { durum: "EKLENDI"; cihazlar: SevkCihazi[]; mesaj: string }
+  | { durum: "HATA"; mesaj: string };
+
+/**
+ * Adetle izlenen üründen istenen kadarını sevkiyat listesine ekler.
+ *
+ * Aksesuarların bir kısmı adet bazlı tutuluyor: aynı barkodtan 20 şarj aleti
+ * birbirinin tıpatıp aynısı. Bunları tek tek seçtirmek 20 tıklama demekti.
+ * Hangi cihazların seçildiği yine kayıt altında — sevkiyat kalemleri tek tek
+ * yazılıyor — sadece kullanıcıya sorulan soru değişiyor.
+ */
+export async function sevkiyatAdetEkle(
+  kod: string,
+  kaynakMagazaId: number,
+  adet: number,
+  secilmisIdler: number[] = [],
+): Promise<AdetEklemeSonucu> {
+  try {
+    const oturum = await oturumZorunlu();
+    magazaIslemiZorunlu(oturum, kaynakMagazaId);
+
+    const aranan = kodNormalize(kod);
+    if (aranan.length < 3) {
+      return { durum: "HATA", mesaj: "Geçerli bir seri no veya barkod girin." };
+    }
+
+    const adaylar = await prisma.stokKalemi.findMany({
+      where: { OR: [{ seriNo: aranan }, { barkod: aranan }] },
+      include: { magaza: { select: { ad: true } }, kategori: { select: { ad: true } } },
+      orderBy: { id: "asc" },
+    });
+
+    // Uygunluk denetimi okutmadakiyle aynı kurala bağlı: stokta, kaynak
+    // mağazada ve listede olmayan cihazlar. Adet yolu bir kestirme değil;
+    // aynı süzgeçten geçiyor.
+    const baglam = { aranan, yetkiliMagazalar: [kaynakMagazaId], secilmisIdler };
+    const uygunlar = adaylar.filter((c) => uygunMu(adayaCevir(c), baglam));
+
+    if (uygunlar.length === 0) {
+      return { durum: "HATA", mesaj: `${aranan} için eklenecek adet kalmadı.` };
+    }
+    // Adet yolu yalnız birbirinin yerine geçen cihazlarda açık; seri numaralı
+    // cihaz araya karıştıysa hangisinin gittiği kayıt altında kalmalı.
+    //
+    // Tek adet kalmışsa bu denetim atlanıyor: adet sorusu ekranda dururken
+    // başkası son adetleri almış olabilir ve geriye kalan tek cihaz seri
+    // numaralıysa "adetle eklenemez" demek yanlış olurdu — kullanıcının
+    // istediği o tek adedi eklemek.
+    if (uygunlar.length > 1 && !adetliMi(aranan, uygunlar)) {
+      return {
+        durum: "HATA",
+        mesaj: `${aranan} seri numaralı cihaz içeriyor; adetle eklenemez, tek tek seçin.`,
+      };
+    }
+
+    const istenen = Math.max(1, Math.floor(Number(adet) || 1));
+    const secilenler = uygunlar.slice(0, adediSinirla(istenen, uygunlar.length));
+    const etiket = `${uygunlar[0].marka} ${uygunlar[0].model}`.replace(/\s+/g, " ").trim();
+
+    return {
+      durum: "EKLENDI",
+      cihazlar: secilenler.map((c) => ({
+        id: c.id,
+        marka: c.marka,
+        model: c.model,
+        seriNo: c.seriNo,
+        barkod: c.barkod,
+        kategori: c.kategori.ad,
+        magazaAdi: c.magaza.ad,
+        alisFiyatiKurus: c.alisFiyatiKurus,
+      })),
+      mesaj: `${etiket} — ${adetSonucNotu(secilenler.length, istenen, "sevkiyata eklendi")}.`,
+    };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
+    console.error("Adetle ekleme başarısız:", hata);
+    return { durum: "HATA", mesaj: "Cihazlar eklenemedi. Tekrar deneyin." };
+  }
+}
 
 const gonderimSemasi = z.object({
   kaynakMagazaId: z.number().int().positive("Kaynak mağaza seçin."),
@@ -364,10 +476,16 @@ export type KabulOkutmaSonucu =
 /**
  * Kabul ekranında okutulan cihazı sevkiyat kalemiyle eşleştirir ve kabul işaretler.
  * İşaret hemen kaydedilir; kabul eden kişi partiler hâlinde okutabilir.
+ *
+ * `adet` birden büyükse o koddaki bekleyen kalemlerden o kadarı tek seferde
+ * kabul edilir. Adetle izlenen aksesuarlarda — aynı barkodtan 20 şarj aleti —
+ * her adedi ayrı okutmak gereksiz: kutudaki adet sayılıp bir kez yazılıyor.
+ * Bekleyenden fazlası istenirse bekleyen kadarı alınır ve fark mesajda söylenir.
  */
 export async function kabulCihaziOkut(
   transferId: number,
   kod: string,
+  adet = 1,
 ): Promise<KabulOkutmaSonucu> {
   try {
     const oturum = await oturumZorunlu();
@@ -428,13 +546,19 @@ export async function kabulCihaziOkut(
       };
     }
 
-    const kalem = secim.kalem;
+    const bekleyenler = kalemler.filter((k) => k.durum === TRANSFER_KALEM_DURUM.BEKLIYOR);
+    const istenen = Math.max(1, Math.floor(Number(adet) || 1));
+    const alinacak = adediSinirla(istenen, bekleyenler.length);
+    const secilenler = bekleyenler.slice(0, alinacak);
 
     // Koşullu güncelleme: iki kişi aynı paketi birlikte boşaltırken ikisi de
     // aynı bekleyen adedi seçebilir. Durum şartı sorguda olunca ikincisi
     // sessizce aynı adedi işaretlemek yerine uyarı alıyor.
     const yazilan = await prisma.transferKalemi.updateMany({
-      where: { id: kalem.id, durum: TRANSFER_KALEM_DURUM.BEKLIYOR },
+      where: {
+        id: { in: secilenler.map((k) => k.id) },
+        durum: TRANSFER_KALEM_DURUM.BEKLIYOR,
+      },
       data: { durum: TRANSFER_KALEM_DURUM.KABUL, kabulTarihi: new Date() },
     });
     if (yazilan.count === 0) {
@@ -445,10 +569,17 @@ export async function kabulCihaziOkut(
     }
 
     revalidatePath(`/sevkiyat/${transferId}`);
+    // secim.sira okutmadan ÖNCEKİ kabul sayısının bir fazlası; bu partiyle
+    // birlikte toplam kaç adet kabul edildiğini buradan yazıyoruz.
+    const okutulanToplam = secim.sira - 1 + yazilan.count;
+    const ilerleme = ilerlemeNotu(okutulanToplam, secim.toplam);
     return {
       durum: "KABUL",
-      kalemId: kalem.id,
-      mesaj: `${urunAdi} kabul edildi${ilerlemeNotu(secim.sira, secim.toplam)}.`,
+      kalemId: secilenler[0].id,
+      mesaj:
+        istenen === 1
+          ? `${urunAdi} kabul edildi${ilerleme}.`
+          : `${urunAdi} — ${adetSonucNotu(yazilan.count, istenen, "kabul edildi")}${ilerleme}.`,
     };
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };

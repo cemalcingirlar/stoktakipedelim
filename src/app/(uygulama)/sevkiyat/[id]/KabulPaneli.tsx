@@ -27,9 +27,17 @@ export function KabulPaneli({
   const [tamamlaDurumu, tamamlaEylem] = useActionState<KabulDurumu, FormData>(kabuluTamamla, {});
   const [redDurumu, redEylem] = useActionState<KabulDurumu, FormData>(sevkiyatiReddet, {});
   const [redAcik, setRedAcik] = useState(false);
+  // Adetle izlenen aksesuarlarda kutudaki adet bir kez yazılıyor; her adedi
+  // ayrı okutmak gerekmiyor.
+  const [adet, setAdet] = useState("1");
 
   async function okut(kod: string): Promise<OkutmaGeriBildirimi> {
-    const sonuc = await kabulCihaziOkut(transferId, kod);
+    const istenen = Math.max(1, Math.floor(Number(adet) || 1));
+    const sonuc = await kabulCihaziOkut(transferId, kod, istenen);
+    // Adet alanı her okutmadan sonra 1'e dönüyor: 20 yazıp unutan biri,
+    // sıradaki ürünün 20 adedini gelmeden kabul etmiş olurdu. Gelmeyen malı
+    // stoğa almak geri alması zor bir hata.
+    setAdet("1");
     // Sunucu kalemi işaretledi; listedeki durumların tazelenmesi için sayfayı yenile.
     if (sonuc.durum === "KABUL") router.refresh();
     if (sonuc.durum === "KABUL") return { tur: "basari", mesaj: sonuc.mesaj };
@@ -74,9 +82,28 @@ export function KabulPaneli({
       <OkutmaKutusu
         odakVer
         etiket="Gelen Cihazı Okut"
-        ipucu="Paketten çıkan her cihazı okutun. Listede olmayan bir cihaz okutulursa uyarır."
+        ipucu="Paketten çıkan her cihazı okutun. Adetle izlenen aksesuarlarda kutudaki adedi yazıp barkodu bir kez okutmanız yeter; adet her okutmadan sonra 1'e döner. Listede olmayan bir cihaz okutulursa uyarır."
         okut={okut}
         devreDisi={bekleyenAdet === 0}
+        yanAlan={
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="kabulAdedi" className="text-sm font-medium text-blue-900">
+              Adet
+            </label>
+            <input
+              id="kabulAdedi"
+              data-test="kabul-adedi"
+              type="number"
+              min={1}
+              max={bekleyenAdet || 1}
+              inputMode="numeric"
+              value={adet}
+              disabled={bekleyenAdet === 0}
+              onChange={(e) => setAdet(e.target.value)}
+              className={`w-20 ${GIRDI_SINIFI} font-mono`}
+            />
+          </div>
+        }
       />
 
       <form action={tamamlaEylem} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

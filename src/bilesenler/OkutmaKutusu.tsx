@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import { GIRDI_SINIFI } from "./Alan";
 import { KameraDugmesi } from "./KameraOkuyucu";
 
@@ -27,12 +34,19 @@ export function OkutmaKutusu({
   devreDisi = false,
   kameraSurekli = true,
   odakVer = false,
+  yanAlan,
 }: {
   etiket: string;
   ipucu?: string;
   yerTutucu?: string;
   okut: (kod: string) => Promise<OkutmaGeriBildirimi>;
   devreDisi?: boolean;
+  /**
+   * Okutma kutusunun soluna eklenen ek denetim (kabul ekranındaki adet alanı
+   * gibi). Ayrı bir kart açmak yerine aynı satırda duruyor: okutma ve ona
+   * eşlik eden ayar birbirinden kopmamalı.
+   */
+  yanAlan?: ReactNode;
   /** Kamera okumada: true ise açık kalır, false ise ilk okumada kapanır. */
   kameraSurekli?: boolean;
   /**
@@ -100,7 +114,8 @@ export function OkutmaKutusu({
       <label htmlFor="okutmaKutusu" className="mb-1 block text-sm font-medium text-blue-900">
         {etiket}
       </label>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {yanAlan}
         <input
           id="okutmaKutusu"
           ref={girdiRef}

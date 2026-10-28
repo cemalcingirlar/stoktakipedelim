@@ -8,6 +8,7 @@ import { kurusuTLYazSembollu } from "@/lib/para";
 import { adayEtiketi, secimBasligi, type AdayCihaz } from "@/lib/cihazSecimi";
 import { kabulUyarisi, type KabulDurumu } from "@/lib/sevkiyatKabul";
 import {
+  sevkiyatAdetEkle,
   sevkiyatCihaziOkut,
   sevkiyatCihaziniSec,
   sevkiyatGonder,
@@ -47,6 +48,17 @@ export function SevkiyatFormu({
   const [secimHatasi, setSecimHatasi] = useState<string | null>(null);
   const [secimBekliyor, secimBasla] = useTransition();
 
+  // Adetle izlenen ürün okutuldu: kaç adet sevk edileceği soruluyor.
+  const [adetSorusu, setAdetSorusu] = useState<{
+    aranan: string;
+    etiket: string;
+    mevcut: number;
+  } | null>(null);
+  const [adet, setAdet] = useState("");
+  const [adetHatasi, setAdetHatasi] = useState<string | null>(null);
+  const [adetSonucu, setAdetSonucu] = useState<string | null>(null);
+  const [adetBekliyor, adetBasla] = useTransition();
+
   /** Bulunan cihazı listeye ekler. */
   function listeyeAl(cihaz: Cihaz): OkutmaGeriBildirimi {
     if (cihazlar.some((c) => c.id === cihaz.id)) {
@@ -76,8 +88,23 @@ export function SevkiyatFormu({
     // Aynı barkodta birden çok uygun cihaz: hangisinin sevk edileceği
     // kullanıcıya soruluyor.
     if (sonuc.durum === "SECIM") {
+      setAdetSorusu(null);
       setSecim({ aranan: sonuc.aranan, adaylar: sonuc.adaylar });
       return { tur: "uyari", mesaj: secimBasligi(sonuc.aranan, sonuc.adaylar.length) };
+    }
+
+    // Adetle izlenen ürün: 20 tıpatıp aynı satırdan birini seçtirmek yerine
+    // kaç adet gideceği soruluyor.
+    if (sonuc.durum === "ADET") {
+      setSecim(null);
+      setAdetHatasi(null);
+      setAdetSonucu(null);
+      setAdetSorusu({ aranan: sonuc.aranan, etiket: sonuc.etiket, mevcut: sonuc.mevcut });
+      setAdet(String(sonuc.mevcut));
+      return {
+        tur: "uyari",
+        mesaj: `${sonuc.etiket} — gönderen mağazada ${sonuc.mevcut} adet var. Kaç adet sevk edilecek?`,
+      };
     }
 
     return listeyeAl(sonuc.cihaz);
@@ -96,6 +123,32 @@ export function SevkiyatFormu({
         return;
       }
       setSecimHatasi(sonuc.durum === "HATA" ? sonuc.mesaj : "Cihaz seçilemedi.");
+    });
+  }
+
+  /** Adet sorusuna verilen cevapla cihazları topluca ekler. */
+  function adetiOnayla() {
+    if (!adetSorusu) return;
+    setAdetHatasi(null);
+    adetBasla(async () => {
+      const sonuc = await sevkiyatAdetEkle(
+        adetSorusu.aranan,
+        Number(kaynakId),
+        Number(adet),
+        cihazlar.map((c) => c.id),
+      );
+      if (sonuc.durum === "HATA") {
+        setAdetHatasi(sonuc.mesaj);
+        return;
+      }
+      setCihazlar((mevcut) => {
+        const varOlan = new Set(mevcut.map((c) => c.id));
+        const yeniler = sonuc.cihazlar.filter((c) => !varOlan.has(c.id));
+        return [...yeniler.reverse(), ...mevcut];
+      });
+      setAdetSorusu(null);
+      setAdet("");
+      setAdetSonucu(sonuc.mesaj);
     });
   }
 
@@ -213,6 +266,78 @@ export function SevkiyatFormu({
         okut={okut}
         devreDisi={!kaynakId}
       />
+
+      {/* Adetle izlenen ürün: kaç adet gideceği soruluyor. */}
+      {adetSorusu ? (
+        <div
+          data-test="adet-secimi"
+          className="rounded-xl border border-blue-300 bg-blue-50 p-4"
+        >
+          <p className="mb-2 text-sm font-medium text-blue-900">
+            {adetSorusu.etiket} — gönderen mağazada{" "}
+            <strong data-test="adet-mevcut">{adetSorusu.mevcut}</strong> adet var.
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <label htmlFor="sevkAdedi" className="mb-1 block text-xs font-medium text-blue-900">
+                Kaç adet sevk edilecek?
+              </label>
+              <input
+                id="sevkAdedi"
+                data-test="adet-girdisi"
+                type="number"
+                min={1}
+                max={adetSorusu.mevcut}
+                inputMode="numeric"
+                value={adet}
+                autoFocus
+                onChange={(e) => setAdet(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    adetiOnayla();
+                  }
+                }}
+                className={`w-28 ${GIRDI_SINIFI} font-mono`}
+              />
+            </div>
+            <button
+              type="button"
+              data-test="adet-ekle"
+              disabled={adetBekliyor}
+              onClick={adetiOnayla}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+            >
+              {adetBekliyor ? "Ekleniyor…" : "Listeye Ekle"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAdetSorusu(null);
+                setAdetHatasi(null);
+              }}
+              className="text-xs font-medium text-blue-800 underline hover:text-blue-900"
+            >
+              Vazgeç
+            </button>
+          </div>
+          {adetHatasi ? (
+            <p data-test="adet-hatasi" role="alert" className="mt-2 text-sm font-medium text-red-700">
+              {adetHatasi}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {adetSonucu ? (
+        <p
+          data-test="adet-sonucu"
+          role="status"
+          className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800"
+        >
+          {adetSonucu}
+        </p>
+      ) : null}
 
       {/* Barkod birden çok cihaza denk geldi: hangisi sevk edilecek? */}
       {secim ? (
