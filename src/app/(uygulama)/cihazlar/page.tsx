@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { redirect } from "next/navigation";
 import { CihazTablosu } from "@/bilesenler/CihazTablosu";
 import { FiltreCubugu } from "@/bilesenler/FiltreCubugu";
@@ -110,10 +110,15 @@ export default async function CihazlarSayfasi({
     }),
     // Marka listesi filtre açılırından geliyor; stokta hangi markalar varsa
     // yalnız onlar gösteriliyor, boş seçenek bırakmanın anlamı yok.
-    prisma.stokKalemi.findMany({
+    //
+    // groupBy, distinct değil: Prisma'nın `distinct` seçeneği SQL'e DISTINCT
+    // yazmıyor, bütün satırların markasını çekip bellekte ayıklıyor. Sorgu
+    // kaydında görüldü ("SELECT id, marka FROM StokKalemi WHERE 1=1"), yani
+    // cihaz sayısı arttıkça her Cihazlar görüntülemesi tüm tabloyu okuyordu.
+    // groupBy gerçek GROUP BY üretiyor.
+    prisma.stokKalemi.groupBy({
+      by: ["marka"],
       where: magazaKosulu(gorunur),
-      distinct: ["marka"],
-      select: { marka: true },
       orderBy: { marka: "asc" },
     }),
     prisma.tedarikci.findMany({

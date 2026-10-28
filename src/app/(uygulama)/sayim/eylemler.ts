@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { logYaz } from "@/lib/log";
 import { kodNormalize } from "@/lib/metin";
+import { hepsiOkutulduNotu, ilerlemeNotu, siradakiOkutma } from "@/lib/okutmaSirasi";
 import { prisma } from "@/lib/prisma";
 import { LOG_ISLEM, SAYIM_DURUM, SAYIM_SONUC, STOK_DURUM } from "@/lib/sabitler";
 import {
@@ -139,26 +140,35 @@ export async function sayimOkut(sayimId: number, kod: string): Promise<SayimOkut
     if (aranan.length < 3) return { sonuc: "HATA", mesaj: "Geçerli bir seri no veya barkod girin." };
 
     // 1) Sayım listesinde mi?
-    const listedeki = await prisma.sayimKalemi.findFirst({
+    //
+    // Eşleşen TÜM kalemler çekiliyor, ilki değil. Aksesuarlarda tek barkod
+    // onlarca adede denk geliyor ve bu ürünler adetle sayılıyor. Eskiden
+    // `findFirst` ile ilk kalem alınıyordu: o sayıldıysa, aynı barkodtan 19
+    // adet beklerken bile "daha önce okutuldu" deyip sayıma izin vermiyordu.
+    const listedekiler = await prisma.sayimKalemi.findMany({
       where: {
         sayimId,
         stokKalemi: { OR: [{ seriNo: aranan }, { barkod: aranan }] },
       },
       include: { stokKalemi: { select: { marka: true, model: true } } },
+      orderBy: { id: "asc" },
     });
 
-    if (listedeki) {
-      const ad = `${listedeki.stokKalemi?.marka ?? ""} ${listedeki.stokKalemi?.model ?? ""}`.trim();
+    if (listedekiler.length > 0) {
+      const ilk = listedekiler[0];
+      const ad = `${ilk.stokKalemi?.marka ?? ""} ${ilk.stokKalemi?.model ?? ""}`.trim();
+      const secim = siradakiOkutma(listedekiler, (k) => (k.sayildi ? "OKUTULDU" : "BEKLIYOR"));
 
-      if (listedeki.sayildi) {
+      if (secim.durum !== "OKUT") {
+        const adet = secim.durum === "HEPSI_OKUTULDU" ? secim.toplam : 1;
         return {
           sonuc: "ZATEN_SAYILDI",
-          mesaj: `${ad} daha önce okutuldu, tekrar sayılmadı.`,
+          mesaj: `${ad} — ${hepsiOkutulduNotu(adet, "sayıldı")}, tekrar sayılmadı.`,
         };
       }
 
       await prisma.sayimKalemi.update({
-        where: { id: listedeki.id },
+        where: { id: secim.kalem.id },
         data: {
           sayildi: true,
           sonuc: SAYIM_SONUC.BULUNDU,
@@ -169,23 +179,40 @@ export async function sayimOkut(sayimId: number, kod: string): Promise<SayimOkut
       });
 
       revalidatePath(`/sayim/${sayimId}`);
-      return { sonuc: "BULUNDU", mesaj: `${ad} — stokta bulundu.` };
+      return {
+        sonuc: "BULUNDU",
+        mesaj: `${ad} — stokta bulundu${ilerlemeNotu(secim.sira, secim.toplam)}.`,
+      };
     }
 
     // 2) Sistemde kayıtlı ama bu mağazanın sayım listesinde değil.
-    const cihaz = await prisma.stokKalemi.findFirst({
+    //
+    // Burada da adaylar çoğul: aynı barkodtan birkaç adet başka depoda
+    // kayıtlıysa her biri ayrı ayrı fazla olarak işaretlenebilmeli.
+    const adaylar = await prisma.stokKalemi.findMany({
       where: { OR: [{ seriNo: aranan }, { barkod: aranan }] },
       include: { magaza: { select: { ad: true } } },
+      orderBy: { id: "asc" },
     });
 
-    if (cihaz) {
-      const zatenKayitli = await prisma.sayimKalemi.findUnique({
-        where: { sayimId_stokKalemiId: { sayimId, stokKalemiId: cihaz.id } },
-        select: { id: true },
+    if (adaylar.length > 0) {
+      const isaretliler = await prisma.sayimKalemi.findMany({
+        where: { sayimId, stokKalemiId: { in: adaylar.map((a) => a.id) } },
+        select: { stokKalemiId: true },
       });
-      if (zatenKayitli) {
-        return { sonuc: "ZATEN_SAYILDI", mesaj: `${aranan} bu sayımda zaten fazla olarak işaretli.` };
+      const isaretliIdler = new Set(isaretliler.map((k) => k.stokKalemiId));
+      const secim = siradakiOkutma(adaylar, (a) =>
+        isaretliIdler.has(a.id) ? "OKUTULDU" : "BEKLIYOR",
+      );
+
+      if (secim.durum !== "OKUT") {
+        const adet = secim.durum === "HEPSI_OKUTULDU" ? secim.toplam : 1;
+        return {
+          sonuc: "ZATEN_SAYILDI",
+          mesaj: `${aranan} — ${hepsiOkutulduNotu(adet, "sayıldı")}, bu sayımda fazla olarak işaretli.`,
+        };
       }
+      const cihaz = secim.kalem;
 
       const satilmis = cihaz.durum === STOK_DURUM.SATILDI;
       await prisma.sayimKalemi.create({

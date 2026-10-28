@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { HareketGrafigi } from "@/bilesenler/HareketGrafigi";
 import { Kart, SayiKarti } from "@/bilesenler/Kart";
 import {

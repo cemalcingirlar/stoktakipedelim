@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { prisma } from "@/lib/prisma";
 import { inputTarih } from "@/lib/tarih";
 import { adminSayfasi } from "@/lib/yetki";

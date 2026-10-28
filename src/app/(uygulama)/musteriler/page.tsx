@@ -1,7 +1,15 @@
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { Kart } from "@/bilesenler/Kart";
+import { Sayfalama } from "@/bilesenler/Sayfalama";
 import { gorunurMagazaIdleri, magazaKosulu } from "@/lib/gorunurluk";
+import {
+  SAYFA_BOYUTU,
+  atlanacak,
+  gecerliSayfa,
+  listeFiltresiniCoz,
+  toplamSayfa,
+} from "@/lib/listeFiltre";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { aramaNormalize } from "@/lib/metin";
@@ -27,23 +35,35 @@ export default async function MusterilerSayfasi({
 
   const silebilir = adminMi(oturum);
 
+  // Liste eskiden en yeni 200 müşteriyi tek seferde çekiyordu. İki sorunu
+  // vardı. Birincisi görünürlük: 200'den eski müşteri ekrandan erişilemiyor,
+  // ancak arayarak bulunabiliyordu. İkincisi hız — ölçüldü: 400 müşterilik
+  // veriyle sayfa her açılışta ağdan 105 KB (açılmış 312 KB) indiriyordu,
+  // uygulamanın en ağır sayfası. Faturalar ve sevkiyat listelerindeki
+  // sayfalamanın aynısı uygulanıyor.
+  const where = ham
+    ? {
+        OR: [
+          { adSoyad: { contains: ham } },
+          { adSoyad: { contains: aramaNormalize(ham) } },
+          ...(rakamlar.length >= 3
+            ? [{ telefon: { contains: rakamlar } }]
+            : []),
+          ...(rakamlar.length >= 3
+            ? [{ tcknVkn: { contains: rakamlar } }]
+            : []),
+        ],
+      }
+    : {};
+
+  const toplam = await prisma.musteri.count({ where });
+  const sayfa = gecerliSayfa(listeFiltresiniCoz(params).sayfa, toplam);
+
   const musteriler = await prisma.musteri.findMany({
-    where: ham
-      ? {
-          OR: [
-            { adSoyad: { contains: ham } },
-            { adSoyad: { contains: aramaNormalize(ham) } },
-            ...(rakamlar.length >= 3
-              ? [{ telefon: { contains: rakamlar } }]
-              : []),
-            ...(rakamlar.length >= 3
-              ? [{ tcknVkn: { contains: rakamlar } }]
-              : []),
-          ],
-        }
-      : {},
+    where,
     orderBy: { createdAt: "desc" },
-    take: 200,
+    skip: atlanacak(sayfa),
+    take: SAYFA_BOYUTU,
     include: {
       _count: { select: { satinAlinanlar: true, aktarimSatislari: true } },
       satinAlinanlar: {
@@ -105,7 +125,7 @@ export default async function MusterilerSayfasi({
         ) : null}
       </form>
 
-      <Kart baslik={`${musteriler.length} müşteri`}>
+      <Kart baslik={`${toplam.toLocaleString("tr-TR")} müşteri`}>
         {musteriler.length === 0 ? (
           <p className="py-8 text-center text-sm text-slate-500">
             {ham
@@ -189,6 +209,12 @@ export default async function MusterilerSayfasi({
             })}
           </ul>
         )}
+        <Sayfalama
+          sayfa={sayfa}
+          toplamSayfa={toplamSayfa(toplam)}
+          params={params}
+          temelYol="/musteriler"
+        />
       </Kart>
     </div>
   );

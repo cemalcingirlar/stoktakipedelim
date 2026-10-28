@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/bilesenler/Bag";
 import { DurumRozeti, Rozet } from "./Rozet";
 import { KunyeDuzenleyici, type KategoriSecenegi } from "./KunyeDuzenleyici";
 import { SutunFiltresi, type FiltreSecenekleri } from "./SutunFiltresi";
