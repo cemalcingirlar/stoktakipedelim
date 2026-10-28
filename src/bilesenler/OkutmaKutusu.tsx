@@ -138,6 +138,8 @@ export function OkutmaKutusu({
       {geriBildirim ? (
         <p
           role="status"
+          data-test="okutma-geri-bildirim"
+          data-tur={geriBildirim.tur}
           className={`mt-2 rounded-lg border px-3 py-2 text-sm font-medium ${TONLAR[geriBildirim.tur]}`}
         >
           {geriBildirim.mesaj}

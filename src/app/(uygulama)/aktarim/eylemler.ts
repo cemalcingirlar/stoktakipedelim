@@ -128,15 +128,35 @@ export async function dukkanIciAktar(
     const sonuc = await prisma.$transaction(async (tx) => {
       // Cihazın hâlâ kaynak mağazada ve stokta olduğunu işlem içinde doğrula;
       // iki kişi aynı anda okutursa ikincisi hata almalı.
+      //
+      // Kodla okutmada önce AKTARILABİLİR adet aranıyor, eşleşen ilk cihaz
+      // değil. Aksesuarlarda tek barkod onlarca cihaza denk geliyor (bu ürünler
+      // adetle sayılıyor). Eskiden ilk eşleşme alınıyordu: ilk adet aktarıldıktan
+      // sonra o cihaz artık hedef mağazada olduğu için ikinci okutma "zaten ...
+      // deposunda" deyip duruyordu — kaynakta aynı barkodtan 19 adet dururken.
+      const uygunKosul = {
+        OR: [{ seriNo: aranan }, { barkod: aranan }],
+        durum: STOK_DURUM.STOKTA,
+        magazaId: kaynakMagazaId,
+      };
       const cihaz = kimlikle
         ? await tx.stokKalemi.findUnique({
             where: { id: cihazId },
             include: { magaza: { select: { ad: true } } },
           })
-        : await tx.stokKalemi.findFirst({
+        : ((await tx.stokKalemi.findFirst({
+            where: uygunKosul,
+            include: { magaza: { select: { ad: true } } },
+            orderBy: { id: "asc" },
+          })) ??
+          // Uygun adet kalmadıysa nedenini söyleyebilmek için herhangi bir
+          // eşleşme alınıyor; aşağıdaki denetimler doğru mesajı üretiyor
+          // ("satılmış", "bir sevkiyatta", "zaten şu deposunda").
+          (await tx.stokKalemi.findFirst({
             where: { OR: [{ seriNo: aranan }, { barkod: aranan }] },
             include: { magaza: { select: { ad: true } } },
-          });
+            orderBy: { id: "asc" },
+          })));
 
       if (!cihaz)
         return {

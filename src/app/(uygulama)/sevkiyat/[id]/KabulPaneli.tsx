@@ -42,7 +42,10 @@ export function KabulPaneli({
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-slate-200 bg-white p-3 text-center">
           <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Toplam</div>
-          <div className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-900">
+          <div
+            data-test="sayac-toplam"
+            className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-900"
+          >
             {toplamAdet}
           </div>
         </div>
@@ -50,13 +53,19 @@ export function KabulPaneli({
           <div className="text-xs font-medium uppercase tracking-wide text-emerald-700">
             Okutulan
           </div>
-          <div className="mt-0.5 text-2xl font-semibold tabular-nums text-emerald-700">
+          <div
+            data-test="sayac-okutulan"
+            className="mt-0.5 text-2xl font-semibold tabular-nums text-emerald-700"
+          >
             {okutulanAdet}
           </div>
         </div>
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center">
           <div className="text-xs font-medium uppercase tracking-wide text-amber-700">Bekleyen</div>
-          <div className="mt-0.5 text-2xl font-semibold tabular-nums text-amber-700">
+          <div
+            data-test="sayac-bekleyen"
+            className="mt-0.5 text-2xl font-semibold tabular-nums text-amber-700"
+          >
             {bekleyenAdet}
           </div>
         </div>

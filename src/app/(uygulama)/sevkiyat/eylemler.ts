@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logYaz } from "@/lib/log";
 import { kodNormalize } from "@/lib/metin";
+import { hepsiOkutulduNotu, ilerlemeNotu, siradakiOkutma } from "@/lib/okutmaSirasi";
 import { cihazSec, type AdayCihaz } from "@/lib/cihazSecimi";
 import { prisma } from "@/lib/prisma";
 import {
@@ -390,37 +391,64 @@ export async function kabulCihaziOkut(
     const aranan = kodNormalize(kod);
     if (aranan.length < 3) return { durum: "HATA", mesaj: "Geçerli bir seri no veya barkod girin." };
 
-    const kalem = await prisma.transferKalemi.findFirst({
+    // Eşleşen TÜM kalemler çekiliyor, ilki değil. Aksesuarlarda tek barkod
+    // onlarca adede denk geliyor (bu ürünler adetle sayılıyor, seri numarasıyla
+    // değil). Eskiden `findFirst` ile ilk kalem alınıyordu: o kalem kabul
+    // edilmişse, aynı barkodtan 19 adet beklerken bile "zaten okutuldu" deyip
+    // okutmaya izin vermiyordu — 40 kalemlik bir sevkiyat kabul edilemez hale
+    // geliyordu.
+    const kalemler = await prisma.transferKalemi.findMany({
       where: {
         transferId,
         stokKalemi: { OR: [{ seriNo: aranan }, { barkod: aranan }] },
       },
       include: { stokKalemi: { select: { marka: true, model: true, seriNo: true } } },
+      orderBy: { id: "asc" },
     });
 
-    if (!kalem) {
+    const secim = siradakiOkutma(kalemler, (k) => {
+      if (k.durum === TRANSFER_KALEM_DURUM.KABUL) return "OKUTULDU";
+      if (k.durum === TRANSFER_KALEM_DURUM.RED) return "DISI";
+      return "BEKLIYOR";
+    });
+
+    if (secim.durum === "YOK") {
       return { durum: "HATA", mesaj: `${aranan} bu sevkiyatta yok. Yanlış paket olabilir.` };
     }
-    if (kalem.durum === TRANSFER_KALEM_DURUM.KABUL) {
-      return {
-        durum: "ZATEN_OKUTULDU",
-        mesaj: `${kalem.stokKalemi.marka} ${kalem.stokKalemi.model} zaten okutuldu.`,
-      };
-    }
-    if (kalem.durum === TRANSFER_KALEM_DURUM.RED) {
+    if (secim.durum === "DISI") {
       return { durum: "HATA", mesaj: `${aranan} daha önce reddedilmiş.` };
     }
 
-    await prisma.transferKalemi.update({
-      where: { id: kalem.id },
+    const urunAdi = `${kalemler[0].stokKalemi.marka} ${kalemler[0].stokKalemi.model}`;
+
+    if (secim.durum === "HEPSI_OKUTULDU") {
+      return {
+        durum: "ZATEN_OKUTULDU",
+        mesaj: `${urunAdi} — ${hepsiOkutulduNotu(secim.toplam)}.`,
+      };
+    }
+
+    const kalem = secim.kalem;
+
+    // Koşullu güncelleme: iki kişi aynı paketi birlikte boşaltırken ikisi de
+    // aynı bekleyen adedi seçebilir. Durum şartı sorguda olunca ikincisi
+    // sessizce aynı adedi işaretlemek yerine uyarı alıyor.
+    const yazilan = await prisma.transferKalemi.updateMany({
+      where: { id: kalem.id, durum: TRANSFER_KALEM_DURUM.BEKLIYOR },
       data: { durum: TRANSFER_KALEM_DURUM.KABUL, kabulTarihi: new Date() },
     });
+    if (yazilan.count === 0) {
+      return {
+        durum: "HATA",
+        mesaj: `${urunAdi} az önce başka biri tarafından okutuldu. Tekrar okutun.`,
+      };
+    }
 
     revalidatePath(`/sevkiyat/${transferId}`);
     return {
       durum: "KABUL",
       kalemId: kalem.id,
-      mesaj: `${kalem.stokKalemi.marka} ${kalem.stokKalemi.model} kabul edildi.`,
+      mesaj: `${urunAdi} kabul edildi${ilerlemeNotu(secim.sira, secim.toplam)}.`,
     };
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { durum: "HATA", mesaj: hata.message };
