@@ -139,23 +139,30 @@ try {
   ]);
   console.log(`0) hazırlık: 2 cihaz ${ALIS} TL alışla 1 Nolu Mağaza'ya girildi`);
 
-  // ----------------------------- 1) Satış modu varsayılan kapalı olmalı
+  // -------------------- 1-2) Satış bilgileri açıkta: kutu arkasında değil
+  // Eskiden müşteri/satışçı/ödeme tipi "Alış Fiyatını Revize Et" kutusunun
+  // arkasındaydı ve varsayılan kapalıydı. Kutuyu işaretlemeyi unutan satışı
+  // hiç kaydetmiyordu; o aktarım ne panele ne satış raporlarına giriyordu.
+  // Mağaza içi aktarım fiilen bir satış olduğu için bilgiler artık açıkta.
   await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
-  const kutucuk = sayfa.locator('[data-test="satis-modu"]');
-  kontrol("sat-geri al kutucuğu ekranda var", (await kutucuk.count()) === 1);
-  kontrol("varsayılan olarak kapalı", !(await kutucuk.isChecked()));
   kontrol(
-    "kapalıyken müşteri alanları gizli",
-    (await sayfa.locator('[data-test="musteri-sorgu"]').count()) === 0,
+    "satış bilgileri bloğu ekranda",
+    (await sayfa.locator('[data-test="aktarim-satis-bilgileri"]').count()) === 1,
   );
-
-  // --------------------------------- 2) Açınca müşteri ve satıcı çıkıyor
-  await kutucuk.check();
-  await sayfa.waitForTimeout(400);
-  kontrol("müşteri arama alanı açıldı", (await sayfa.locator('[data-test="musteri-sorgu"]').count()) === 1);
-  kontrol("ödeme tipi seçimi açıldı", (await sayfa.locator('[data-test="odeme-tipi"]').count()) === 1);
   kontrol(
-    "satışı yapan seçimi açıldı",
+    "artık işaretlenecek bir kutu yok",
+    (await sayfa.locator('[data-test="satis-modu"]').count()) === 0,
+  );
+  kontrol(
+    "müşteri arama alanı tıklamadan görünüyor",
+    (await sayfa.locator('[data-test="musteri-sorgu"]').count()) === 1,
+  );
+  kontrol(
+    "ödeme tipi tıklamadan görünüyor",
+    (await sayfa.locator('[data-test="odeme-tipi"]').count()) === 1,
+  );
+  kontrol(
+    "satışı yapan tıklamadan görünüyor",
     (await sayfa.locator('[data-test="satisi-yapan"]').count()) === 1,
   );
   const odemeSecenekleri = await sayfa.locator('[data-test="odeme-tipi"] option').allTextContents();
@@ -248,7 +255,6 @@ try {
 
   // Satış akışına geri dön: aynı cihaz için şimdi satış fiyatı da yazılacak.
   await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
-  await sayfa.locator('[data-test="satis-modu"]').check();
   await sayfa.fill('[data-test="musteri-ad"]', MUSTERI);
   await sayfa.selectOption("#kaynak", { label: "2 Nolu Mağaza" });
   await sayfa.waitForTimeout(400);
@@ -258,7 +264,6 @@ try {
   await sayfa.locator('[data-test="satisi-kaydet"]').click();
   await sayfa.waitForTimeout(2000);
   await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
-  await sayfa.locator('[data-test="satis-modu"]').check();
   await sayfa.fill('[data-test="musteri-ad"]', MUSTERI);
   await sayfa.selectOption("#kaynak", { label: "1 Nolu Mağaza" });
   await sayfa.waitForTimeout(400);
@@ -348,12 +353,20 @@ try {
 
   const panelMetni = (await sayfa.locator("main").textContent()) ?? "";
   kontrol(
-    "Bugün Satılan kartı sat-geri al işlemini sayıyor",
-    panelMetni.includes("sat-geri al"),
+    "Stoktan Çıkanlar kartı mağaza içi aktarımı sayıyor",
+    panelMetni.includes("mağaza içi aktarım"),
   );
   kontrol(
     "bugünün listesinde aktarım satışı işaretli",
     (await sayfa.locator('[data-test="bugun-aktarim-satisi"]').count()) >= 1,
+  );
+  // Rozetin yazısı kullanıcının istediği ifade: "sat-geri al" iç terimdi,
+  // ekranda "mağaza içi aktarım" yazması istendi.
+  kontrol(
+    "rozet 'mağaza içi aktarım' yazıyor",
+    ((await sayfa.locator('[data-test="aktarim-rozeti"]').first().textContent()) ?? "").trim() ===
+      "mağaza içi aktarım",
+    ((await sayfa.locator('[data-test="aktarim-rozeti"]').first().textContent()) ?? "").trim(),
   );
 
   // ------------------------------------------ 9) /rapor ekranı da aynı sayı
@@ -382,10 +395,9 @@ try {
   await giris("personel1");
   await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
   kontrol(
-    "personele de sat-geri al kutucuğu çıkıyor",
-    (await sayfa.locator('[data-test="satis-modu"]').count()) === 1,
+    "personele de satış bilgileri çıkıyor",
+    (await sayfa.locator('[data-test="aktarim-satis-bilgileri"]').count()) === 1,
   );
-  await sayfa.locator('[data-test="satis-modu"]').check();
   await sayfa.fill('[data-test="musteri-ad"]', `${MUSTERI} 2`);
   await sayfa.selectOption("#kaynak", { label: "1 Nolu Mağaza" });
   await sayfa.waitForTimeout(400);
@@ -441,7 +453,6 @@ try {
   );
 
   await tarihKutusu.fill(GECMIS_TARIH);
-  await sayfa.locator('[data-test="satis-modu"]').check();
   await sayfa.fill('[data-test="musteri-ad"]', MUSTERI);
   // Cihaz 2 Nolu'da duruyor; oradan 1 Nolu'ya aktarıp satışı 2 Nolu'ya yazdır.
   await sayfa.selectOption("#kaynak", { label: "2 Nolu Mağaza" });
@@ -517,8 +528,8 @@ try {
   await giris("personel1");
   await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
   kontrol(
-    "eşte yetkisi olmayan personele kutu çıkmıyor",
-    (await sayfa.locator('[data-test="satis-modu"]').count()) === 0,
+    "eşte yetkisi olmayan personele satış bilgileri çıkmıyor",
+    (await sayfa.locator('[data-test="aktarim-satis-bilgileri"]').count()) === 0,
   );
   const engelMetni = await sayfa
     .locator('[data-test="aktarim-yetki-engeli"]')
@@ -539,13 +550,12 @@ try {
   await giris("personel1");
   await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
   kontrol(
-    "yetki verilince personele de sat-geri al kutusu çıkıyor",
-    (await sayfa.locator('[data-test="satis-modu"]').count()) === 1,
+    "yetki verilince personele de satış bilgileri çıkıyor",
+    (await sayfa.locator('[data-test="aktarim-satis-bilgileri"]').count()) === 1,
   );
 
   // Düğmeyi göstermek yetmez: personel gerçekten kaydedebilmeli.
   // Cihaz bu noktada 2 Nolu Mağaza'da duruyor; aktarım oradan başlıyor.
-  await sayfa.locator('[data-test="satis-modu"]').check();
   await sayfa.fill('[data-test="musteri-ad"]', `${MUSTERI} P`);
   await sayfa.selectOption("#kaynak", { label: "2 Nolu Mağaza" });
   await sayfa.waitForTimeout(400);
@@ -563,14 +573,12 @@ try {
       : ""),
   );
 
-  // ===== 12) Müşteri girilmeden de alış fiyatı revize edilebilmeli
-  // Kullanıcı bildirdi: "Alış Fiyatını Revize Et" işaretliyken müşteri
-  // girilmediğinde satır için HİÇBİR fiyat alanı çıkmıyordu — ne satış formu
-  // ne fiyat düzeltme. Oysa satış için müşteri gerekir, fiyat düzeltmek için
-  // gerekmez; kutunun kendi metni de bunu söylüyor.
+  // ===== 12) Müşteri girilmeden de aktarım ve fiyat revizesi yapılabilmeli
+  // Satış zorunlu değil: rafta yer değiştirme gibi gerçek bir taşımada
+  // müşteri girilmeden cihaz taşınabilmeli ve alış fiyatı düzeltilebilmeli.
+  // Satış için müşteri gerekir, fiyat düzeltmek için gerekmez.
   await giris("admin");
   await sayfa.goto(`${hedef}/aktarim`, { waitUntil: "networkidle" });
-  await sayfa.locator('[data-test="satis-modu"]').check();
   await sayfa.selectOption("#kaynak", { label: "1 Nolu Mağaza" });
   await sayfa.waitForTimeout(400);
   const musterisizMesaj = await aktar(imei(2));

@@ -144,7 +144,7 @@ export default async function PanelSayfasi({
             bugun.adet > 0
               ? `${kurusuTLYazSembollu(bugun.ciroKurus)} ciro${
                   bugun.aktarimAdedi > 0
-                    ? ` · ${bugun.aktarimAdedi} sat-geri al`
+                    ? ` · ${bugun.aktarimAdedi} mağaza içi aktarım`
                     : ""
                 }`
               : "bugün satış yok"
@@ -238,11 +238,15 @@ export default async function PanelSayfasi({
                     >
                       {k.marka} {k.model}
                     </Link>
-                    {/* Aktarım satışında cihaz stokta kalıyor; cihaz
-                        listesinde "satıldı" görünmediği için işaretleniyor. */}
+                    {/* Mağaza içi aktarımda cihaz satılıp hemen geri alınıyor,
+                        yani stokta kalıyor; cihaz listesinde "satıldı"
+                        görünmediği için burada işaretleniyor. */}
                     {k.aktarimMi ? (
-                      <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-800">
-                        sat-geri al
+                      <span
+                        data-test="aktarim-rozeti"
+                        className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-800"
+                      >
+                        mağaza içi aktarım
                       </span>
                     ) : null}
                     <div className="text-xs text-slate-500">
@@ -273,8 +277,8 @@ export default async function PanelSayfasi({
               >
                 stoktan çıkanların tamamını görün
               </Link>
-              . Sat-geri al işlemlerinde cihaz stokta kaldığı için o liste
-              onları içermiyor.
+              . Mağaza içi aktarımda cihaz satılıp hemen geri alındığı için
+              stokta kalır; o liste onları içermiyor.
             </p>
           ) : null}
         </Kart>

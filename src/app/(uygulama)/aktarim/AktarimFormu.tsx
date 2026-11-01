@@ -87,10 +87,14 @@ export function AktarimFormu({
   const [islemTarihi, setIslemTarihi] = useState(bugun);
 
   // ---------------------------------------------- müşteriye sat, geri al
-  // Dükkân içinde cihaz taşınırken ürün fiilen müşteriye satılıp geri
-  // alınıyor. Varsayılan kapalı: ekran düz taşıma için de kullanılıyor ve
-  // o akışta müşteri sorusu gecikme olurdu.
-  const [satisModu, setSatisModu] = useState(false);
+  // Dükkân içinde cihaz taşımak fiilen bir satış: ürün müşteriye satılıp
+  // hemen geri alınıyor, kasaya para giriyor. Satış bilgileri bu yüzden
+  // ekranda açıkta duruyor; eskiden "Alış Fiyatını Revize Et" kutusunun
+  // arkasındaydı ve kutuyu işaretlemeyi unutan satışı hiç kaydetmiyordu —
+  // o aktarım ne panele ne satış raporlarına giriyordu.
+  //
+  // Zorunlu değil: müşteri girilmezse cihaz yalnız taşınır. Rafta yer
+  // değiştirme gibi gerçek bir taşıma gerektiğinde ekran kapanmasın.
   const [odemeTipi, setOdemeTipi] = useState<string>(ODEME_TIPI.NAKIT);
   const [satanId, setSatanId] = useState(varsayilanSaticiId);
   const [seciliMusteri, setSeciliMusteri] = useState<MusteriOzeti | null>(null);
@@ -338,92 +342,83 @@ export function AktarimFormu({
           </div>
         </div>
 
-        {/* Sat-geri al: cihaz dükkânda kalıyor ama kasaya satış giriyor.
-            Müşteri, ödeme tipi ve satışı yapan bir kez burada seçiliyor;
-            fiyatlar cihaz başına, aşağıdaki satırlarda. */}
-        <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50/60 p-3">
-          <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              data-test="satis-modu"
-              checked={satisModu}
-              onChange={(e) => setSatisModu(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-slate-400"
-            />
-            <span className="text-sm">
-              <span className="font-medium text-amber-900">
-                Alış Fiyatını Revize Et
-              </span>
-              <span className="block text-xs text-amber-800">
-                Okutulan her cihaz için yeni alış fiyatı sorulur. Müşteriye
-                satıp geri aldıysanız satış fiyatını da yazın — o zaman satış,
-                paneldeki mağaza ve personel satış raporlarına yansır. Satış
-                fiyatı boş bırakılırsa yalnız alış fiyatı güncellenir. Cihaz her
-                durumda stokta kalır.
-              </span>
+        {/* Mağaza içi aktarım fiilen bir satış: cihaz dükkânda kalıyor ama
+            kasaya para giriyor. Müşteri, ödeme tipi ve satışı yapan bir kez
+            burada seçiliyor; fiyatlar cihaz başına, aşağıdaki satırlarda. */}
+        <div
+          data-test="aktarim-satis-bilgileri"
+          className="mb-3 rounded-lg border border-amber-300 bg-amber-50/60 p-3"
+        >
+          <div className="text-sm">
+            <span className="font-medium text-amber-900">Satış Bilgileri</span>
+            <span className="block text-xs text-amber-800">
+              Mağaza içi aktarım bir satıştır: cihaz müşteriye satılıp hemen
+              geri alınır, cihaz stokta kalır. Müşteriyi seçtiğinizde okutulan
+              her cihaz için satış ve yeni alış fiyatı sorulur; satış panele ve
+              mağaza/personel satış raporlarına yansır. Müşteri girmezseniz
+              cihaz yalnız taşınır, satış kaydı açılmaz.
             </span>
-          </label>
+          </div>
 
-          {satisModu ? (
-            <div className="mt-3 space-y-3 border-t border-amber-200 pt-3">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="aktarimOdemeTipi" className={KUCUK_ETIKET}>
-                    Ödeme Tipi
-                  </label>
-                  <select
-                    id="aktarimOdemeTipi"
-                    data-test="odeme-tipi"
-                    value={odemeTipi}
-                    onChange={(e) => setOdemeTipi(e.target.value)}
-                    className={GIRDI_SINIFI}
-                  >
-                    {Object.values(ODEME_TIPI).map((t) => (
-                      <option key={t} value={t}>
-                        {ODEME_TIPI_ETIKET[t as OdemeTipi]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="aktarimSatan" className={KUCUK_ETIKET}>
-                    Satışı Yapan
-                  </label>
-                  <select
-                    id="aktarimSatan"
-                    data-test="satisi-yapan"
-                    value={satanId}
-                    onChange={(e) => setSatanId(Number(e.target.value))}
-                    className={GIRDI_SINIFI}
-                  >
-                    {saticilar.map((k) => (
-                      <option key={k.id} value={k.id}>
-                        {k.adSoyad}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <MusteriBlogu
-                secili={seciliMusteri}
-                setSecili={setSeciliMusteri}
-                yeniAd={yeniAd}
-                setYeniAd={setYeniAd}
-                yeniTelefon={yeniTelefon}
-                setYeniTelefon={setYeniTelefon}
-              />
-
-              {!musteriHazir ? (
-                <p
-                  data-test="musteri-eksik"
-                  className="rounded border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-medium text-amber-900"
+          <div className="mt-3 space-y-3 border-t border-amber-200 pt-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div>
+                <label htmlFor="aktarimOdemeTipi" className={KUCUK_ETIKET}>
+                  Ödeme Tipi
+                </label>
+                <select
+                  id="aktarimOdemeTipi"
+                  data-test="odeme-tipi"
+                  value={odemeTipi}
+                  onChange={(e) => setOdemeTipi(e.target.value)}
+                  className={GIRDI_SINIFI}
                 >
-                  Satışı kaydetmek için müşteri seçin veya ad soyad girin.
-                </p>
-              ) : null}
+                  {Object.values(ODEME_TIPI).map((t) => (
+                    <option key={t} value={t}>
+                      {ODEME_TIPI_ETIKET[t as OdemeTipi]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="aktarimSatan" className={KUCUK_ETIKET}>
+                  Satışı Yapan
+                </label>
+                <select
+                  id="aktarimSatan"
+                  data-test="satisi-yapan"
+                  value={satanId}
+                  onChange={(e) => setSatanId(Number(e.target.value))}
+                  className={GIRDI_SINIFI}
+                >
+                  {saticilar.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.adSoyad}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          ) : null}
+
+            <MusteriBlogu
+              secili={seciliMusteri}
+              setSecili={setSeciliMusteri}
+              yeniAd={yeniAd}
+              setYeniAd={setYeniAd}
+              yeniTelefon={yeniTelefon}
+              setYeniTelefon={setYeniTelefon}
+            />
+
+            {!musteriHazir ? (
+            <p
+              data-test="musteri-eksik"
+              className="rounded border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-medium text-amber-900"
+            >
+              Satış kaydı için müşteri seçin veya ad soyad girin. Müşteri
+              girmezseniz cihaz yalnız taşınır.
+            </p>
+            ) : null}
+          </div>
         </div>
 
         <OkutmaKutusu
@@ -598,13 +593,10 @@ export function AktarimFormu({
                     {geriAlinan === s.anahtar ? "Geri alınıyor…" : "Geri al"}
                   </button>
                 ) : null}
-                {/* Satış modu açık ve müşteri girilmişse sat-geri al formu;
-                    aksi halde yalnız alış fiyatını düzeltme. Müşteri yokken
-                    hiçbir şey göstermemek, "alış fiyatını revize edeceğim"
-                    diye kutuyu işaretleyen kullanıcıyı fiyat alanı olmadan
-                    bırakıyordu — oysa satış için müşteri gerekir, fiyat
+                {/* Müşteri girilmişse sat-geri al formu; aksi halde yalnız
+                    alış fiyatını düzeltme. Satış için müşteri gerekir, fiyat
                     düzeltmek için gerekmez. */}
-                {s.geriAlindi ? null : satisModu && musteriHazir ? (
+                {s.geriAlindi ? null : musteriHazir ? (
                   <SatGeriAl
                     cihazId={s.anahtar}
                     kaynakMagazaId={s.kaynakId}
