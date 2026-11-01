@@ -86,7 +86,7 @@ export function KabulPaneli({
         okut={okut}
         devreDisi={bekleyenAdet === 0}
         yanAlan={
-          <div className="flex items-center gap-1.5">
+          <div className="flex w-28 items-center gap-1.5">
             <label htmlFor="kabulAdedi" className="text-sm font-medium text-blue-900">
               Adet
             </label>
@@ -100,7 +100,7 @@ export function KabulPaneli({
               value={adet}
               disabled={bekleyenAdet === 0}
               onChange={(e) => setAdet(e.target.value)}
-              className={`w-20 ${GIRDI_SINIFI} font-mono`}
+              className={`${GIRDI_SINIFI} font-mono`}
             />
           </div>
         }

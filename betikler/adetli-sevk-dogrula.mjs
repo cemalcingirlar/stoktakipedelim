@@ -123,6 +123,22 @@ try {
   const mevcut = ((await sayfa.locator('[data-test="adet-mevcut"]').textContent()) ?? "").trim();
   kontrol("mevcut adet doğru yazıyor", mevcut === String(ADET), mevcut);
 
+  // ======================================= 1b) Geçersiz adet reddediliyor
+  // "Kaç adet?" sorusuna 0 yazınca sessizce 1 adet eklenmemeli: sorulan
+  // soruya verilen cevap tutmaz ve kullanıcı listeye nereden cihaz girdiğini
+  // anlamaz.
+  await sayfa.fill('[data-test="adet-girdisi"]', "0");
+  await sayfa.click('[data-test="adet-ekle"]');
+  await sayfa.waitForTimeout(900);
+  const sifirHatasi = sayfa.locator('[data-test="adet-hatasi"]');
+  kontrol(
+    "0 adet reddediliyor",
+    (await sifirHatasi.count()) === 1 &&
+      ((await sifirHatasi.textContent()) ?? "").includes("En az 1 adet"),
+    (await sifirHatasi.count()) > 0 ? ((await sifirHatasi.textContent()) ?? "").trim() : "(uyarı yok)",
+  );
+  kontrol("0 adette listeye hiçbir şey eklenmedi", (await listeSatiri()) === 0, `${await listeSatiri()} satır`);
+
   // ======================================= 2) İstenen adet listeye giriyor
   const sekiz = await adetEkle(8);
   kontrol("8 adet tek seferde eklendi", (await listeSatiri()) === 8, `${await listeSatiri()} satır`);

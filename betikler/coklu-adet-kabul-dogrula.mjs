@@ -166,6 +166,21 @@ try {
     String(await sayac("bekleyen")),
   );
 
+  // ================================ 1b) Telefonda okutma kutusu dar kalmamalı
+  // Kabul ekranına "Adet" alanı eklenince okutma kutusu telefonda 132 piksele
+  // kadar inmişti: barkod okuyucunun yazdığı 13 haneli kod görünmüyordu.
+  // Dar ekranda kutu artık kendi satırını alıyor.
+  await sayfa.setViewportSize({ width: 390, height: 844 });
+  await sayfa.goto(`${hedef}/sevkiyat/${transferId}`, { waitUntil: "networkidle" });
+  const darKutu = await sayfa.locator("#okutmaKutusu").boundingBox();
+  kontrol(
+    "telefonda okutma kutusu dar kalmıyor",
+    Boolean(darKutu) && (darKutu?.width ?? 0) > 250,
+    `${Math.round(darKutu?.width ?? 0)} px`,
+  );
+  await sayfa.setViewportSize({ width: 1500, height: 1100 });
+  await sayfa.goto(`${hedef}/sevkiyat/${transferId}`, { waitUntil: "networkidle" });
+
   // ======================================= 2) Aynı barkod arka arkaya okunuyor
   // Hatanın tam yeri: ikinci okutma. Eskiden burada "zaten okutuldu" çıkıyordu.
   const ilk = await okut(BARKOD_SIYAH);

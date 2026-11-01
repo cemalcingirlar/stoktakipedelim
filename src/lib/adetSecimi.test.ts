@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { adediSinirla, adetliMi, adetSonucNotu, type AdetAdayi } from "./adetSecimi";
+import {
+  adediSinirla,
+  adetliMi,
+  adetSonucNotu,
+  adetSorunu,
+  type AdetAdayi,
+} from "./adetSecimi";
 
 const BARKOD = "8806094899528";
 const seriNosuz = (id: number): AdetAdayi => ({ id, seriNo: null });
@@ -59,4 +65,19 @@ test("istenen kadarı yoksa not bunu söylüyor", () => {
 
 test("istenen kadarı varsa not sade", () => {
   assert.equal(adetSonucNotu(20, 20, "sevkiyata eklendi"), "20 adet sevkiyata eklendi");
+});
+
+test("geçerli adette sorun yok", () => {
+  assert.equal(adetSorunu(1), null);
+  assert.equal(adetSorunu(20), null);
+});
+
+test("sıfır ve negatif adet reddediliyor", () => {
+  // Sessizce 1 adet eklemek, sorulan soruya verilen cevabı tutmaz.
+  assert.equal(adetSorunu(0), "En az 1 adet girin.");
+  assert.equal(adetSorunu(-5), "En az 1 adet girin.");
+});
+
+test("rakam olmayan adet reddediliyor", () => {
+  assert.equal(adetSorunu(Number.NaN), "Adedi rakamla yazın.");
 });

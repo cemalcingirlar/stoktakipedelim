@@ -165,6 +165,12 @@ try {
     "satışı yapan tıklamadan görünüyor",
     (await sayfa.locator('[data-test="satisi-yapan"]').count()) === 1,
   );
+  // Uyarı yalnız iş başladıktan sonra: ekran açılır açılmaz "müşteri seçin"
+  // demek, henüz cihaz okutmamış kullanıcıya hata gibi görünüyordu.
+  kontrol(
+    "açılışta müşteri uyarısı çıkmıyor",
+    (await sayfa.locator('[data-test="musteri-eksik"]').count()) === 0,
+  );
   const odemeSecenekleri = await sayfa.locator('[data-test="odeme-tipi"] option').allTextContents();
   kontrol(
     "ödeme tipleri arasında Temlik var",

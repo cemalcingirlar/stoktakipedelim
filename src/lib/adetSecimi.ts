@@ -48,6 +48,21 @@ export function adediSinirla(istenen: number, mevcut: number): number {
 }
 
 /**
+ * Kullanıcının yazdığı adet geçerli mi? Geçerliyse null, değilse mesaj.
+ *
+ * `adediSinirla` geçersiz değeri 1'e çekiyor; bu savunma amaçlı ve sunucunun
+ * son çaresi. Kullanıcı "kaç adet?" sorusuna 0 ya da -5 yazdığında sessizce
+ * 1 adet eklemek yanlış: sorulan soruya verilen cevap tutmuyor ve kullanıcı
+ * listeye nereden bir cihaz girdiğini anlamıyor. Bu yüzden açıkça soruluyorsa
+ * önce bu denetimden geçiyor.
+ */
+export function adetSorunu(istenen: number): string | null {
+  if (!Number.isFinite(istenen)) return "Adedi rakamla yazın.";
+  if (istenen < 1) return "En az 1 adet girin.";
+  return null;
+}
+
+/**
  * İşlenen adedi anlatan not. Sonunda nokta yok; çağıran ilerleme ekleyebilsin.
  *
  * İstenen adet mevcuttan fazlaysa bunu söylemek şart: kullanıcı 20 yazıp 5

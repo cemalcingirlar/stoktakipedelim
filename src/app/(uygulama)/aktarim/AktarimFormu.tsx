@@ -409,7 +409,11 @@ export function AktarimFormu({
               setYeniTelefon={setYeniTelefon}
             />
 
-            {!musteriHazir ? (
+            {/* Uyarı yalnız iş başladıktan sonra: ekran açılır açılmaz
+                "müşteri seçin" demek, henüz cihaz okutmamış kullanıcıya
+                hata gibi görünüyordu. Bloğun kendi metni ne olacağını zaten
+                anlatıyor. */}
+            {satirlar.length > 0 && !musteriHazir ? (
             <p
               data-test="musteri-eksik"
               className="rounded border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-medium text-amber-900"

@@ -6,6 +6,7 @@ import { GonderDugmesi } from "@/bilesenler/Dugme";
 import { OkutmaKutusu, type OkutmaGeriBildirimi } from "@/bilesenler/OkutmaKutusu";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { adayEtiketi, secimBasligi, type AdayCihaz } from "@/lib/cihazSecimi";
+import { adetSorunu } from "@/lib/adetSecimi";
 import { kabulUyarisi, type KabulDurumu } from "@/lib/sevkiyatKabul";
 import {
   sevkiyatAdetEkle,
@@ -129,6 +130,12 @@ export function SevkiyatFormu({
   /** Adet sorusuna verilen cevapla cihazları topluca ekler. */
   function adetiOnayla() {
     if (!adetSorusu) return;
+    // Sunucuya gitmeden söylüyoruz; aynı kural orada da var.
+    const sorun = adetSorunu(Math.floor(Number(adet)));
+    if (sorun) {
+      setAdetHatasi(sorun);
+      return;
+    }
     setAdetHatasi(null);
     adetBasla(async () => {
       const sonuc = await sevkiyatAdetEkle(
@@ -278,7 +285,7 @@ export function SevkiyatFormu({
             <strong data-test="adet-mevcut">{adetSorusu.mevcut}</strong> adet var.
           </p>
           <div className="flex flex-wrap items-end gap-2">
-            <div>
+            <div className="w-40">
               <label htmlFor="sevkAdedi" className="mb-1 block text-xs font-medium text-blue-900">
                 Kaç adet sevk edilecek?
               </label>
@@ -298,7 +305,7 @@ export function SevkiyatFormu({
                     adetiOnayla();
                   }
                 }}
-                className={`w-28 ${GIRDI_SINIFI} font-mono`}
+                className={`${GIRDI_SINIFI} font-mono`}
               />
             </div>
             <button
