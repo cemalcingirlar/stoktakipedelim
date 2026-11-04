@@ -9,8 +9,13 @@ import { vadeEtiketi } from "@/lib/vade";
 import { tarihSaatYaz, tarihYaz } from "@/lib/tarih";
 import { vadeDurumu } from "@/lib/vade";
 import { adminMi, oturumGerekli } from "@/lib/yetki";
-import { faturaIptalEngeli } from "@/lib/kayitIptali";
+import {
+  faturaGeriAlmaEngeli,
+  faturaGeriAlmaOzeti,
+  faturaIptalEngeli,
+} from "@/lib/kayitIptali";
 import { FaturaIptali } from "./FaturaIptali";
+import { FaturaIptaliniGeriAl } from "./FaturaIptaliniGeriAl";
 import { VadeDugmesi } from "./VadeDugmesi";
 
 export const metadata = { title: "Fatura Detayı — Stok Takip" };
@@ -62,6 +67,11 @@ export default async function FaturaDetaySayfasi({
   const bugun = new Date();
   const vade = vadeDurumu(fatura, bugun);
   const toplam = fatura.kalemler.reduce((t, k) => t + k.alisFiyatiKurus, 0);
+  // İptal geri alınabilir mi? Numara ve seri no çakışması veritabanına bakmayı
+  // gerektirdiği için sunucu eyleminde ayrıca denetleniyor; burada yalnız
+  // kayıttan okunabilen engeller.
+  const geriAlmaEngeli = faturaGeriAlmaEngeli(fatura, fatura.kalemler);
+  const geriAlmaOzeti = faturaGeriAlmaOzeti(fatura.kalemler);
 
   return (
     <div className="space-y-5">
@@ -213,11 +223,23 @@ export default async function FaturaDetaySayfasi({
         {adminMi(oturum) ? (
           <Kart baslik="Fatura İptali">
             {fatura.iptalEdildi ? (
-              <p data-test="fatura-iptalli" className="text-sm text-slate-600">
-                Bu fatura{" "}
-                {fatura.iptalTarihi ? tarihYaz(fatura.iptalTarihi) : ""}{" "}
-                tarihinde iptal edildi. Gerekçe: {fatura.iptalGerekce ?? "—"}
-              </p>
+              <>
+                <p data-test="fatura-iptalli" className="text-sm text-slate-600">
+                  Bu fatura{" "}
+                  {fatura.iptalTarihi ? tarihYaz(fatura.iptalTarihi) : ""}{" "}
+                  tarihinde iptal edildi. Gerekçe: {fatura.iptalGerekce ?? "—"}
+                </p>
+                {geriAlmaEngeli ? (
+                  <p data-test="fatura-geri-al-engeli" className="mt-2 text-sm text-slate-600">
+                    {geriAlmaEngeli}
+                  </p>
+                ) : (
+                  <FaturaIptaliniGeriAl
+                    faturaId={fatura.id}
+                    geriAlinacakAdet={geriAlmaOzeti.geriAlinacak}
+                  />
+                )}
+              </>
             ) : (
               <FaturaIptali
                 faturaId={fatura.id}

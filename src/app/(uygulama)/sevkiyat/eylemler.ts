@@ -7,7 +7,12 @@ import { logYaz } from "@/lib/log";
 import { kodNormalize } from "@/lib/metin";
 import { hepsiOkutulduNotu, ilerlemeNotu, siradakiOkutma } from "@/lib/okutmaSirasi";
 import { cihazSec, uygunMu, type AdayCihaz } from "@/lib/cihazSecimi";
-import { adediSinirla, adetliMi, adetSonucNotu } from "@/lib/adetSecimi";
+import {
+  adediSinirla,
+  adetliMi,
+  adetSonucNotu,
+  adetSorunu,
+} from "@/lib/adetSecimi";
 import { prisma } from "@/lib/prisma";
 import {
   kabulDurumu,
@@ -282,7 +287,13 @@ export async function sevkiyatAdetEkle(
       };
     }
 
-    const istenen = Math.max(1, Math.floor(Number(adet) || 1));
+    // "Kaç adet?" sorusuna 0 ya da -5 yazıldığında sessizce 1 adet eklemek
+    // yanlış olurdu: sorulan soruya verilen cevap tutmaz ve kullanıcı listeye
+    // nereden cihaz girdiğini anlamaz.
+    const istenen = Math.floor(Number(adet));
+    const sorun = adetSorunu(istenen);
+    if (sorun) return { durum: "HATA", mesaj: sorun };
+
     const secilenler = uygunlar.slice(0, adediSinirla(istenen, uygunlar.length));
     const etiket = `${uygunlar[0].marka} ${uygunlar[0].model}`.replace(/\s+/g, " ").trim();
 

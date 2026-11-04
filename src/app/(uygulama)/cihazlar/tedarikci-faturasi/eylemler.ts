@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { faturaOlustur } from "@/lib/fatura";
 import { logYaz } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
+import { IPTAL_HARIC } from "@/lib/kayitIptali";
 import { LOG_ISLEM } from "@/lib/sabitler";
 import { dosyaTuruBul } from "@/lib/dosyaTuru";
 import { efaturaCoz, efaturadanTedarikciFaturasi } from "@/lib/efaturaPdf";
@@ -124,7 +125,7 @@ export async function tedarikciDosyasiniOnizle(
     );
     const kayitli = seriNolar.length
       ? await prisma.stokKalemi.findMany({
-          where: { seriNo: { in: seriNolar } },
+          where: { seriNo: { in: seriNolar }, ...IPTAL_HARIC },
           select: { seriNo: true },
         })
       : [];

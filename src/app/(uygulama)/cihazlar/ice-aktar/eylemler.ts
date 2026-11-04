@@ -5,6 +5,7 @@ import { faturaOlustur } from "@/lib/fatura";
 import { exceliOku, type OkunanSatir } from "@/lib/iceAktar";
 import { logYaz } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
+import { IPTAL_HARIC } from "@/lib/kayitIptali";
 import { LOG_ISLEM } from "@/lib/sabitler";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
 import { faturaSemasi } from "../../faturalar/dogrulama";
@@ -63,7 +64,7 @@ export async function exceliOnizle(
       .filter((s): s is string => Boolean(s));
     if (seriNolar.length > 0) {
       const cakisan = await prisma.stokKalemi.findMany({
-        where: { seriNo: { in: seriNolar } },
+        where: { seriNo: { in: seriNolar }, ...IPTAL_HARIC },
         select: { seriNo: true },
       });
       const cakisanKume = new Set(cakisan.map((c) => c.seriNo));

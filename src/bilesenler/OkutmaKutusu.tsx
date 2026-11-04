@@ -114,6 +114,10 @@ export function OkutmaKutusu({
       <label htmlFor="okutmaKutusu" className="mb-1 block text-sm font-medium text-blue-900">
         {etiket}
       </label>
+      {/* basis-full: dar ekranda okutma kutusu kendi satırını alıyor. Yan
+          yana dizilince telefonda 132 piksele kadar iniyordu ve barkod
+          okuyucunun yazdığı 13 haneli kod görünmüyordu. sm'den itibaren
+          yine aynı satırı paylaşıyor. */}
       <div className="flex flex-wrap items-center gap-2">
         {yanAlan}
         <input
@@ -131,7 +135,7 @@ export function OkutmaKutusu({
             }
           }}
           placeholder={yerTutucu}
-          className={`okutma-girdisi min-w-0 flex-1 ${GIRDI_SINIFI} font-mono read-only:bg-slate-100`}
+          className={`okutma-girdisi min-w-0 flex-1 basis-full ${GIRDI_SINIFI} font-mono read-only:bg-slate-100 sm:basis-0`}
         />
         <button
           type="button"
