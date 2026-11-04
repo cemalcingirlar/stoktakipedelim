@@ -14,6 +14,7 @@ import type { Matris } from "@/lib/tablo";
 import { HAREKET_TIP, LOG_ISLEM, STOK_DURUM } from "@/lib/sabitler";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
 import {
+  IPTAL_HARIC,
   cihazIptalEngeli,
   faturaIptalEngeli,
   gerekceSorunu,
@@ -142,7 +143,7 @@ async function kayitliSeriNolariBul(
   for (let i = 0; i < seriNolar.length; i += 500) {
     const dilim = seriNolar.slice(i, i + 500);
     const bulunan = await prisma.stokKalemi.findMany({
-      where: { seriNo: { in: dilim } },
+      where: { seriNo: { in: dilim }, ...IPTAL_HARIC },
       select: { seriNo: true },
     });
     for (const k of bulunan) if (k.seriNo) kayitli.add(k.seriNo);
@@ -242,7 +243,7 @@ export async function envanteriKaydet(
       const cakisan: string[] = [];
       for (let i = 0; i < seriNolar.length; i += 500) {
         const bulunan = await prisma.stokKalemi.findMany({
-          where: { seriNo: { in: seriNolar.slice(i, i + 500) } },
+          where: { seriNo: { in: seriNolar.slice(i, i + 500) }, ...IPTAL_HARIC },
           select: { seriNo: true },
         });
         for (const k of bulunan) if (k.seriNo) cakisan.push(k.seriNo);

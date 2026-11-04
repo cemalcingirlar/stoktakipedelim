@@ -18,9 +18,12 @@ import {
 import { HAREKET_TIP, LOG_ISLEM, STOK_DURUM } from "@/lib/sabitler";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
 import {
+  IPTAL_HARIC,
   cihazIptalEngeli,
+  faturaGeriAlmaEngeli,
   faturaIptalEngeli,
   gerekceSorunu,
+  iptalOncesiFaturaNo,
   iptalliFaturaNo,
 } from "@/lib/kayitIptali";
 import { faturaSemasi } from "./dogrulama";
@@ -232,8 +235,10 @@ export async function seriNoKontrolEt(seriNo: string): Promise<SeriNoKontrolu> {
     const kod = kodNormalize(seriNo);
     if (!kod) return { kullanimda: false };
 
-    const mevcut = await prisma.stokKalemi.findUnique({
-      where: { seriNo: kod },
+    // İptal edilenler sayılmıyor: numarayı tutmuyorlar. findFirst, çünkü
+    // aynı numarayı taşıyan iptal kayıtları bulunabilir.
+    const mevcut = await prisma.stokKalemi.findFirst({
+      where: { seriNo: kod, ...IPTAL_HARIC },
       select: {
         marka: true,
         model: true,
@@ -458,5 +463,142 @@ export async function faturayiIptalEt(
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Fatura iptal edilemedi:", hata);
     return { hata: "Fatura iptal edilemedi. Lütfen tekrar deneyin." };
+  }
+}
+
+/**
+ * Fatura iptalini geri alır: cihazlar tekrar stoğa, numara eski haline döner.
+ *
+ * İptal zaten silmiyor, işaretliyor — bu yüzden geri alınabiliyor. İki şey
+ * yolu kapatabilir ve ikisi de burada ayrıca denetleniyor, çünkü ikisi de
+ * veritabanına bakmayı gerektiriyor:
+ *
+ *   - Fatura numarası: iptalde serbest bırakılmıştı, aradan geçen sürede aynı
+ *     numarayla yeni bir fatura girilmiş olabilir. Tedarikçi başına tekil
+ *     olduğu için eski numara geri konamaz.
+ *   - Seri numaraları: iptalde serbest kaldılar, aradan geçen sürede aynı
+ *     IMEI'ler yeniden girilmiş olabilir. Cihazı stoğa döndürmek aktif
+ *     kayıtlarda aynı numaradan iki tane olmasına yol açardı.
+ *
+ * İkisinde de ne yapılacağını kullanıcı bilmeli; sessizce yarım iş yapmak ya
+ * da ham veritabanı hatası göstermek yerine açık mesaj dönüyor.
+ */
+export async function faturaIptaliniGeriAl(
+  _onceki: FaturaIptalDurumu,
+  form: FormData,
+): Promise<FaturaIptalDurumu> {
+  try {
+    const oturum = await adminZorunlu();
+
+    const faturaId = Number(form.get("faturaId"));
+    if (!Number.isInteger(faturaId) || faturaId <= 0)
+      return { hata: "Fatura bulunamadı." };
+
+    const fatura = await prisma.alisFaturasi.findUnique({
+      where: { id: faturaId },
+      include: { kalemler: { select: { id: true, durum: true, seriNo: true } } },
+    });
+    if (!fatura) return { hata: "Fatura bulunamadı." };
+
+    const engel = faturaGeriAlmaEngeli(fatura, fatura.kalemler);
+    if (engel) return { hata: engel };
+
+    const eskiNo = iptalOncesiFaturaNo(fatura.faturaNo, fatura.id);
+
+    // Numara aradan geçen sürede başka bir faturaya verilmiş olabilir.
+    if (eskiNo !== fatura.faturaNo) {
+      const cakisanFatura = await prisma.alisFaturasi.findUnique({
+        where: {
+          tedarikciId_faturaNo: { tedarikciId: fatura.tedarikciId, faturaNo: eskiNo },
+        },
+        select: { id: true },
+      });
+      if (cakisanFatura) {
+        return {
+          hata:
+            `${eskiNo} numarası bu tedarikçide yeniden kullanılmış (fatura #${cakisanFatura.id}). ` +
+            "İptal geri alınamaz; önce o faturayı düzeltin.",
+        };
+      }
+    }
+
+    const geriAlinacaklar = fatura.kalemler.filter(
+      (k) => k.durum === STOK_DURUM.IPTAL,
+    );
+
+    // Seri numaraları aradan geçen sürede yeniden girilmiş olabilir.
+    const seriNolar = geriAlinacaklar
+      .map((k) => k.seriNo)
+      .filter((s): s is string => Boolean(s));
+    if (seriNolar.length > 0) {
+      const cakisanCihazlar = await prisma.stokKalemi.findMany({
+        where: { seriNo: { in: seriNolar }, ...IPTAL_HARIC },
+        select: { seriNo: true },
+      });
+      if (cakisanCihazlar.length > 0) {
+        const liste = cakisanCihazlar
+          .map((c) => c.seriNo)
+          .filter(Boolean)
+          .slice(0, 5)
+          .join(", ");
+        return {
+          hata:
+            `Bu faturadaki seri numaraları iptalden sonra yeniden girilmiş: ${liste}` +
+            `${cakisanCihazlar.length > 5 ? ` ve ${cakisanCihazlar.length - 5} tane daha` : ""}. ` +
+            "İptal geri alınamaz; önce yeni kayıtları iptal edin.",
+        };
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.stokKalemi.updateMany({
+        where: { id: { in: geriAlinacaklar.map((k) => k.id) } },
+        data: { durum: STOK_DURUM.STOKTA },
+      });
+
+      for (const kalem of geriAlinacaklar) {
+        await tx.stokHareketi.create({
+          data: {
+            stokKalemiId: kalem.id,
+            tip: HAREKET_TIP.IPTAL_GERI,
+            hedefMagazaId: fatura.magazaId,
+            kullaniciId: oturum.kullaniciId,
+            aciklama: `Fatura iptali geri alındı (${eskiNo}); cihaz tekrar stokta`,
+          },
+        });
+      }
+
+      await tx.alisFaturasi.update({
+        where: { id: fatura.id },
+        data: {
+          iptalEdildi: false,
+          iptalTarihi: null,
+          iptalGerekce: null,
+          iptalEdenId: null,
+          faturaNo: eskiNo,
+        },
+      });
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.STOK_DUZENLE,
+      hedefTip: "AlisFaturasi",
+      hedefId: fatura.id,
+      detay: `Fatura iptali geri alındı: ${eskiNo} · ${geriAlinacaklar.length} cihaz`,
+    });
+
+    revalidatePath(`/faturalar/${fatura.id}`);
+    revalidatePath("/faturalar");
+    revalidatePath("/cihazlar");
+    revalidatePath("/panel");
+    revalidatePath("/rapor");
+
+    return {
+      basari: `İptal geri alındı; ${geriAlinacaklar.length} cihaz tekrar stokta.`,
+    };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { hata: hata.message };
+    console.error("Fatura iptali geri alınamadı:", hata);
+    return { hata: "İptal geri alınamadı. Lütfen tekrar deneyin." };
   }
 }

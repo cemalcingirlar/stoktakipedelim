@@ -193,7 +193,15 @@ model AlisFaturasi {
 model StokKalemi {
   id     Int     @id @default(autoincrement())
   barkod String?
-  seriNo String? @unique // IMEI / seri numarası
+  /// IMEI / seri numarası.
+  ///
+  /// Tekillik alan üzerinde DEĞİL, kısmi bir benzersiz dizinde: iptal edilen
+  /// kayıtlar numarayı tutmuyor (prisma/migrations/.../migration.sql,
+  /// StokKalemi_seriNo_aktif_key). Yanlış girilen faturayı iptal edip
+  /// DOĞRUSUNU aynı IMEI'lerle girmek en olağan senaryo; iptal edilen kayıt
+  /// numarayı tutmaya devam ettiği sürece bu mümkün değildi. Aynı sebeple
+  /// fatura numarası da iptalde serbest bırakılıyor (kayitIptali.ts).
+  seriNo String?
 
   kategoriId    Int
   altKategoriId Int?
@@ -245,6 +253,7 @@ model StokKalemi {
   aktarimSatislari  AktarimSatisi[]
 
   @@index([barkod])
+  @@index([seriNo])
   @@index([aramaMetni])
   @@index([magazaId, durum])
   @@index([durum])

@@ -4,7 +4,10 @@ import {
   GEREKCE_EN_AZ,
   GEREKCE_EN_COK,
   cihazIptalEngeli,
+  faturaGeriAlmaEngeli,
+  faturaGeriAlmaOzeti,
   faturaIptalEngeli,
+  iptalOncesiFaturaNo,
   faturaIptalOzeti,
   gerekceSorunu,
   iptalGeriAlmaEngeli,
@@ -126,4 +129,52 @@ test("iptal edilen fatura numarası serbest kalıyor", () => {
 test("iki ayrı iptal farklı numara üretiyor", () => {
   // Aynı numaralı fatura iki kez iptal edilebilir; ikisi çakışmamalı.
   assert.notEqual(iptalliFaturaNo("ABC-123", 7), iptalliFaturaNo("ABC-123", 9));
+});
+
+// --------------------------------------------- fatura iptalini geri alma
+
+test("iptal eki sökülüp asıl fatura numarası bulunuyor", () => {
+  assert.equal(iptalOncesiFaturaNo("FTR-2026-14 (iptal #37)", 37), "FTR-2026-14");
+});
+
+test("başka bir faturanın eki sökülmüyor", () => {
+  // Ek kimliği tam eşleşmeli; yoksa numaranın kendisi bozulurdu.
+  assert.equal(
+    iptalOncesiFaturaNo("FTR-2026-14 (iptal #37)", 99),
+    "FTR-2026-14 (iptal #37)",
+  );
+});
+
+test("eki olmayan numara olduğu gibi dönüyor", () => {
+  assert.equal(iptalOncesiFaturaNo("FTR-2026-14", 37), "FTR-2026-14");
+});
+
+test("geri alma özeti iptaldekileri sayıyor", () => {
+  const ozet = faturaGeriAlmaOzeti([
+    { durum: STOK_DURUM.IPTAL },
+    { durum: STOK_DURUM.IPTAL },
+    { durum: STOK_DURUM.STOKTA },
+  ]);
+  assert.deepEqual(ozet, { geriAlinacak: 2, dokunulmayan: 1 });
+});
+
+test("iptal edilmemiş fatura geri alınamaz", () => {
+  assert.equal(
+    faturaGeriAlmaEngeli({ iptalEdildi: false }, [{ durum: STOK_DURUM.IPTAL }]),
+    "Bu fatura iptal edilmiş değil.",
+  );
+});
+
+test("iptalde cihazı kalmamış fatura geri alınamaz", () => {
+  assert.equal(
+    faturaGeriAlmaEngeli({ iptalEdildi: true }, [{ durum: STOK_DURUM.STOKTA }]),
+    "Faturanın iptal durumunda cihazı kalmamış.",
+  );
+});
+
+test("iptalli faturada engel yok", () => {
+  assert.equal(
+    faturaGeriAlmaEngeli({ iptalEdildi: true }, [{ durum: STOK_DURUM.IPTAL }]),
+    null,
+  );
 });

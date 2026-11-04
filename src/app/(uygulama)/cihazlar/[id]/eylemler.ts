@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { HAREKET_TIP, LOG_ISLEM, ODEME_TIPI, STOK_DURUM } from "@/lib/sabitler";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
 import {
+  IPTAL_HARIC,
   cihazIptalEngeli,
   gerekceSorunu,
   iptalGeriAlmaEngeli,
@@ -316,6 +317,24 @@ export async function cihazIptaliniGeriAl(
 
     const engel = iptalGeriAlmaEngeli(cihaz);
     if (engel) return { hata: engel };
+
+    // İptal edilen kayıt seri numarasını tutmuyor; aradan geçen sürede aynı
+    // IMEI yeniden girilmiş olabilir. Cihazı stoğa döndürmek aktif kayıtlarda
+    // aynı numaradan iki tane olmasına yol açardı — veritabanı da zaten
+    // reddeder. Ham hata yerine ne olduğunu söylüyoruz.
+    if (cihaz.seriNo) {
+      const cakisan = await prisma.stokKalemi.findFirst({
+        where: { seriNo: cihaz.seriNo, id: { not: cihaz.id }, ...IPTAL_HARIC },
+        select: { id: true },
+      });
+      if (cakisan) {
+        return {
+          hata:
+            `${cihaz.seriNo} iptalden sonra yeniden girilmiş (cihaz #${cakisan.id}). ` +
+            "İptal geri alınamaz; önce yeni kaydı iptal edin.",
+        };
+      }
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.stokKalemi.update({

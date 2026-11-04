@@ -14,6 +14,16 @@
  */
 import { STOK_DURUM } from "./sabitler";
 
+/**
+ * İptal edilmiş kayıtları dışarıda bırakan Prisma koşulu.
+ *
+ * "Bu seri numarası sistemde kayıtlı mı?" sorusunun doğru cevabı AKTİF
+ * kayıtlara bakar. İptal edilen kayıt numarayı tutmuyor (veritabanında da
+ * kısmi benzersiz dizin var); yanlış girilen faturayı iptal edip doğrusunu
+ * aynı IMEI'lerle girmek en olağan senaryo.
+ */
+export const IPTAL_HARIC = { durum: { not: STOK_DURUM.IPTAL } };
+
 /** Gerekçe bu kadar kısa olamaz; "a" yazıp geçmek iz bırakmaz. */
 export const GEREKCE_EN_AZ = 5;
 export const GEREKCE_EN_COK = 200;
@@ -108,4 +118,53 @@ export function faturaIptalEngeli(kalemler: FaturaKalemi[]): string | null {
  */
 export function iptalliFaturaNo(faturaNo: string, faturaId: number): string {
   return `${faturaNo} (iptal #${faturaId})`;
+}
+
+/**
+ * İptal edilen faturanın numarasından iptal ekini söker.
+ *
+ * İptalde numaraya `" (iptal #<id>)"` ekleniyor (iptalliFaturaNo) ki aynı
+ * numara yeniden kullanılabilsin. İptal geri alınırken asıl numara geri
+ * konmalı; ek, kimliği tam olarak eşleştiği için tek anlamlı sökülüyor.
+ * Ek yoksa numara olduğu gibi dönüyor — iptal eki konmadan önce kaydedilmiş
+ * ya da elle düzeltilmiş faturalar için.
+ */
+export function iptalOncesiFaturaNo(faturaNo: string, faturaId: number): string {
+  const ek = ` (iptal #${faturaId})`;
+  return faturaNo.endsWith(ek) ? faturaNo.slice(0, -ek.length) : faturaNo;
+}
+
+export type FaturaGeriAlmaOzeti = {
+  /** Tekrar stoğa dönecek cihaz sayısı. */
+  geriAlinacak: number;
+  /** İptal dışı durumdakiler; dokunulmuyor. */
+  dokunulmayan: number;
+};
+
+export function faturaGeriAlmaOzeti(kalemler: FaturaKalemi[]): FaturaGeriAlmaOzeti {
+  let geriAlinacak = 0;
+  let dokunulmayan = 0;
+  for (const k of kalemler) {
+    if (k.durum === STOK_DURUM.IPTAL) geriAlinacak += 1;
+    else dokunulmayan += 1;
+  }
+  return { geriAlinacak, dokunulmayan };
+}
+
+/**
+ * Fatura iptali geri alınabilir mi? Alınamazsa sebebi.
+ *
+ * Numara çakışması ve seri numarası çakışması burada denetlenmiyor: ikisi de
+ * veritabanına bakmayı gerektiriyor, sunucu eylemi orada ayrıca söylüyor.
+ */
+export function faturaGeriAlmaEngeli(
+  fatura: { iptalEdildi: boolean },
+  kalemler: FaturaKalemi[],
+): string | null {
+  if (!fatura.iptalEdildi) return "Bu fatura iptal edilmiş değil.";
+  if (kalemler.length === 0) return "Faturada cihaz yok.";
+  if (faturaGeriAlmaOzeti(kalemler).geriAlinacak === 0) {
+    return "Faturanın iptal durumunda cihazı kalmamış.";
+  }
+  return null;
 }

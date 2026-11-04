@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "./prisma";
+import { IPTAL_HARIC } from "@/lib/kayitIptali";
 import { aramaMetniUret, kodNormalize } from "./metin";
 import { HAREKET_TIP, STOK_DURUM } from "./sabitler";
 import { vadeyiCoz } from "./vade";
@@ -51,7 +52,7 @@ export async function faturaOlustur(
   // Seri numarası sistemde benzersiz olmalı.
   if (seriNolar.length) {
     const cakisan = await prisma.stokKalemi.findMany({
-      where: { seriNo: { in: seriNolar } },
+      where: { seriNo: { in: seriNolar }, ...IPTAL_HARIC },
       select: { seriNo: true },
     });
     if (cakisan.length) {
