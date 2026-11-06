@@ -139,6 +139,16 @@ try {
   const toplam = (await sayfa.locator('[data-test="satis-toplam"]').textContent()) ?? "";
   kontrol("kart toplamı üç cihazın toplamı", toplam.includes("39.000,00"), toplam.trim());
 
+  // Üst menüde yanlış sekme işaretlenmemeli: /satislar/N satış ekranı değil.
+  const aktifMenu = await sayfa.locator("header nav a.bg-slate-700").allTextContents();
+  kontrol(
+    "üst menüde satış ekranı sekmesi işaretli değil",
+    aktifMenu.every((m) => !m.includes("Satış")),
+    JSON.stringify(aktifMenu),
+  );
+
+  await sayfa.screenshot({ path: `${cikti}-kart.png`, fullPage: true });
+
   // =============== 2) Ayrı satış aynı karta karışmıyor (kullanıcının derdi)
   const ikinciYol = await sat([imei(4)], MUSTERI, "12.000,00");
   kontrol("ikinci satış ayrı kart açtı", ikinciYol !== kartYolu, `${kartYolu} / ${ikinciYol}`);
