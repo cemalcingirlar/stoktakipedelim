@@ -110,7 +110,7 @@ try {
     await sayfa.fill("#yeniAd", MUSTERI);
   }
   await Promise.all([
-    sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 30000 }),
+    sayfa.waitForURL(/\/satislar\/\d+$/, { timeout: 30000 }),
     sayfa.click('button:has-text("Satışı Kaydet")'),
   ]);
   console.log(`0) hazırlık: ${ADET} cihaz ${ALIS_TL} alış, 1 cihaz ${SATIS_TL} satış`);

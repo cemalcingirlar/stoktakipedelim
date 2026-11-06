@@ -18,16 +18,25 @@ function kartiBul(ad) {
     .first();
 }
 
-/** Bir uyarı/başarı mesajının (istenirse belirli bir kart içinde) dolmasını bekler. */
-async function mesajiBekle(secici, kapsam = sayfa) {
+/**
+ * Bir uyarı/başarı mesajının (istenirse belirli bir kart içinde) dolmasını
+ * bekler.
+ *
+ * `desen` verilirse mesaj o kalıba uyana kadar bekleniyor. Gerekli: ekranda
+ * bir önceki işlemin mesajı asılı kalabiliyor ve sunucu yavaşken ilk okuma
+ * ESKİ mesajı yakalıyordu — süit tek başına geçip yük altında düşüyordu.
+ */
+async function mesajiBekle(secici, kapsam = sayfa, desen = null) {
   const hedef = kapsam.locator(secici).first();
   await hedef.waitFor({ state: "visible", timeout: 15000 });
-  await sayfa.waitForFunction(
-    () => true,
-    undefined,
-    { timeout: 1000 },
-  ).catch(() => {});
-  return (await hedef.textContent())?.trim();
+  let metin = (await hedef.textContent())?.trim() ?? "";
+  if (desen) {
+    for (let i = 0; i < 60 && !desen.test(metin); i += 1) {
+      await sayfa.waitForTimeout(250);
+      metin = (await hedef.textContent())?.trim() ?? "";
+    }
+  }
+  return metin;
 }
 sayfa.on("console", (m) => { if (m.type() === "error") hatalar.push(m.text()); });
 
@@ -57,7 +66,7 @@ kontrol("kategori eklendi", (await kartiBul(yeniAd).count()) >= 1, yeniAd);
 // --- Aynı isimle tekrar eklenememeli
 await sayfa.fill("#yeniKategoriAd", yeniAd);
 await sayfa.click('button:has-text("Ekle")');
-const tekrarMesaji = (await mesajiBekle('[role="alert"]')) ?? "";
+const tekrarMesaji = (await mesajiBekle('[role="alert"]', sayfa, /zaten/i)) ?? "";
 kontrol("aynı isimli kategori ikinci kez eklenemiyor", /zaten/i.test(tekrarMesaji), tekrarMesaji);
 
 // --- Alt kategori ekleme (yeni kategorinin kartında)

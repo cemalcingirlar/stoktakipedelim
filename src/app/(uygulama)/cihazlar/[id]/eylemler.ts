@@ -13,6 +13,8 @@ import {
   gerekceSorunu,
   iptalGeriAlmaEngeli,
 } from "@/lib/kayitIptali";
+import { satisBagiKarari } from "@/lib/satisKarti";
+import { satisNoUret } from "@/lib/satisNo";
 
 /** İptal ve geri alma aynı sayfaları tazeliyor; tek yerde dursun. */
 function cihazYollariniTazele(cihazId: number): void {
@@ -92,29 +94,100 @@ export async function satisiDuzenle(
       if (!musteri) return { hata: "Müşteri bulunamadı." };
     }
 
-    await prisma.stokKalemi.update({
-      where: { id: cihaz.id },
-      data: {
-        satisFiyatiKurus: veri.satisFiyatiKurus,
-        odemeTipi: veri.odemeTipi,
-        satisTarihi: veri.satisTarihi,
-        cikisTarihi: veri.satisTarihi,
-        satanKullaniciId: satan.id,
-        musteriId: veri.musteriId,
-        not: veri.not,
-        aramaMetni: aramaMetniUret([
-          cihaz.marka,
-          cihaz.model,
-          cihaz.renk,
-          cihaz.kapasite,
-          cihaz.seriNo,
-          cihaz.barkod,
-          cihaz.tedarikci?.ad,
-          veri.not,
-          musteri?.adSoyad,
-          musteri?.telefon,
-        ]),
-      },
+    // Cihaz bir satış kartına bağlıysa kart da doğru kalmalı: aynı satışta
+    // başka cihazlar olabiliyor ve kart müşteriyi, satanı, ödeme tipini ve
+    // tarihi kendi satırından okuyor.
+    const bagliSatis = cihaz.satisId
+      ? await prisma.satis.findUnique({
+          where: { id: cihaz.satisId },
+          select: {
+            id: true,
+            musteriId: true,
+            satanKullaniciId: true,
+            odemeTipi: true,
+            satisTarihi: true,
+            _count: { select: { kalemler: true } },
+          },
+        })
+      : null;
+
+    const yeniSatis = {
+      musteriId: veri.musteriId,
+      satanKullaniciId: satan.id,
+      odemeTipi: veri.odemeTipi,
+      satisTarihi: veri.satisTarihi,
+    };
+    const karar = satisBagiKarari(
+      bagliSatis
+        ? { ...bagliSatis, kalemSayisi: bagliSatis._count.kalemler }
+        : null,
+      yeniSatis,
+    );
+
+    await prisma.$transaction(async (tx) => {
+      // Kopan cihaz, müşterisi varsa kendi kartını alıyor; "satış kartı yok"
+      // durumuna düşmesin.
+      const yeniKart =
+        karar.tip === "ayir" && veri.musteriId !== null
+          ? await tx.satis.create({
+              data: {
+                satisNo: await satisNoUret(tx, new Date()),
+                musteriId: veri.musteriId,
+                satanKullaniciId: satan.id,
+                odemeTipi: veri.odemeTipi,
+                satisTarihi: veri.satisTarihi,
+                not: veri.not,
+              },
+              select: { id: true },
+            })
+          : null;
+
+      await tx.stokKalemi.update({
+        where: { id: cihaz.id },
+        data: {
+          ...(karar.tip === "ayir" ? { satisId: yeniKart?.id ?? null } : {}),
+          satisFiyatiKurus: veri.satisFiyatiKurus,
+          odemeTipi: veri.odemeTipi,
+          satisTarihi: veri.satisTarihi,
+          cikisTarihi: veri.satisTarihi,
+          satanKullaniciId: satan.id,
+          musteriId: veri.musteriId,
+          not: veri.not,
+          aramaMetni: aramaMetniUret([
+            cihaz.marka,
+            cihaz.model,
+            cihaz.renk,
+            cihaz.kapasite,
+            cihaz.seriNo,
+            cihaz.barkod,
+            cihaz.tedarikci?.ad,
+            veri.not,
+            musteri?.adSoyad,
+            musteri?.telefon,
+          ]),
+        },
+      });
+
+      if (karar.tip === "kaydiGuncelle" && bagliSatis) {
+        await tx.satis.update({
+          where: { id: bagliSatis.id },
+          data: {
+            // Karar yalnız müşterili düzeltmede bunu veriyor.
+            musteriId: veri.musteriId!,
+            satanKullaniciId: satan.id,
+            odemeTipi: veri.odemeTipi,
+            satisTarihi: veri.satisTarihi,
+          },
+        });
+      }
+
+      // Cihazı çıkan kart boş kaldıysa duracak bir şeyi yok.
+      if (karar.tip === "ayir" && bagliSatis) {
+        const kalan = await tx.stokKalemi.count({
+          where: { satisId: bagliSatis.id },
+        });
+        if (kalan === 0) await tx.satis.delete({ where: { id: bagliSatis.id } });
+      }
     });
 
     await logYaz(oturum, {
@@ -132,6 +205,9 @@ export async function satisiDuzenle(
     revalidatePath("/panel");
     revalidatePath("/rapor");
     revalidatePath("/musteriler");
+    // Kart cihazın yeni bilgilerini göstermeli; koptuysa eski kart da
+    // listesinden bu cihazı düşürmeli.
+    if (cihaz.satisId) revalidatePath(`/satislar/${cihaz.satisId}`);
 
     return { basari: "Satış bilgileri güncellendi." };
   } catch (hata) {
@@ -175,6 +251,8 @@ export async function satisiGeriAl(
         where: { id: cihaz.id },
         data: {
           durum: STOK_DURUM.STOKTA,
+          // Cihaz artık satılmış değil; satış kartında görünmemeli.
+          satisId: null,
           satisTarihi: null,
           satisFiyatiKurus: null,
           satanKullaniciId: null,
@@ -206,6 +284,14 @@ export async function satisiGeriAl(
             : "Satış geri alındı",
         },
       });
+
+      // Kartta cihaz kalmadıysa kart da kalmasın; boş satış kartı yanıltıcı.
+      if (cihaz.satisId) {
+        const kalan = await tx.stokKalemi.count({
+          where: { satisId: cihaz.satisId },
+        });
+        if (kalan === 0) await tx.satis.delete({ where: { id: cihaz.satisId } });
+      }
     });
 
     await logYaz(oturum, {
@@ -222,6 +308,8 @@ export async function satisiGeriAl(
     revalidatePath("/panel");
     revalidatePath("/rapor");
     revalidatePath("/musteriler");
+    // Kart artık bu cihazı listelememeli (kart silinmediyse).
+    if (cihaz.satisId) revalidatePath(`/satislar/${cihaz.satisId}`);
 
     return { basari: "Satış geri alındı; cihaz tekrar stokta." };
   } catch (hata) {

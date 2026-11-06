@@ -110,7 +110,7 @@ try {
   await sayfa.locator('[data-test="sepet-fiyat"]').first().fill("2.000,00");
   await sayfa.fill("#yeniAd", `Barkod Musteri ${damga}`);
   await Promise.all([
-    sayfa.waitForURL(/\/(cihazlar\/\d+|musteriler)/, { timeout: 30000 }),
+    sayfa.waitForURL(/\/(satislar\/\d+|cihazlar\/\d+|musteriler)/, { timeout: 30000 }),
     sayfa.click('button:has-text("Satışı Kaydet")'),
   ]);
   console.log(`   ${imei(2)} satıldı`);

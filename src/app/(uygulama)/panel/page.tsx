@@ -232,8 +232,12 @@ export default async function PanelSayfasi({
                   className="flex items-center justify-between gap-3 py-2 text-sm"
                 >
                   <div className="min-w-0">
+                    {/* Satış kartı varsa oraya: aynı satışta satılan bütün
+                        cihazlar müşteri bilgisiyle birlikte orada. Yoksa
+                        (aktarım satışı, göç öncesi kayıt) cihaza. */}
                     <Link
-                      href={`/cihazlar/${k.cihazId}`}
+                      href={k.satisId ? `/satislar/${k.satisId}` : `/cihazlar/${k.cihazId}`}
+                      data-test={k.satisId ? "satis-karti-baglantisi" : "cihaz-baglantisi"}
                       className="truncate font-medium text-slate-800 underline-offset-2 hover:underline"
                     >
                       {k.marka} {k.model}

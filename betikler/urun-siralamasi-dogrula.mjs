@@ -108,7 +108,7 @@ async function sat(kod, fiyat, gunOnce = 0) {
     await sayfa.fill("#yeniAd", MUSTERI);
   }
   await Promise.all([
-    sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 30000 }),
+    sayfa.waitForURL(/\/satislar\/\d+$/, { timeout: 30000 }),
     sayfa.click('button:has-text("Satışı Kaydet")'),
   ]);
 }

@@ -108,6 +108,12 @@ export type BugunSatisSatiri = {
   anahtar: string;
   /** Bağlantının gittiği cihaz. */
   cihazId: number;
+  /**
+   * Bu cihazın satıldığı satış kaydı; varsa satır satış kartına gidiyor.
+   * Aynı satışta başka cihazlar da olabiliyor ve kullanıcı hepsini birlikte
+   * görmek istiyor. Aktarım satışlarında ve göç öncesi kayıtlarda null.
+   */
+  satisId: number | null;
   marka: string;
   model: string;
   seriNo: string | null;
@@ -149,6 +155,7 @@ export async function bugunSatilanlar(
         marka: true,
         model: true,
         seriNo: true,
+        satisId: true,
         satisTarihi: true,
         satisFiyatiKurus: true,
         alisFiyatiKurus: true,
@@ -182,6 +189,7 @@ export async function bugunSatilanlar(
     ...kalemler.map((k) => ({
       anahtar: `cihaz-${k.id}`,
       cihazId: k.id,
+      satisId: k.satisId,
       marka: k.marka,
       model: k.model,
       seriNo: k.seriNo,
@@ -196,6 +204,8 @@ export async function bugunSatilanlar(
     ...aktarimlar.map((a) => ({
       anahtar: `aktarim-${a.id}`,
       cihazId: a.stokKalemi.id,
+      // Mağaza içi aktarım satışının ayrı bir satış kartı yok; cihaza gidiyor.
+      satisId: null,
       marka: a.stokKalemi.marka,
       model: a.stokKalemi.model,
       seriNo: a.stokKalemi.seriNo,

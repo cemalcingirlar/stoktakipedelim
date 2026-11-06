@@ -58,7 +58,7 @@ export default async function CihazDetaySayfasi({
   const cihazId = Number(id);
   if (!Number.isInteger(cihazId)) notFound();
 
-  const [cihaz, hareketler] = await Promise.all([
+  const [cihaz, hareketler, satisKaydi] = await Promise.all([
     prisma.stokKalemi.findUnique({
       where: { id: cihazId },
       include: CIHAZ_ICERIK,
@@ -71,6 +71,19 @@ export default async function CihazDetaySayfasi({
         kaynakMagaza: { select: { ad: true } },
         hedefMagaza: { select: { ad: true } },
         transfer: { select: { id: true, transferNo: true, durum: true } },
+      },
+    }),
+    // Satış kartı: aynı satışta başka cihaz da varsa kullanıcı hepsini
+    // birlikte görmek istiyor. Bağ için satış numarası ve kalem sayısı
+    // yetiyor. CIHAZ_ICERIK'e eklemiyoruz; o liste sayfasında 50 satır
+    // için de çalışıyor ve her satıra bir birleştirme daha bindirmek
+    // listeyi yavaşlatır.
+    prisma.satis.findFirst({
+      where: { kalemler: { some: { id: cihazId } } },
+      select: {
+        id: true,
+        satisNo: true,
+        _count: { select: { kalemler: true } },
       },
     }),
   ]);
@@ -282,6 +295,20 @@ export default async function CihazDetaySayfasi({
           {cihaz.durum === "SATILDI" ? (
             <Kart baslik="Satış ve Müşteri Bilgileri">
               <dl>
+                {satisKaydi ? (
+                  <Satir etiket="Satış Kartı">
+                    <Link
+                      href={`/satislar/${satisKaydi.id}`}
+                      data-test="satis-karti-baglantisi"
+                      className="text-sky-700 underline-offset-2 hover:underline"
+                    >
+                      {satisKaydi.satisNo}
+                      {satisKaydi._count.kalemler > 1
+                        ? ` · ${satisKaydi._count.kalemler} cihaz`
+                        : ""}
+                    </Link>
+                  </Satir>
+                ) : null}
                 <Satir etiket="Satış Tarihi">
                   {tarihYaz(cihaz.satisTarihi)}
                 </Satir>
