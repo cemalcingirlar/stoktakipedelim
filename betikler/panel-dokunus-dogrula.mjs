@@ -260,9 +260,13 @@ try {
 
   // Dönem seçenekleri
   const satisSecici = sayfa.locator('[data-test="satis-donem-secici"] a');
-  kontrol("satış dökümünde 3 dönem seçeneği var", (await satisSecici.count()) === 3, `${await satisSecici.count()}`);
+  kontrol(
+    "satış dökümünde 4 dönem seçeneği var",
+    (await satisSecici.count()) === 4,
+    `${await satisSecici.count()}`,
+  );
   const satisSeciciMetni = (await sayfa.locator('[data-test="satis-donem-secici"]').textContent()) ?? "";
-  for (const etiket of ["Bugün", "Bu Hafta", "Bu Ay"]) {
+  for (const etiket of ["Bugün", "Bu Hafta", "Bu Ay", "Tarih Aralığı"]) {
     kontrol(`"${etiket}" seçeneği var`, satisSeciciMetni.includes(etiket));
   }
 

@@ -298,15 +298,37 @@ export function cubukYuzdesi(deger: number, enYuksek: number): number {
  * biri adresi elle kursaydı birinde bir parametre unutulur ve o düğmeye
  * basınca diğer seçim sessizce varsayılana dönerdi.
  */
-export function panelAdresi(
-  secimler: { donem: string; satisDonem: string; olcu: GrafikOlcusu; urunDonem: string },
-  capa: string,
-): string {
+export type PanelSecimleri = {
+  donem: string;
+  satisDonem: string;
+  olcu: GrafikOlcusu;
+  urunDonem: string;
+  /** Stoktan çıkanlar listesinin dönemi. */
+  cikisDonem?: string;
+  /** Serbest aralık seçiliyken girilen tarihler (yyyy-aa-gg); boşsa yazılmıyor. */
+  cikisBas?: string;
+  cikisBit?: string;
+  satisBas?: string;
+  satisBit?: string;
+};
+
+export function panelAdresi(secimler: PanelSecimleri, capa: string): string {
   const sorgu = new URLSearchParams({
     donem: secimler.donem,
     satisDonem: secimler.satisDonem,
     olcu: secimler.olcu,
     urunDonem: secimler.urunDonem,
   });
+  // Boş tarihler adrese yazılmıyor: seçilmemiş bir aralığı URL'de taşımak
+  // bağlantıları okunmaz yapar ve "aralik" dönemi zaten bugüne düşüyor.
+  for (const [ad, deger] of [
+    ["cikisDonem", secimler.cikisDonem],
+    ["cikisBas", secimler.cikisBas],
+    ["cikisBit", secimler.cikisBit],
+    ["satisBas", secimler.satisBas],
+    ["satisBit", secimler.satisBit],
+  ] as const) {
+    if (deger) sorgu.set(ad, deger);
+  }
   return `/panel?${sorgu.toString()}#${capa}`;
 }

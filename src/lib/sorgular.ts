@@ -102,8 +102,8 @@ export async function vadesiGecenCihazSayisi(
   return { toplam, stokta };
 }
 
-/** Panelde "Bugün Satılan" listesinin bir satırı. */
-export type BugunSatisSatiri = {
+/** Panelde "stoktan çıkanlar" listesinin bir satırı. */
+export type SatilanSatiri = {
   /** React anahtarı; cihaz satışı ile aktarım satışı aynı cihazı gösterebilir. */
   anahtar: string;
   /** Bağlantının gittiği cihaz. */
@@ -128,28 +128,39 @@ export type BugunSatisSatiri = {
 };
 
 /**
- * Bugün satılan cihazlar. Personel için yalnız yetkili olduğu mağazalar;
- * yönetici için (magazaIdleri null) tümü.
+ * Verilen aralıkta stoktan çıkanlar. Personel için yalnız yetkili olduğu
+ * mağazalar; yönetici için (magazaIdleri null) tümü.
  *
  * Mağaza içi aktarımdaki sat-geri al işlemleri de listede: kasaya giren tutar
- * açısından bunlar da bugünün satışı. Cihaz stokta kaldığı için cihaz
+ * açısından bunlar da o günün satışı. Cihaz stokta kaldığı için cihaz
  * listesinde "satıldı" olarak görünmüyorlar, bu yüzden burada ayrıca
  * işaretleniyorlar.
+ *
+ * Toplamlar listeden değil ayrı bir toplama sorgusundan geliyor: panel ilk
+ * `listeAdedi` kaydı gösteriyor, ama "aralıkta kaç cihaz, ne kadar ciro"
+ * sorusunun cevabı tamamı üzerinden. Eskiden günün bütün satırları çekilip
+ * JS'te toplanıyordu; bir günde bu küçük bir listeydi, ama seçilebilen tarih
+ * aralığı aylar sürebiliyor.
  */
-export async function bugunSatilanlar(
+export async function satilanlar(
   magazaIdleri: number[] | null,
-  bugun: Date = new Date(),
+  aralik: { baslangic: Date; bitis: Date },
+  listeAdedi = 10,
 ) {
-  const aralik = { gte: gunBasi(bugun), lte: gunSonu(bugun) };
+  const zaman = { gte: gunBasi(aralik.baslangic), lte: gunSonu(aralik.bitis) };
+  const magazaKosulu = magazaIdleri ? { magazaId: { in: magazaIdleri } } : {};
+  const cihazKosulu = {
+    durum: STOK_DURUM.SATILDI,
+    satisTarihi: zaman,
+    ...magazaKosulu,
+  };
+  const aktarimKosulu = { satisTarihi: zaman, ...magazaKosulu };
 
-  const [kalemler, aktarimlar] = await Promise.all([
+  const [kalemler, aktarimlar, cihazToplam, aktarimToplam] = await Promise.all([
     prisma.stokKalemi.findMany({
-      where: {
-        durum: STOK_DURUM.SATILDI,
-        satisTarihi: aralik,
-        ...(magazaIdleri ? { magazaId: { in: magazaIdleri } } : {}),
-      },
+      where: cihazKosulu,
       orderBy: { satisTarihi: "desc" },
+      take: listeAdedi,
       select: {
         id: true,
         marka: true,
@@ -165,11 +176,9 @@ export async function bugunSatilanlar(
       },
     }),
     prisma.aktarimSatisi.findMany({
-      where: {
-        satisTarihi: aralik,
-        ...(magazaIdleri ? { magazaId: { in: magazaIdleri } } : {}),
-      },
+      where: aktarimKosulu,
       orderBy: { satisTarihi: "desc" },
+      take: listeAdedi,
       select: {
         id: true,
         satisTarihi: true,
@@ -183,9 +192,19 @@ export async function bugunSatilanlar(
         },
       },
     }),
+    prisma.stokKalemi.aggregate({
+      where: cihazKosulu,
+      _count: { _all: true },
+      _sum: { satisFiyatiKurus: true, alisFiyatiKurus: true },
+    }),
+    prisma.aktarimSatisi.aggregate({
+      where: aktarimKosulu,
+      _count: { _all: true },
+      _sum: { satisFiyatiKurus: true, maliyetKurus: true },
+    }),
   ]);
 
-  const satirlar: BugunSatisSatiri[] = [
+  const satirlar: SatilanSatiri[] = [
     ...kalemler.map((k) => ({
       anahtar: `cihaz-${k.id}`,
       cihazId: k.id,
@@ -217,20 +236,28 @@ export async function bugunSatilanlar(
       musteriAdSoyad: a.musteri?.adSoyad ?? null,
       aktarimMi: true,
     })),
-  ].sort(
-    (a, b) => (b.satisTarihi?.getTime() ?? 0) - (a.satisTarihi?.getTime() ?? 0),
-  );
+  ]
+    .sort((a, b) => (b.satisTarihi?.getTime() ?? 0) - (a.satisTarihi?.getTime() ?? 0))
+    // İki kaynaktan da `listeAdedi` kadar çekildi; birleşince fazlası atılıyor.
+    .slice(0, listeAdedi);
 
-  const ciroKurus = satirlar.reduce((t, s) => t + s.satisFiyatiKurus, 0);
-  const karKurus = satirlar.reduce((t, s) => t + s.karKurus, 0);
+  const ciroKurus =
+    (cihazToplam._sum.satisFiyatiKurus ?? 0) +
+    (aktarimToplam._sum.satisFiyatiKurus ?? 0);
+  const karKurus =
+    (cihazToplam._sum.satisFiyatiKurus ?? 0) -
+    (cihazToplam._sum.alisFiyatiKurus ?? 0) +
+    (aktarimToplam._sum.satisFiyatiKurus ?? 0) -
+    (aktarimToplam._sum.maliyetKurus ?? 0);
 
   return {
+    /** Yalnız ilk `listeAdedi` kayıt; toplamlar tamamı üzerinden. */
     kalemler: satirlar,
-    adet: satirlar.length,
+    adet: cihazToplam._count._all + aktarimToplam._count._all,
     ciroKurus,
     karKurus,
     /** Bunların kaçı aktarımdaki sat-geri al işlemi. */
-    aktarimAdedi: satirlar.filter((s) => s.aktarimMi).length,
+    aktarimAdedi: aktarimToplam._count._all,
   };
 }
 
