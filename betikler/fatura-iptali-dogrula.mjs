@@ -153,7 +153,7 @@ try {
   if ((await sec.count()) > 0) await sec.click();
   else await sayfa.fill("#yeniAd", `FIP MUSTERI ${damga}`);
   await Promise.all([
-    sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 30000 }),
+    sayfa.waitForURL(/\/satislar\/\d+$/, { timeout: 30000 }),
     sayfa.click('button:has-text("Satışı Kaydet")'),
   ]);
 

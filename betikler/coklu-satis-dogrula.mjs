@@ -236,14 +236,18 @@ try {
   await sayfa.fill("#yeniAd", MUSTERI);
   await sayfa.fill("#yeniTelefon", `555${damga}`);
   await Promise.all([
-    sayfa.waitForURL("**/musteriler**", { timeout: 30000 }),
+    sayfa.waitForURL(/\/satislar\/\d+$/, { timeout: 30000 }),
     sayfa.click('button:has-text("Cihazı Sat")'),
   ]);
-  kontrol("çoklu satış müşteri sayfasına yönlendirdi", sayfa.url().includes("/musteriler"), sayfa.url());
+  kontrol("çoklu satış satış kartına yönlendirdi", /\/satislar\/\d+$/.test(sayfa.url()), sayfa.url());
 
-  const musteriMetni = (await sayfa.locator("main").textContent()) ?? "";
-  kontrol("müşteri sayfasında 2 cihaz görünüyor", /2 cihaz/.test(musteriMetni), (musteriMetni.match(/\d+ cihaz/) ?? [""])[0]);
-  kontrol("müşteri adı doğru", musteriMetni.includes(MUSTERI));
+  const kartMetni = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol("satış kartında 2 cihaz görünüyor", /2 cihaz/.test(kartMetni), (kartMetni.match(/\d+ cihaz/) ?? [""])[0]);
+  kontrol("satış kartında müşteri adı yazıyor", kartMetni.includes(MUSTERI));
+  kontrol(
+    "kart ikisinin de seri numarasını listeliyor",
+    kartMetni.includes(imei(1)) && kartMetni.includes(imei(2)),
+  );
 
   // ------------------------------------------------ 6) iki cihaz da satıldı
   for (const i of [1, 2]) {
@@ -306,13 +310,17 @@ try {
     await sayfa.fill("#yeniAd", MUSTERI);
   }
   await Promise.all([
-    sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 30000 }),
+    sayfa.waitForURL(/\/satislar\/\d+$/, { timeout: 30000 }),
     sayfa.click('button:has-text("Satışı Kaydet")'),
   ]);
-  kontrol("tek cihaz satışı cihaz detayına gidiyor", /\/cihazlar\/\d+$/.test(sayfa.url()), sayfa.url());
+  kontrol("tek cihaz satışı da satış kartına gidiyor", /\/satislar\/\d+$/.test(sayfa.url()), sayfa.url());
 
-  const tekCihaz = (await sayfa.locator("main").textContent()) ?? "";
-  kontrol("tek cihaz da aynı müşteriye bağlandı", tekCihaz.includes(MUSTERI));
+  const tekKart = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol("tek cihaz da aynı müşteriye bağlandı", tekKart.includes(MUSTERI));
+  kontrol(
+    "tek cihazlık kartta bir kalem var",
+    (await sayfa.locator('[data-test="satis-kalemi"]').count()) === 1,
+  );
 
   // ------------------------------------------------ 7b) yönetici satışı düzeltebiliyor
   await giris("admin");

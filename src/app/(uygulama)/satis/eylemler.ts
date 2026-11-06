@@ -6,6 +6,7 @@ import { z } from "zod";
 import { logYaz } from "@/lib/log";
 import { aramaMetniUret, aramaNormalize, kodNormalize } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
+import { satisNoUret } from "@/lib/satisNo";
 import { cihazSec, type AdayCihaz } from "@/lib/cihazSecimi";
 import {
   EN_COK_GRUP,
@@ -489,6 +490,7 @@ const satisSemasi = z
 
 export type SatisDurumu = { hata?: string };
 
+
 export async function satisKaydet(
   _onceki: SatisDurumu,
   form: FormData,
@@ -610,6 +612,21 @@ export async function satisKaydet(
         select: { adSoyad: true, telefon: true },
       });
 
+      // Satışın kendisi bir kayıt: bir müşteriye aynı anda satılan cihazlar
+      // bu kayda bağlanıyor. Eskiden ortak kayıt yoktu ve hangi cihazların
+      // birlikte satıldığı veriden okunamıyordu — kullanıcı satış sonrası
+      // cihazları tek tek açmak zorunda kalıyordu.
+      const satisKaydi = await tx.satis.create({
+        data: {
+          satisNo: await satisNoUret(tx, new Date()),
+          musteriId: musteriId!,
+          satanKullaniciId: satanId,
+          odemeTipi: veri.odemeTipi,
+          satisTarihi: veri.satisTarihi,
+          not: veri.not ?? null,
+        },
+      });
+
       for (const cihaz of cihazlar) {
         const satisFiyatiKurus = fiyatHarita.get(cihaz.id) ?? 0;
 
@@ -617,6 +634,7 @@ export async function satisKaydet(
           where: { id: cihaz.id },
           data: {
             durum: STOK_DURUM.SATILDI,
+            satisId: satisKaydi.id,
             satisTarihi: veri.satisTarihi,
             satisFiyatiKurus,
             satanKullaniciId: satanId,
@@ -652,7 +670,12 @@ export async function satisKaydet(
         });
       }
 
-      return { musteriAdi: musteri.adSoyad, musteriId: musteriId! };
+      return {
+        musteriAdi: musteri.adSoyad,
+        musteriId: musteriId!,
+        satisId: satisKaydi.id,
+        satisNo: satisKaydi.satisNo,
+      };
     });
 
     const ozet = cihazlar
@@ -662,7 +685,7 @@ export async function satisKaydet(
       islem: LOG_ISLEM.SATIS_YAP,
       hedefTip: "StokKalemi",
       hedefId: cihazlar.length === 1 ? cihazlar[0].id : undefined,
-      detay: `${cihazlar.length} cihaz · ${satis.musteriAdi} · ${ozet}`.slice(
+      detay: `${satis.satisNo} · ${cihazlar.length} cihaz · ${satis.musteriAdi} · ${ozet}`.slice(
         0,
         500,
       ),
@@ -671,13 +694,13 @@ export async function satisKaydet(
     revalidatePath("/cihazlar");
     revalidatePath("/panel");
     revalidatePath("/musteriler");
+    // Satılan cihazların detay sayfaları artık satış kartına bağ veriyor.
+    for (const cihaz of cihazlar) revalidatePath(`/cihazlar/${cihaz.id}`);
 
-    // Tek cihazda cihaz detayına, birden çoğunda müşterinin sayfasına: orada
-    // satın aldığı cihazların tamamı birlikte görünüyor.
-    gidilecekYol =
-      cihazlar.length === 1
-        ? `/cihazlar/${cihazlar[0].id}`
-        : `/musteriler?ara=${encodeURIComponent(satis.musteriAdi)}`;
+    // Satıştan sonra satış kartı: satılan cihazların tamamı, müşteri ve
+    // ödeme bilgisiyle birlikte tek ekranda. Tek cihazlık satışta da aynı
+    // yere gidiliyor; kart oradan cihaza bağlanıyor.
+    gidilecekYol = `/satislar/${satis.satisId}`;
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     if (hata instanceof Error && hata.message) return { hata: hata.message };

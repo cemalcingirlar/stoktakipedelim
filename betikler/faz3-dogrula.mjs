@@ -208,14 +208,17 @@ const karMetni = (await sayfa.locator("text=Kâr").first().locator("xpath=follow
 console.log("   ekranda kâr:", karMetni?.trim() ?? "(okunamadı)");
 await sayfa.screenshot({ path: `${cikti}-satis-formu.png`, fullPage: true });
 await Promise.all([
-  sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 20000 }),
+  sayfa.waitForURL(/\/satislar\/\d+$/, { timeout: 20000 }),
   sayfa.click('button:has-text("Satışı Kaydet")'),
 ]);
 kontrol(
-  "satış kaydedildi ve cihaz detayına gidildi",
-  /\/cihazlar\/\d+$/.test(new URL(sayfa.url()).pathname),
+  "satış kaydedildi ve satış kartına gidildi",
+  /\/satislar\/\d+$/.test(new URL(sayfa.url()).pathname),
   new URL(sayfa.url()).pathname,
 );
+// Kâr, müşteri ve tarihçe cihaz detayında; karttan oraya geçiliyor.
+await sayfa.locator('[data-test="satis-kalemi"] a[href^="/cihazlar/"]').first().click();
+await sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 20000 });
 const kar = (await sayfa.locator("dt:has-text('Kâr') + dd").textContent())?.trim() ?? "";
 const musteri = (await sayfa.locator("dt:has-text('Müşteri') + dd").first().textContent())?.trim() ?? "";
 // 7.500,50 satış − 5.000,00 alış = 2.500,50 kâr.

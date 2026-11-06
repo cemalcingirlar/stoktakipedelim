@@ -175,10 +175,16 @@ try {
   await sayfa.locator('[data-test="sepet-fiyat"]').first().fill("31.000,00");
   await sayfa.fill("#yeniAd", MUSTERI);
   await Promise.all([
-    sayfa.waitForURL(/\/(cihazlar\/\d+|musteriler)/, { timeout: 30000 }),
+    sayfa.waitForURL(/\/(satislar\/\d+|cihazlar\/\d+|musteriler)/, { timeout: 30000 }),
     sayfa.click('button:has-text("Satışı Kaydet")'),
   ]);
-  kontrol("hazırlık: M2'de satış yapıldı", !sayfa.url().includes("/satis"), sayfa.url());
+  // Satış artık satış kartına düşüyor (/satislar/N); ölçüt satış EKRANINDAN
+  // çıkılmış olması, "/satis" metninin yokluğu değil.
+  kontrol(
+    "hazırlık: M2'de satış yapıldı",
+    !/\/satis$/.test(new URL(sayfa.url()).pathname),
+    sayfa.url(),
+  );
 
   // M2 → M3 sevkiyatı: personel1 iki tarafta da yetkisiz, bu sevkiyatı hiç
   // görmemeli. Kalan M2 cihazı sevkiyata giriyor.

@@ -158,9 +158,16 @@ try {
   if ((await secBtn.count()) > 0) await secBtn.click();
   else await sayfa.fill("#yeniAd", `IPTAL MUSTERI ${damga}`);
   await Promise.all([
-    sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 30000 }),
+    // Satış artık satış kartına düşüyor; iptal düğmesi cihaz detayında, oraya
+    // kartın cihaz bağlantısından geçiyoruz.
+    sayfa.waitForURL(/\/satislar\/\d+$/, { timeout: 30000 }),
     sayfa.click('button:has-text("Satışı Kaydet")'),
   ]);
+  await sayfa
+    .locator('[data-test="satis-kalemi"] a[href^="/cihazlar/"]')
+    .first()
+    .click();
+  await sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 20000 });
   const satilanUrl = sayfa.url();
   kontrol(
     "satılmış cihazda iptal düğmesi yok",

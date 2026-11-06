@@ -57,8 +57,9 @@ async function sat(kod, ad, telefon) {
   await sayfa.fill("#yeniAd", ad);
   await sayfa.fill("#yeniTelefon", telefon);
   await Promise.all([
-    // Tek cihazlık satış cihaz detayına, çoklu satış müşteri sayfasına düşer.
-    sayfa.waitForURL(/\/(musteriler|cihazlar\/\d+)/, { timeout: 30000 }),
+    // Satış artık satış kartına düşüyor; eski yollar da kabul (bir cihazda
+    // cihaz detayı, çok cihazda müşteri sayfası).
+    sayfa.waitForURL(/\/(satislar\/\d+|musteriler|cihazlar\/\d+)/, { timeout: 30000 }),
     // Tek cihazda düğme "Satışı Kaydet", birden çoğunda "N Cihazı Sat".
     sayfa.click('button:has-text("Satışı Kaydet")'),
   ]);
