@@ -44,6 +44,20 @@ export const VARSAYILAN_URUN_DONEMI: UrunDonemAnahtari = "ay";
 /** Panelde kaç ürün listeleniyor; kart kısa kalsın. */
 export const PANEL_URUN_SAYISI = 5;
 
+/**
+ * Listelenebilecek ürün sayıları.
+ *
+ * Beş kartı kısa tutuyor ama "ilk beşin hemen altında ne var" sorusunu
+ * cevapsız bırakıyordu; on, kartı taşırmadan o cevabı veriyor.
+ */
+export const URUN_SAYILARI = [5, 10] as const;
+
+/** URL parametresini ürün sayısına çevirir; tanınmayan değer varsayılana düşer. */
+export function urunSayisiCoz(deger: unknown): number {
+  const sayi = Number(Array.isArray(deger) ? deger[0] : deger);
+  return URUN_SAYILARI.find((s) => s === sayi) ?? PANEL_URUN_SAYISI;
+}
+
 /** URL parametresini döneme çevirir; tanınmayan değer varsayılana düşer. */
 export function urunDonemiCoz(deger: unknown): UrunDonemi {
   const anahtar = typeof deger === "string" ? deger : "";

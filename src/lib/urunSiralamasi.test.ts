@@ -10,6 +10,8 @@ import {
   urunDonemBaslangici,
   urunDonemiCoz,
   urunleriBirlestir,
+  urunSayisiCoz,
+  URUN_SAYILARI,
   type UrunSatiri,
 } from "./urunSiralamasi";
 
@@ -165,4 +167,22 @@ test("sıfır adetli ürün listeye girmiyor", () => {
 test("boş listede sıralama çökmüyor", () => {
   assert.deepEqual(enCokSatirlar([], 5), []);
   assert.deepEqual(urunleriBirlestir([]), []);
+});
+
+// ----------------------------------------------------- listelenen ürün sayısı
+
+test("geçerli ürün sayıları seçilebiliyor", () => {
+  for (const sayi of URUN_SAYILARI) {
+    assert.equal(urunSayisiCoz(String(sayi)), sayi);
+    assert.equal(urunSayisiCoz(sayi), sayi);
+  }
+});
+
+test("tanınmayan ürün sayısı varsayılana düşüyor", () => {
+  // Adres çubuğundan gelen her şey denetleniyor: 1000 ürünlük bir kart
+  // sayfayı kilitlerdi.
+  assert.equal(urunSayisiCoz("1000"), PANEL_URUN_SAYISI);
+  assert.equal(urunSayisiCoz("abc"), PANEL_URUN_SAYISI);
+  assert.equal(urunSayisiCoz(undefined), PANEL_URUN_SAYISI);
+  assert.equal(urunSayisiCoz(-5), PANEL_URUN_SAYISI);
 });

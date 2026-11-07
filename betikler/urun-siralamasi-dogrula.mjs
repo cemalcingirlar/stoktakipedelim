@@ -284,6 +284,76 @@ try {
   );
   await sayfa.screenshot({ path: `${cikti}-yetkili.png`, fullPage: true });
 
+  // ------------------------------- 6) Listelenen ürün sayısı: 5 / 10
+  // Beş satır "ilk beşin hemen altında ne var" sorusunu cevapsız
+  // bırakıyordu. Beşten fazla ürün olmadan seçici sınanamaz, o yüzden
+  // önce altı ürün daha giriliyor ve her birinden bir tane satılıyor.
+  await giris("admin");
+  for (let i = 0; i < 6; i += 1) {
+    const marka = `COK${damga}${i}`;
+    await faturaGir({
+      marka,
+      model: `FON ${i}`,
+      imeiler: [imei(20 + i * 2), imei(21 + i * 2)],
+      fiyat: "1.000,00",
+    });
+    await sat(imei(20 + i * 2), "1.500,00");
+  }
+
+  await panele();
+  const bes = await dokum("stokta-en-cok");
+  const besSatan = await dokum("en-cok-satan");
+  kontrol("öntanımlı stok listesi 5 satır", bes.length === 5, `${bes.length} satır`);
+  kontrol("öntanımlı satış listesi 5 satır", besSatan.length === 5, `${besSatan.length} satır`);
+  kontrol(
+    "iki kartta da 5 ve 10 seçeneği var",
+    (await sayfa.locator('[data-test="stok-adet-secici"] a').count()) === 2 &&
+      (await sayfa.locator('[data-test="satan-adet-secici"] a').count()) === 2,
+  );
+
+  // Stok kartı 10'a açılıyor; satış kartı 5'te kalmalı (ayrı seçimler).
+  await sayfa.locator('[data-test="stok-adet-secici-10"]').click();
+  await sayfa.waitForURL(/stokAdet=10/, { timeout: 20000 });
+  await sayfa.waitForTimeout(600);
+  const stokOn = await dokum("stokta-en-cok");
+  const satanBes = await dokum("en-cok-satan");
+  kontrol("stok listesi 10'a açıldı", stokOn.length > 5, `${stokOn.length} satır`);
+  kontrol("satış listesi 5'te kaldı", satanBes.length === 5, `${satanBes.length} satır`);
+  kontrol(
+    "stok listesi 10'da da adede göre sıralı",
+    stokOn.every((s, i) => i === 0 || stokOn[i - 1].adet >= s.adet),
+    stokOn.map((s) => s.adet).join(" ≥ "),
+  );
+
+  await sayfa.locator('[data-test="satan-adet-secici-10"]').click();
+  await sayfa.waitForURL(/satanAdet=10/, { timeout: 20000 });
+  await sayfa.waitForTimeout(600);
+  const satanOn = await dokum("en-cok-satan");
+  kontrol("satış listesi de 10'a açıldı", satanOn.length > 5, `${satanOn.length} satır`);
+  kontrol(
+    "stok seçimi korundu",
+    (await dokum("stokta-en-cok")).length > 5 && sayfa.url().includes("stokAdet=10"),
+    sayfa.url(),
+  );
+
+  // Dönem değişince satır sayısı seçimi düşmemeli.
+  await sayfa.locator('[data-test="urun-donem-hafta"]').click();
+  await sayfa.waitForURL(/urunDonem=hafta/, { timeout: 20000 });
+  kontrol(
+    "dönem değişince satır sayısı korunuyor",
+    sayfa.url().includes("satanAdet=10") && sayfa.url().includes("stokAdet=10"),
+    sayfa.url(),
+  );
+
+  // Adres çubuğundan uydurma bir sayı gelirse varsayılana düşmeli.
+  await sayfa.goto(`${hedef}/panel?stokAdet=1000#urunler`, { waitUntil: "networkidle" });
+  await sayfa.waitForTimeout(600);
+  kontrol(
+    "geçersiz satır sayısı 5'e düşüyor",
+    (await dokum("stokta-en-cok")).length === 5,
+    `${(await dokum("stokta-en-cok")).length} satır`,
+  );
+
   kontrol("konsolda hata yok", hatalar.length === 0, hatalar.slice(0, 3).join(" | "));
 } catch (e) {
   kontrol("betik tamamlandı", false, String(e));

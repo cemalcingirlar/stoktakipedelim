@@ -56,6 +56,35 @@ export function UstMenu({
           {firmaAdi}
         </Link>
 
+        {/* Hızlı seri numarası arama.
+            Menüdeki "Panel" girdisi logoyla aynı yere gidiyordu; yeri bu
+            kutuya verildi. Cihazlar sayfasına girip aramak yerine tam bir
+            seri numarası yazıldığında liste doğrudan o cihazın detayına
+            atlıyor. Form JavaScript'siz çalışıyor. */}
+        <form
+          method="get"
+          action="/cihazlar"
+          data-test="hizli-seri-arama"
+          className="order-last flex w-full items-center gap-1 sm:order-none sm:w-auto"
+        >
+          <input
+            type="search"
+            name="ara"
+            required
+            placeholder="Seri no / IMEI ara"
+            aria-label="Seri numarası ara"
+            data-test="hizli-seri-kutusu"
+            className="w-full rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1 text-sm text-slate-100 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none sm:w-52"
+          />
+          <button
+            type="submit"
+            data-test="hizli-seri-dugmesi"
+            className="shrink-0 rounded-md bg-slate-700 px-2.5 py-1 text-sm font-medium text-white transition hover:bg-slate-600"
+          >
+            Ara
+          </button>
+        </form>
+
         <button
           type="button"
           onClick={() => setAcik((o) => !o)}
