@@ -1,6 +1,7 @@
 import { Kart } from "@/bilesenler/Kart";
 import { oturumGerekli } from "@/lib/yetki";
 import { SifreFormu } from "./SifreFormu";
+import { TumCihazlardanCik } from "./TumCihazlardanCik";
 
 export const metadata = { title: "Şifre Değiştir — Stok Takip" };
 
@@ -28,6 +29,15 @@ export default async function SifreSayfasi() {
           Şifreniz değişince başka cihazlarda açık kalan oturumlarınız kapanır;
           bu ekrandaki oturumunuz devam eder.
         </p>
+      </Kart>
+
+      <Kart baslik="Oturumlar">
+        <p className="mb-3 text-sm text-slate-600">
+          Telefonunuzu kaybettiyseniz ya da ortak bir bilgisayarda oturumunuzu
+          açık bıraktığınızdan şüpheleniyorsanız, şifrenizi değiştirmeden de
+          bütün oturumları kapatabilirsiniz.
+        </p>
+        <TumCihazlardanCik />
       </Kart>
     </div>
   );

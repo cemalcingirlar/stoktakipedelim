@@ -11,12 +11,25 @@ type LogGirdisi = {
   detay?: string;
 };
 
+/**
+ * İsteği yapanın IP'si.
+ *
+ * Önce `cf-connecting-ip`: uygulama cloudflared tüneli arkasında çalışıyor
+ * ve Cloudflare bu başlığı kendi kenarında YAZIYOR, istemcinin gönderdiğini
+ * ezerek. `x-forwarded-for` ise istemciden gelebildiği için sahte değer
+ * taşıyabiliyordu — yani kayıttaki IP istenen her şey olabilirdi.
+ *
+ * Tüneli atlayıp sunucuya doğrudan ulaşabilen biri yine sahte başlık
+ * yollayabilir; o noktada zaten sunucunun ağındadır. Dışarıdan gelen
+ * istekler için kayıt artık güvenilir.
+ */
 async function istemciIp(): Promise<string | undefined> {
   try {
     const basliklar = await headers();
     return (
-      basliklar.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-      basliklar.get("x-real-ip") ??
+      basliklar.get("cf-connecting-ip")?.trim() ||
+      basliklar.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      basliklar.get("x-real-ip")?.trim() ||
       undefined
     );
   } catch {

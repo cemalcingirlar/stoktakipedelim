@@ -47,15 +47,27 @@ export function alimlariSirala(alimlar: MusteriAlimi[]): MusteriAlimi[] {
   });
 }
 
-export function alimOzeti(alimlar: MusteriAlimi[]): AlimOzeti {
+/**
+ * İki kaynağın (normal satış ve aktarım satışı) özetlerini birleştirir.
+ *
+ * Özet listeden değil veritabanı toplamasından geliyor: kart en çok 200 alım
+ * listeliyor, ama "kaç cihaz, ne kadar" sorusunun cevabı tamamı üzerinden
+ * olmalı.
+ */
+export function ozetleriBirlestir(ozetler: AlimOzeti[]): AlimOzeti {
+  let adet = 0;
   let toplamKurus = 0;
   let ilkTarih: Date | null = null;
   let sonTarih: Date | null = null;
-  for (const a of alimlar) {
-    toplamKurus += a.tutarKurus;
-    if (a.tarih === null) continue;
-    if (ilkTarih === null || a.tarih < ilkTarih) ilkTarih = a.tarih;
-    if (sonTarih === null || a.tarih > sonTarih) sonTarih = a.tarih;
+  for (const o of ozetler) {
+    adet += o.adet;
+    toplamKurus += o.toplamKurus;
+    if (o.ilkTarih !== null && (ilkTarih === null || o.ilkTarih < ilkTarih)) {
+      ilkTarih = o.ilkTarih;
+    }
+    if (o.sonTarih !== null && (sonTarih === null || o.sonTarih > sonTarih)) {
+      sonTarih = o.sonTarih;
+    }
   }
-  return { adet: alimlar.length, toplamKurus, ilkTarih, sonTarih };
+  return { adet, toplamKurus, ilkTarih, sonTarih };
 }

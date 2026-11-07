@@ -1,4 +1,5 @@
-// Paneldeki dönem seçenekleri: stoktan çıkanlar ve satış dökümü.
+// Dönem seçenekleri: panelde stoktan çıkanlar ve satış dökümü, satış
+// ekranında son satışlar.
 //
 // Kullanıcının istediği: "bugün stoktan çıkanlar / dün stoktan çıkanlar /
 // tarihle filtrelemeyle stoktan çıkanlar" ve satış dökümünde de "bu ay"
@@ -271,6 +272,51 @@ try {
     sayfa.url(),
   );
 
+  // ================== 5) Satış ekranındaki "Son Satışlar" kartı
+  // Satış yaparken panele gidip dönmek gerekiyordu; aynı kart burada da.
+  await sayfa.goto(`${hedef}/satis`, { waitUntil: "networkidle" });
+  const satisKart = async () =>
+    ((await sayfa
+      .locator("section")
+      .filter({ hasText: /Son Satışlar/ })
+      .first()
+      .textContent()) ?? "").replace(/\s+/g, " ");
+
+  const satisBugun = await satisKart();
+  kontrol("satış ekranında son satışlar kartı var", satisBugun.includes("Son Satışlar"), satisBugun.slice(0, 40));
+  kontrol("kart bugünkü satışları gösteriyor", satisBugun.includes(imei(1)) && satisBugun.includes(imei(3)));
+  kontrol("dünkü satış bugün kartında yok", !satisBugun.includes(imei(2)));
+  kontrol("kart özeti iki cihaz", /2 cihaz/.test(satisBugun), (satisBugun.match(/\d+ cihaz/) ?? [""])[0]);
+
+  await sayfa.locator('[data-test="satis-cikis-secici-dun"]').click();
+  await sayfa.waitForURL(/\/satis\?donem=dun/, { timeout: 20000 });
+  await sayfa.waitForTimeout(300);
+  const satisDun = await satisKart();
+  kontrol("satış ekranında dün seçilebiliyor", satisDun.includes(imei(2)) && !satisDun.includes(imei(1)), satisDun.slice(0, 60));
+
+  await sayfa.locator('[data-test="satis-cikis-secici-aralik"]').click();
+  await sayfa.waitForURL(/donem=aralik/, { timeout: 20000 });
+  await sayfa.fill('[data-test="satis-cikis-secici-bas"]', DUN);
+  await sayfa.fill('[data-test="satis-cikis-secici-bit"]', BUGUN);
+  await Promise.all([
+    sayfa.waitForURL(/bas=/, { timeout: 20000 }),
+    sayfa.locator('[data-test="satis-cikis-secici-uygula"]').click(),
+  ]);
+  await sayfa.waitForTimeout(300);
+  const satisAralik = await satisKart();
+  kontrol(
+    "satış ekranında tarih aralığı çalışıyor",
+    /3 cihaz/.test(satisAralik) && satisAralik.includes("33.000,00"),
+    satisAralik.slice(0, 80),
+  );
+  // Okutma kutusu kartın altında kaybolmamalı: ekranın asıl işi satış.
+  kontrol(
+    "okutma kutusu hâlâ ekranda",
+    (await sayfa.locator("#okutmaKutusu").count()) === 1,
+  );
+
+  await sayfa.screenshot({ path: `${cikti}-satis.png`, fullPage: true });
+  await panele();
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
 
   kontrol(

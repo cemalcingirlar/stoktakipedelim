@@ -52,6 +52,23 @@ test("CSV alanları noktalı virgülle ayrılıyor", () => {
   assert.equal(csvSatiri(["a", 1, null]), "a;1;");
 });
 
+test("formül gibi başlayan alan Excel'de çalışmıyor", () => {
+  // Log detayı kullanıcı metni taşıyor; `=HYPERLINK(...)` arşivi açan
+  // yöneticide çalışırdı. Başa tek tırnak konuyor.
+  assert.equal(csvSatiri(["=1+1"]), "'=1+1");
+  assert.equal(csvSatiri(["+905551112233"]), "'+905551112233");
+  assert.equal(csvSatiri(["-2"]), "'-2");
+  assert.equal(csvSatiri(["@SUM(A1)"]), "'@SUM(A1)");
+  // Ayraç da içeriyorsa hem kaçış hem tırnaklama uygulanıyor.
+  assert.equal(csvSatiri(["=A1;B2"]), `"'=A1;B2"`);
+});
+
+test("sayılar ve sıradan metin olduğu gibi yazılıyor", () => {
+  // Negatif SAYI metne çevrilseydi arşivdeki toplamlar bozulurdu.
+  assert.equal(csvSatiri([-5]), "-5");
+  assert.equal(csvSatiri(["Satış yapıldı"]), "Satış yapıldı");
+});
+
 test("CSV'de ayraç ve tırnak kaçırılıyor", () => {
   // Detay alanında noktalı virgül ve tırnak olabiliyor; kaçırılmazsa
   // sütunlar kayar ve arşiv okunamaz hale gelir.

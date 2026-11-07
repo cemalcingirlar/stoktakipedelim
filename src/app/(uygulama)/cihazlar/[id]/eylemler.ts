@@ -203,6 +203,8 @@ export async function satisiDuzenle(
     revalidatePath(`/cihazlar/${cihaz.id}`);
     revalidatePath("/cihazlar");
     revalidatePath("/panel");
+    // Satış ekranındaki "Son Satışlar" kartı da aynı veriyi gösteriyor.
+    revalidatePath("/satis");
     revalidatePath("/rapor");
     revalidatePath("/musteriler");
     // Kart cihazın yeni bilgilerini göstermeli; koptuysa eski kart da
@@ -306,6 +308,8 @@ export async function satisiGeriAl(
     revalidatePath(`/cihazlar/${cihaz.id}`);
     revalidatePath("/cihazlar");
     revalidatePath("/panel");
+    // Satış ekranındaki "Son Satışlar" kartı da aynı veriyi gösteriyor.
+    revalidatePath("/satis");
     revalidatePath("/rapor");
     revalidatePath("/musteriler");
     // Kart artık bu cihazı listelememeli (kart silinmediyse).

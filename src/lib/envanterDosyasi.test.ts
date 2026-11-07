@@ -4,12 +4,12 @@ import {
   ambariEsle,
   envanterDosyasiMi,
   envanteriOku,
-  magazayaGoreToplam,
   markaModelAyir,
   TEKRAR_NOT_ONEKI,
   type EnvanterKategorisi,
   type EnvanterMagazasi,
 } from "./envanterDosyasi";
+import { magazayaGoreToplam } from "./envanterToplami";
 import type { Matris } from "./tablo";
 
 const MAGAZALAR: EnvanterMagazasi[] = [

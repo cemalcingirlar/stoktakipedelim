@@ -2,7 +2,7 @@ import { Link } from "@/bilesenler/Bag";
 import { Kart } from "@/bilesenler/Kart";
 import { Rozet } from "@/bilesenler/Rozet";
 import { provaYasi } from "@/lib/yedekProvasi";
-import { provaKaydiniOku } from "./eylemler";
+import { provaKaydiniOku } from "./sorgular";
 import { prisma } from "@/lib/prisma";
 import { tarihSaatYaz } from "@/lib/tarih";
 import { adminSayfasi } from "@/lib/yetki";

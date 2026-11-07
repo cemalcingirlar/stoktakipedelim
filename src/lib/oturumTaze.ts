@@ -40,7 +40,8 @@ async function oturumuTazeOkuHam(): Promise<OturumBilgisi | null> {
   const cerez = await oturumuOku();
   if (!cerez) return null;
 
-  const kullanici = await prisma.kullanici.findUnique({
+  const [kullanici, iptal] = await Promise.all([
+    prisma.kullanici.findUnique({
     where: { id: cerez.kullaniciId },
     select: {
       id: true,
@@ -50,6 +51,7 @@ async function oturumuTazeOkuHam(): Promise<OturumBilgisi | null> {
       aktif: true,
       magazaId: true,
       sifreDegisikligi: true,
+      oturumSifirlama: true,
       magaza: { select: { id: true, ad: true } },
       ekMagazalar: {
         where: { aktif: true },
@@ -57,14 +59,31 @@ async function oturumuTazeOkuHam(): Promise<OturumBilgisi | null> {
         select: { id: true, ad: true },
       },
     },
-  });
+    }),
+    // Çıkış yapılmış jeton mu? Birincil anahtar araması; kullanıcı okumasıyla
+    // birlikte gidiyor, isteğe ölçülebilir bir yük bindirmiyor.
+    cerez.jetonKimligi
+      ? prisma.iptalJeton.findUnique({
+          where: { jti: cerez.jetonKimligi },
+          select: { jti: true },
+        })
+      : Promise.resolve(null),
+  ]);
 
   if (!kullanici || !kullanici.aktif) return null;
 
+  // Çıkış yapılan jeton bir daha kabul edilmiyor: çerezi kopyalanmış olabilir.
+  if (iptal) return null;
+
   // Şifre bu jetondan sonra değiştiyse jeton eski şifre döneminden kalmıştır.
   // Şifre sıfırlamanın asıl amacı buydu: ele geçirilmiş oturumu kesmek.
+  // "Tüm cihazlardan çık" damgası da aynı şekilde kesiyor.
   if (
-    !oturumGecerliMi(jetonAni(cerez.jetonAniSn), kullanici.sifreDegisikligi)
+    !oturumGecerliMi(
+      jetonAni(cerez.jetonAniSn),
+      kullanici.sifreDegisikligi,
+      kullanici.oturumSifirlama,
+    )
   ) {
     return null;
   }
