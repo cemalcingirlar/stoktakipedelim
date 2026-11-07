@@ -204,6 +204,68 @@ kontrol(
   uyari?.trim() ?? "(yok)",
 );
 
+// --- Üst menüdeki hızlı seri numarası araması
+// Menüdeki "Panel" girdisi logoyla aynı yere gidiyordu; yerini bu kutu aldı.
+await sayfa.goto(`${hedef}/satis`, { waitUntil: "networkidle" });
+const menuMetinleri = await sayfa.$$eval("header nav a", (a) =>
+  a.map((x) => x.textContent.trim()),
+);
+kontrol(
+  "menüde ayrı 'Panel' girdisi yok",
+  !menuMetinleri.some((m) => m === "Panel"),
+  menuMetinleri.join(" · "),
+);
+kontrol(
+  "logo hâlâ panele gidiyor",
+  (await sayfa.locator('header a[href="/panel"]').count()) >= 1,
+);
+kontrol(
+  "üst menüde hızlı arama kutusu var",
+  (await sayfa.locator('[data-test="hizli-seri-kutusu"]').count()) === 1,
+);
+
+// Kutu yoksa aşağıdaki adımlar anlamsız; betik çökmek yerine kontrolleri
+// düşürüp devam ediyor.
+const kutuVar = (await sayfa.locator('[data-test="hizli-seri-kutusu"]').count()) === 1;
+
+// Tam seri numarası: doğrudan cihazın kendi sayfasına.
+if (kutuVar) {
+await sayfa.fill('[data-test="hizli-seri-kutusu"]', imei[1]);
+await Promise.all([
+  sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 20000 }),
+  sayfa.locator('[data-test="hizli-seri-dugmesi"]').click(),
+]);
+const hizliDetay = (await sayfa.locator("main").textContent()) ?? "";
+kontrol(
+  "hızlı arama tam seri numarasında cihaza götürüyor",
+  hizliDetay.includes(imei[1]),
+  new URL(sayfa.url()).pathname,
+);
+
+// Parça arama: liste, süzülmüş halde.
+await sayfa.fill('[data-test="hizli-seri-kutusu"]', "Galaxy");
+await Promise.all([
+  sayfa.waitForURL(/\/cihazlar\?/, { timeout: 20000 }),
+  sayfa.locator('[data-test="hizli-seri-dugmesi"]').click(),
+]);
+kontrol(
+  "parça aramada süzülmüş liste açılıyor",
+  (await sayfa.locator("tbody tr").count()) >= 2 &&
+    (await sayfa.inputValue("#ara")) === "Galaxy",
+  `${await sayfa.locator("tbody tr").count()} satır`,
+);
+} else {
+  kontrol("hızlı arama tam seri numarasında cihaza götürüyor", false, "kutu yok");
+  kontrol("parça aramada süzülmüş liste açılıyor", false, "kutu yok");
+}
+
+// Kutu her sayfada: satış ekranından da aranabilmeli.
+await sayfa.goto(`${hedef}/musteriler`, { waitUntil: "networkidle" });
+kontrol(
+  "hızlı arama her sayfada duruyor",
+  (await sayfa.locator('[data-test="hizli-seri-kutusu"]').count()) === 1,
+);
+
 // --- Mobil
 await sayfa.setViewportSize({ width: 390, height: 844 });
 await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });

@@ -7,7 +7,8 @@ import { adminMi } from "@/lib/yetki";
 import { oturumGerekli } from "@/lib/yetki";
 
 const TEMEL_MENU: MenuOgesi[] = [
-  { etiket: "Panel", yol: "/panel" },
+  // "Panel" girdisi kaldırıldı: logo zaten panele gidiyor, aynı yere iki
+  // bağlantı yer kaplıyordu. Yerini hızlı seri no araması aldı.
   { etiket: "Cihazlar", yol: "/cihazlar" },
   { etiket: "Satış", yol: "/satis" },
   { etiket: "Mağazalar Arası Sevk", yol: "/sevkiyat" },
