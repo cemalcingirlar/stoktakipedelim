@@ -108,7 +108,10 @@ try {
       let gorunur = (await bag.count()) > 0 && (await bag.isVisible());
       // Telefonda menü kapalı başlıyor; ☰ ile açılıyor.
       if (!gorunur && olcu.menuAc) {
-        const dugme = s.locator("header button").first();
+        // Hamburger'ı etiketinden buluyoruz: "header button" ilk düğmeyi
+        // alıyordu ve üst menüye hızlı arama kutusu eklenince o düğme
+        // "Ara" oldu — menü hiç açılmıyor, kontrol sahte düşüyordu.
+        const dugme = s.getByRole("button", { name: "Menüyü aç/kapat" });
         if (await dugme.count()) {
           await dugme.click();
           await s.waitForTimeout(350);
