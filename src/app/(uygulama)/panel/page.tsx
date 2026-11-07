@@ -306,8 +306,16 @@ export default async function PanelSayfasi({
                       {t.kaynakMagaza.ad} → {t.hedefMagaza.ad}
                     </div>
                     <div className="text-xs text-slate-500">
-                      {t.transferNo} · {t._count.kalemler} cihaz ·{" "}
-                      {t.gonderen.adSoyad}
+                      {/* Numaraya tıklamak da sevkiyatı açıyor: "İncele"
+                          düğmesini aramak gerekmesin. */}
+                      <Link
+                        href={`/sevkiyat/${t.id}`}
+                        data-test="sevk-no-baglantisi"
+                        className="underline-offset-2 hover:text-blue-700 hover:underline"
+                      >
+                        {t.transferNo}
+                      </Link>{" "}
+                      · {t._count.kalemler} cihaz · {t.gonderen.adSoyad}
                     </div>
                   </div>
                   <Link

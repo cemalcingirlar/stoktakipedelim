@@ -123,6 +123,8 @@ export type SatilanSatiri = {
   magazaAdi: string;
   satanAdSoyad: string | null;
   musteriAdSoyad: string | null;
+  /** Müşteri kartına bağlanmak için; müşterisiz satışta null. */
+  musteriId: number | null;
   /** Mağaza içi aktarımda sat-geri al işlemi mi? */
   aktarimMi: boolean;
 };
@@ -172,7 +174,7 @@ export async function satilanlar(
         alisFiyatiKurus: true,
         magaza: { select: { ad: true } },
         satanKullanici: { select: { adSoyad: true } },
-        musteri: { select: { adSoyad: true } },
+        musteri: { select: { id: true, adSoyad: true } },
       },
     }),
     prisma.aktarimSatisi.findMany({
@@ -186,7 +188,7 @@ export async function satilanlar(
         maliyetKurus: true,
         magaza: { select: { ad: true } },
         satanKullanici: { select: { adSoyad: true } },
-        musteri: { select: { adSoyad: true } },
+        musteri: { select: { id: true, adSoyad: true } },
         stokKalemi: {
           select: { id: true, marka: true, model: true, seriNo: true },
         },
@@ -218,6 +220,7 @@ export async function satilanlar(
       magazaAdi: k.magaza.ad,
       satanAdSoyad: k.satanKullanici?.adSoyad ?? null,
       musteriAdSoyad: k.musteri?.adSoyad ?? null,
+      musteriId: k.musteri?.id ?? null,
       aktarimMi: false,
     })),
     ...aktarimlar.map((a) => ({
@@ -234,6 +237,7 @@ export async function satilanlar(
       magazaAdi: a.magaza.ad,
       satanAdSoyad: a.satanKullanici.adSoyad,
       musteriAdSoyad: a.musteri?.adSoyad ?? null,
+      musteriId: a.musteri?.id ?? null,
       aktarimMi: true,
     })),
   ]

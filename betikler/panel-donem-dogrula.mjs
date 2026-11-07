@@ -272,6 +272,35 @@ try {
     sayfa.url(),
   );
 
+  // ============== 4b) Karttaki satır bağları: seri no, müşteri, sevk
+  // Paneldeki satırdan cihazın hikâyesine ve müşteri kartına geçilebilmeli;
+  // satışın fişi zaten başlıkta.
+  await panele();
+  const seriBag = sayfa.locator('[data-test="cikis-seri-baglantisi"]').first();
+  kontrol("satırda seri no bağlantısı var", (await seriBag.count()) === 1);
+  await seriBag.click();
+  await sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 20000 });
+  const cihazMetni = (await sayfa.locator("main").textContent()) ?? "";
+  // Hangi satırın açıldığı sıraya bağlı; ölçüt, bugün satılan cihazlardan
+  // birinin tarihçeli detay sayfasına gelmiş olmak.
+  kontrol(
+    "seri no cihazın tarihçesine götürdü",
+    /Sevkiyat ve Hareket Tarihçesi/.test(cihazMetni) &&
+      (cihazMetni.includes(imei(1)) || cihazMetni.includes(imei(3))),
+    `${sayfa.url()} · ${cihazMetni.slice(0, 60).replace(/\s+/g, " ")}`,
+  );
+
+  await panele();
+  const musteriBag = sayfa.locator('[data-test="cikis-musteri-baglantisi"]').first();
+  kontrol("satırda müşteri bağlantısı var", (await musteriBag.count()) === 1);
+  await musteriBag.click();
+  await sayfa.waitForURL(/\/musteriler\/\d+$/, { timeout: 20000 });
+  kontrol(
+    "müşteri adı müşteri kartına götürdü",
+    ((await sayfa.locator("main").textContent()) ?? "").includes(MUSTERI),
+    sayfa.url(),
+  );
+
   // ================== 5) Satış ekranındaki "Son Satışlar" kartı
   // Satış yaparken panele gidip dönmek gerekiyordu; aynı kart burada da.
   await sayfa.goto(`${hedef}/satis`, { waitUntil: "networkidle" });

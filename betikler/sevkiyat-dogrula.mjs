@@ -143,8 +143,36 @@ try {
     /yalnızca/.test(gonderenGorunum) && (await sayfa.locator("#okutmaKutusu").count()) === 0,
   );
 
-  // ------------------------------------------------ 2) hedef mağaza kabul
+  // ---- Bekleyen sevkiyata numarasından da girilebilmeli
+  // "İncele" / "Kabul Et" düğmesini aramak yerine SVK numarasına tıklamak.
   await giris("personel2");
+  await sayfa.goto(`${hedef}/sevkiyat`, { waitUntil: "networkidle" });
+  const sevkNoBagi = sayfa.locator('[data-test="sevk-no-baglantisi"]').first();
+  kontrol("bekleyen sevkiyatın numarası bağlantı", (await sevkNoBagi.count()) >= 1);
+  if ((await sevkNoBagi.count()) >= 1) {
+    await sevkNoBagi.click();
+    await sayfa.waitForURL(/\/sevkiyat\/\d+$/, { timeout: 20000 });
+    kontrol(
+      "numaradan sevkiyatın içine girildi",
+      sayfa.url().endsWith(new URL(sevkiyatYolu, hedef).pathname),
+      `${sayfa.url()} · beklenen ${sevkiyatYolu}`,
+    );
+  }
+
+  await sayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
+  const panelSevkBagi = sayfa.locator('[data-test="sevk-no-baglantisi"]').first();
+  kontrol("panelde de sevk numarası bağlantı", (await panelSevkBagi.count()) >= 1);
+  if ((await panelSevkBagi.count()) >= 1) {
+    await panelSevkBagi.click();
+    await sayfa.waitForURL(/\/sevkiyat\/\d+$/, { timeout: 20000 });
+    kontrol(
+      "panelden sevkiyatın içine girildi",
+      sayfa.url().endsWith(new URL(sevkiyatYolu, hedef).pathname),
+      `${sayfa.url()} · beklenen ${sevkiyatYolu}`,
+    );
+  }
+
+  // ------------------------------------------------ 2) hedef mağaza kabul
   await sayfa.goto(sevkiyatYolu, { waitUntil: "networkidle" });
   kontrol(
     "hedef mağaza kullanıcısına kabul paneli çıkıyor",

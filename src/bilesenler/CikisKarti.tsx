@@ -123,9 +123,38 @@ export function CikisKarti({
                   </span>
                 ) : null}
                 <div className="text-xs text-slate-500">
-                  {k.seriNo ? `${k.seriNo} · ` : ""}
+                  {/* Seri numarası cihazın kendi sayfasına: satışın fişi
+                      başlıkta, cihazın hikâyesi (giriş, sevk, satış) ise
+                      cihaz detayındaki tarihçede. */}
+                  {k.seriNo ? (
+                    <>
+                      <Link
+                        href={`/cihazlar/${k.cihazId}`}
+                        data-test="cikis-seri-baglantisi"
+                        className="underline-offset-2 hover:text-blue-700 hover:underline"
+                      >
+                        {k.seriNo}
+                      </Link>
+                      {" · "}
+                    </>
+                  ) : null}
                   {k.magazaAdi}
-                  {k.musteriAdSoyad ? ` · ${k.musteriAdSoyad}` : ""}
+                  {k.musteriAdSoyad ? (
+                    <>
+                      {" · "}
+                      {k.musteriId ? (
+                        <Link
+                          href={`/musteriler/${k.musteriId}`}
+                          data-test="cikis-musteri-baglantisi"
+                          className="underline-offset-2 hover:text-blue-700 hover:underline"
+                        >
+                          {k.musteriAdSoyad}
+                        </Link>
+                      ) : (
+                        k.musteriAdSoyad
+                      )}
+                    </>
+                  ) : null}
                   {k.satanAdSoyad ? ` · ${k.satanAdSoyad}` : ""}
                 </div>
               </div>
