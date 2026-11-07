@@ -36,3 +36,36 @@ test("saniye yuvarlaması oturumu düşürmüyor", () => {
 test("jeton anı okunamıyorsa ve şifre değişmişse oturum düşüyor", () => {
   assert.equal(oturumGecerliMi(null, AN), false);
 });
+
+// ------------------------------------------- tüm cihazlardan çıkış damgası
+
+test("oturum sıfırlama damgasından önceki jeton geçersiz", () => {
+  // "Tüm cihazlardan çık": bu andan önce üretilmiş her jeton düşmeli.
+  const jeton = new Date(2026, 9, 24, 10, 0, 0);
+  const sifirlama = new Date(2026, 9, 24, 11, 0, 0);
+  assert.equal(oturumGecerliMi(jeton, null, sifirlama), false);
+});
+
+test("sıfırlamadan sonra üretilen jeton geçerli", () => {
+  const sifirlama = new Date(2026, 9, 24, 11, 0, 0);
+  const jeton = new Date(2026, 9, 24, 11, 30, 0);
+  assert.equal(oturumGecerliMi(jeton, null, sifirlama), true);
+});
+
+test("iki damgadan biri bile keserse oturum geçersiz", () => {
+  const jeton = new Date(2026, 9, 24, 12, 0, 0);
+  const eski = new Date(2026, 9, 24, 9, 0, 0);
+  const yeni = new Date(2026, 9, 24, 13, 0, 0);
+  assert.equal(oturumGecerliMi(jeton, eski, eski), true);
+  assert.equal(oturumGecerliMi(jeton, yeni, eski), false);
+  assert.equal(oturumGecerliMi(jeton, eski, yeni), false);
+});
+
+test("damga yoksa eski oturumlar düşmüyor", () => {
+  // Sürüm yükseltmesi kimseyi dışarı atmamalı.
+  assert.equal(oturumGecerliMi(new Date(2026, 9, 24), null, null), true);
+});
+
+test("sıfırlama damgası varken jeton anı okunamıyorsa oturum geçersiz", () => {
+  assert.equal(oturumGecerliMi(null, null, new Date(2026, 9, 24)), false);
+});

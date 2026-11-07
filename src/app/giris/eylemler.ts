@@ -3,7 +3,12 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { sifreDogrula } from "@/lib/sifre";
-import { oturumAc, oturumKapat, oturumuOku } from "@/lib/oturum";
+import {
+  oturumAc,
+  oturumKapat,
+  oturumuOku,
+  type CozulmusOturum,
+} from "@/lib/oturum";
 import { oturumBilgisiKur } from "@/lib/oturumKur";
 import { logYaz } from "@/lib/log";
 import { LOG_ISLEM } from "@/lib/sabitler";
@@ -110,11 +115,52 @@ export async function girisYap(
   redirect(guvenliHedef(devam));
 }
 
+/**
+ * Çıkış.
+ *
+ * Çerezi silmek yetmiyordu: jeton (JWT) sunucuda tutulmadığı için kendi
+ * başına 12 saat geçerli kalıyor ve kopyalanmış bir çerez çıkıştan sonra da
+ * çalışıyordu. Ortak tezgâh bilgisayarında bu gerçek bir senaryo. Çıkışta
+ * jetonun kimliği iptal listesine yazılıyor; oturum okuması her istekte
+ * oraya bakıyor (src/lib/oturumTaze.ts).
+ */
 export async function cikisYap(): Promise<void> {
   const oturum = await oturumuOku();
   if (oturum) {
     await logYaz(oturum, { islem: LOG_ISLEM.CIKIS_YAP });
+    await jetonuIptalEt(oturum);
   }
   await oturumKapat();
   redirect("/giris");
+}
+
+/**
+ * Jetonu iptal listesine yazar ve süresi geçmiş kayıtları temizler.
+ *
+ * Temizlik burada: ayrı bir zamanlanmış göreve gerek yok, liste zaten her
+ * çıkışta bir kayıt kadar büyüyor. Süresi dolmuş jeton zaten kabul
+ * edilmiyor, kaydının durmasının bir anlamı yok.
+ */
+async function jetonuIptalEt(oturum: CozulmusOturum): Promise<void> {
+  if (!oturum.jetonKimligi) return; // Bu alandan önce açılmış eski oturum.
+  const bitis = oturum.jetonBitisSn
+    ? new Date(oturum.jetonBitisSn * 1000)
+    : new Date(Date.now() + 12 * 60 * 60 * 1000);
+  try {
+    await prisma.$transaction([
+      prisma.iptalJeton.upsert({
+        where: { jti: oturum.jetonKimligi },
+        update: {},
+        create: {
+          jti: oturum.jetonKimligi,
+          kullaniciId: oturum.kullaniciId,
+          bitis,
+        },
+      }),
+      prisma.iptalJeton.deleteMany({ where: { bitis: { lt: new Date() } } }),
+    ]);
+  } catch (hata) {
+    // Çıkışın kendisi her hâlükârda tamamlanmalı: çerez siliniyor.
+    console.error("Jeton iptal edilemedi:", hata);
+  }
 }

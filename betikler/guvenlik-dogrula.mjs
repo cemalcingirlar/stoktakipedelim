@@ -9,6 +9,12 @@
 // 2. Şifre değişse bile eski oturumlar çalışmaya devam ediyordu. Hesabı ele
 //    geçirilen kullanıcının şifresini sıfırlamak saldırganı dışarı atmıyordu;
 //    oysa sıfırlamanın tek amacı buydu.
+//
+// 3. Çıkış yalnız çerezi siliyordu. Jeton (JWT) sunucuda tutulmadığı için
+//    kendi başına 12 saat geçerli kalıyor, kopyalanmış bir çerez çıkıştan
+//    sonra da çalışıyordu — ortak tezgâh bilgisayarında gerçek bir senaryo.
+//    Artık çıkışta jetonun kimliği iptal listesine yazılıyor, ayrıca
+//    "tüm cihazlardan çık" bütün jetonları birden kesiyor.
 import { chromium } from "@playwright/test";
 
 const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
@@ -239,6 +245,80 @@ try {
   kontrol("yeni şifreyle giriş yapılabiliyor", yeniGiris.url().endsWith("/panel"), yeniGiris.url());
   await yeniCihaz.close();
   await kendiBaglam.close();
+
+  // =============== 5) Çıkış yapılan jeton bir daha kabul edilmiyor
+  // Çerez kopyalanmış olabilir; çıkıştan sonra o jetonla girilememeli.
+  const { baglam: cikisBaglam, sayfa: cikisSayfa } = await oturumAc("sorumlu1");
+  kontrol("çıkış denemesi için oturum açıldı", cikisSayfa.url().endsWith("/panel"), cikisSayfa.url());
+  const kopyalananCerezler = await cikisBaglam.cookies();
+  kontrol(
+    "oturum çerezi alındı",
+    kopyalananCerezler.some((c) => c.name === "stok_oturum"),
+    kopyalananCerezler.map((c) => c.name).join(", "),
+  );
+
+  await cikisSayfa.locator('a:has-text("Çıkış"), button:has-text("Çıkış")').first().click();
+  await cikisSayfa.waitForURL(/\/giris/, { timeout: 20000 }).catch(() => {});
+  kontrol("çıkış yapıldı", cikisSayfa.url().includes("/giris"), cikisSayfa.url());
+  await cikisBaglam.close();
+
+  // Kopyalanan çerezi başka bir tarayıcıya takıp deniyoruz.
+  const kopyaBaglam = await tarayici.newContext({ locale: "tr-TR" });
+  await kopyaBaglam.addCookies(kopyalananCerezler);
+  const kopya = await kopyaBaglam.newPage();
+  await kopya.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
+  kontrol(
+    "çıkıştan sonra kopyalanan çerez çalışmıyor",
+    kopya.url().includes("/giris"),
+    kopya.url(),
+  );
+  await kopyaBaglam.close();
+
+  // =============== 6) Tüm cihazlardan çık
+  const { baglam: aBaglam, sayfa: aSayfa } = await oturumAc("sorumlu2");
+  const { baglam: bBaglam, sayfa: bSayfa } = await oturumAc("sorumlu2");
+  kontrol(
+    "aynı kullanıcıyla iki oturum açıldı",
+    aSayfa.url().endsWith("/panel") && bSayfa.url().endsWith("/panel"),
+    `${aSayfa.url()} | ${bSayfa.url()}`,
+  );
+
+  await aSayfa.goto(`${hedef}/sifre`, { waitUntil: "networkidle" });
+  kontrol(
+    "şifre ekranında 'tüm cihazlardan çık' var",
+    (await aSayfa.locator('[data-test="tum-cihazlardan-cik-ac"]').count()) === 1,
+  );
+  await aSayfa.locator('[data-test="tum-cihazlardan-cik-ac"]').click();
+  await aSayfa.waitForTimeout(300);
+  kontrol(
+    "iki adımlı onay isteniyor",
+    (await aSayfa.locator('[data-test="tum-cihazlardan-cik-formu"]').count()) === 1,
+  );
+  await aSayfa.locator('[data-test="tum-cihazlardan-cik-formu"] button[type="submit"]').click();
+  await aSayfa.waitForURL(/\/giris/, { timeout: 20000 }).catch(() => {});
+  kontrol("işlemi yapan cihaz giriş sayfasına düştü", aSayfa.url().includes("/giris"), aSayfa.url());
+
+  await bSayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
+  kontrol(
+    "aynı kullanıcının diğer cihazdaki oturumu da düştü",
+    bSayfa.url().includes("/giris"),
+    bSayfa.url(),
+  );
+  await aBaglam.close();
+  await bBaglam.close();
+
+  // Başka kullanıcılar etkilenmemeli.
+  await admin.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
+  kontrol(
+    "başka kullanıcıların oturumu etkilenmedi",
+    admin.url().endsWith("/panel"),
+    admin.url(),
+  );
+
+  // Damga sonrası YENİ giriş çalışmalı: kalıcı kilit değil.
+  const { baglam: tekrarBaglam, sayfa: tekrar } = await oturumAc("sorumlu2");
+  kontrol("sıfırlamadan sonra tekrar giriş yapılabiliyor", tekrar.url().endsWith("/panel"), tekrar.url());
+  await tekrarBaglam.close();
 
   await admin.screenshot({ path: `${cikti}-son.png`, fullPage: true });
   await adminBaglam.close();

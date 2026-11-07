@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import type { Rol } from "./sabitler";
@@ -44,9 +45,15 @@ function gizliAnahtar(): Uint8Array {
   return new TextEncoder().encode(deger);
 }
 
+/** Jetonun kimliği: çıkışta tek tek iptal edebilmek için. */
+function jetonKimligiUret(): string {
+  return randomBytes(16).toString("hex");
+}
+
 export async function oturumJetonuUret(bilgi: OturumBilgisi): Promise<string> {
   return new SignJWT({ ...bilgi })
     .setProtectedHeader({ alg: "HS256" })
+    .setJti(jetonKimligiUret())
     .setIssuedAt()
     .setExpirationTime(`${OTURUM_SURESI_SN}s`)
     .sign(gizliAnahtar());
@@ -55,6 +62,10 @@ export async function oturumJetonuUret(bilgi: OturumBilgisi): Promise<string> {
 export type CozulmusOturum = OturumBilgisi & {
   /** Jetonun üretilme anı (JWT iat). Şifre değişikliği denetiminde kullanılıyor. */
   jetonAniSn?: number;
+  /** Jetonun kimliği (JWT jti). Çıkışta bu kimlik iptal listesine yazılıyor. */
+  jetonKimligi?: string;
+  /** Jetonun bitiş anı (JWT exp). İptal kaydının ne zaman silinebileceği. */
+  jetonBitisSn?: number;
 };
 
 export async function oturumJetonunuCoz(
@@ -65,6 +76,8 @@ export async function oturumJetonunuCoz(
     if (typeof payload.kullaniciId !== "number") return null;
     return {
       jetonAniSn: typeof payload.iat === "number" ? payload.iat : undefined,
+      jetonKimligi: typeof payload.jti === "string" ? payload.jti : undefined,
+      jetonBitisSn: typeof payload.exp === "number" ? payload.exp : undefined,
       kullaniciId: payload.kullaniciId,
       kullaniciAdi: String(payload.kullaniciAdi ?? ""),
       adSoyad: String(payload.adSoyad ?? ""),

@@ -66,6 +66,11 @@ model Kullanici {
   /// geçersiz sayılıyor; şifre sıfırlamak eski oturumları da kesiyor.
   sifreDegisikligi DateTime?
 
+  /// "Tüm cihazlardan çık" damgası. Bu andan önce üretilmiş jetonlar
+  /// geçersiz: telefonunu kaybeden ya da ortak bilgisayarda açık oturum
+  /// bıraktığından şüphelenen kişi her yerden birden çıkabilsin.
+  oturumSifirlama DateTime?
+
   magaza Magaza? @relation(fields: [magazaId], references: [id])
 
   /// Ana mağazasına ek olarak yetkili olduğu mağazalar. Bir kişi birden çok
@@ -532,6 +537,29 @@ model IceAktarim {
 
   @@index([tarih])
   @@index([geriAlindi])
+}
+
+/// Çıkış yapılmış jetonlar.
+///
+/// Oturum jetonu (JWT) sunucuda tutulmuyor; çıkışta yalnız çerez siliniyordu
+/// ve kopyalanmış bir çerez 12 saat boyunca çalışmaya devam ediyordu. Çıkışta
+/// jetonun kimliği buraya yazılıyor, her istekte bakılıyor.
+///
+/// Tablo küçük kalıyor: her satır jetonun bitiş anını taşıyor ve süresi
+/// geçenler yeni bir çıkışta siliniyor.
+model IptalJeton {
+  /// JWT'nin `jti` alanı.
+  jti String @id
+
+  /// Hangi kullanıcının jetonu — ayıklama ve denetim için.
+  kullaniciId Int
+
+  /// Jetonun kendi son kullanma anı; bundan sonra kayıt gereksiz.
+  bitis DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([bitis])
 }
 
 model Log {
