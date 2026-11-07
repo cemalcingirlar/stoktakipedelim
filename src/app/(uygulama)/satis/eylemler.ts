@@ -693,6 +693,7 @@ export async function satisKaydet(
 
     revalidatePath("/cihazlar");
     revalidatePath("/panel");
+    revalidatePath("/satis");
     revalidatePath("/musteriler");
     // Satılan cihazların detay sayfaları artık satış kartına bağ veriyor.
     for (const cihaz of cihazlar) revalidatePath(`/cihazlar/${cihaz.id}`);

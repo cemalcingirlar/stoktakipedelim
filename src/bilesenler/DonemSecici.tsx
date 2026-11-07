@@ -18,6 +18,7 @@ export function DonemSecici({
   secili,
   adres,
   testAdi,
+  eylem,
   aralikFormu,
 }: {
   donemler: SatisDonemi[];
@@ -25,6 +26,8 @@ export function DonemSecici({
   /** Dönem düğmesinin adresi. */
   adres: (anahtar: string) => string;
   testAdi: string;
+  /** Aralık formunun gönderildiği sayfa (bulunulan ekran). */
+  eylem: string;
   /** Serbest aralık seçiliyken gösterilen form. */
   aralikFormu: {
     /** Formla birlikte taşınacak diğer seçimler. */
@@ -52,7 +55,7 @@ export function DonemSecici({
       {secili.anahtar === "aralik" ? (
         <form
           method="get"
-          action="/panel"
+          action={eylem}
           data-test={`${testAdi}-form`}
           className="flex flex-wrap items-center gap-1"
         >
