@@ -415,25 +415,3 @@ export function envanteriOku(
 function numarayiYoksaydiMi(secenekler: { tekrarEdenleriSeriSayma?: boolean }): boolean {
   return secenekler.tekrarEdenleriSeriSayma === true;
 }
-
-/** Önizlemedeki satırları mağazaya göre toplar — ekrandaki özet tablosu için. */
-export function magazayaGoreToplam(
-  satirlar: EnvanterSatiri[],
-): { magazaId: number; magazaAdi: string; adet: number; tutarKurus: number }[] {
-  const harita = new Map<number, { magazaId: number; magazaAdi: string; adet: number; tutarKurus: number }>();
-  for (const satir of satirlar) {
-    const mevcut = harita.get(satir.magazaId);
-    if (mevcut) {
-      mevcut.adet += 1;
-      mevcut.tutarKurus += satir.alisFiyatiKurus;
-    } else {
-      harita.set(satir.magazaId, {
-        magazaId: satir.magazaId,
-        magazaAdi: satir.magazaAdi,
-        adet: 1,
-        tutarKurus: satir.alisFiyatiKurus,
-      });
-    }
-  }
-  return [...harita.values()].sort((a, b) => a.magazaAdi.localeCompare(b.magazaAdi, "tr"));
-}

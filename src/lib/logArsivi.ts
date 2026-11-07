@@ -64,6 +64,19 @@ export function arsivDosyaAdi(sinir: Date): string {
 }
 
 /**
+ * Excel'in formül sanmasını engeller.
+ *
+ * `=`, `+`, `-`, `@` (ve tab / satır başı) ile başlayan bir hücreyi Excel
+ * formül olarak çalıştırıyor. Log detayı kullanıcı metni taşıyor (cihaz
+ * notu, müşteri adı); oraya yazılan `=HYPERLINK(...)` arşivi açan yöneticide
+ * çalışırdı. Başa tek tırnak konuyor: Excel hücreyi metin olarak gösteriyor,
+ * tırnak ekranda görünmüyor.
+ */
+function formulKacisi(metin: string): string {
+  return /^[=+\-@\t\r]/.test(metin) ? `'${metin}` : metin;
+}
+
+/**
  * CSV satırı üretir.
  *
  * Ayraç noktalı virgül: Türkçe Windows'ta Excel virgülü ondalık ayıracı
@@ -76,7 +89,9 @@ export function csvSatiri(
   return alanlar
     .map((alan) => {
       if (alan === null || alan === undefined) return "";
-      const metin = String(alan);
+      // Sayılar olduğu gibi: negatif sayıyı metne çevirmek toplamları bozar.
+      if (typeof alan === "number") return String(alan);
+      const metin = formulKacisi(String(alan));
       if (/[";\n\r]/.test(metin)) return `"${metin.replace(/"/g, '""')}"`;
       return metin;
     })

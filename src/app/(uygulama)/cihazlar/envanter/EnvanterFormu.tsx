@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { Link } from "@/bilesenler/Bag";
 import { GIRDI_SINIFI } from "@/bilesenler/Alan";
 import { GonderDugmesi } from "@/bilesenler/Dugme";
-import { magazayaGoreToplam } from "@/lib/envanterDosyasi";
+import { magazayaGoreToplam } from "@/lib/envanterToplami";
 import { kurusuTLYaz } from "@/lib/para";
 import {
   envanteriKaydet,

@@ -135,6 +135,9 @@ fi
 baslik "5/7  Veritabanı"
 sudo -u "$KULLANICI" npm run db:generate
 sudo -u "$KULLANICI" npm run db:deploy
+# Sorgu planlayıcısının istatistikleri: veri büyüdükçe dağılım değişiyor,
+# her güncellemede tazeleniyor (saniyenin altında).
+sudo -u "$KULLANICI" npm run db:analiz
 
 baslik "6/7  Derleme"
 # Derleme tepe noktada ~3 GB bellek ister. Zayıf makinelerde takas alanı

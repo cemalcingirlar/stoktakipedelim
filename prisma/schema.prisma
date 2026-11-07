@@ -268,6 +268,18 @@ model StokKalemi {
   @@index([girisTarihi])
   @@index([satisTarihi])
   @@index([model])
+  // Müşteri kartı ve müşteri listesindeki toplamlar bu alandan geçiyordu ve
+  // dizin olmadığı için satılmış bütün cihazlar taranıyordu.
+  @@index([musteriId])
+  // Fatura detayı kalemlerini, aktarım listesi kendi kalemlerini,
+  // tedarikçi filtresi de kendi cihazlarını tarayarak buluyordu.
+  @@index([alisFaturasiId])
+  @@index([iceAktarimId])
+  @@index([tedarikciId])
+  // Panelin ve satış ekranının en sık sorgusu: "şu aralıkta satılanlar".
+  // Tek başına durum dizini seçiliyor, sıralama için geçici B-ağacı
+  // kuruluyordu.
+  @@index([durum, satisTarihi])
 }
 
 /// Mağaza içi aktarımda yapılan "müşteriye sat, geri al" işleminin satış kaydı.
@@ -346,6 +358,8 @@ model AktarimSatisi {
   @@index([magazaId, satisTarihi])
   @@index([satanKullaniciId, satisTarihi])
   @@index([stokKalemiId])
+  // Müşteri kartı aktarım satışlarını da listeliyor.
+  @@index([musteriId])
 }
 
 /// Ürünün tüm yaşam döngüsü: giriş, transferler, satış. Detay sayfasındaki tarihçe.

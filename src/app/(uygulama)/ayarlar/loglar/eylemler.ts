@@ -15,8 +15,15 @@ import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
 
 export type LogDurumu = { hata?: string; basari?: string };
 
-/** Ayar tablosundaki arşiv kaydını okur; bozuksa yok sayar. */
-export async function arsivKaydiniOku(): Promise<ArsivKaydi | null> {
+/**
+ * Ayar tablosundaki arşiv kaydını okur; bozuksa yok sayar.
+ *
+ * Dışa verilmiyor: "use server" dosyasındaki HER dışa verim, Next tarafında
+ * herkesin çağırabileceği bir uca dönüşüyor. Bu okuma yalnız bu dosyadaki
+ * silme eyleminin içinde kullanılıyor; dışa verilmiş hâliyle oturum açmamış
+ * biri arşivin sınır tarihini ve kayıt sayısını öğrenebiliyordu.
+ */
+async function arsivKaydiniOku(): Promise<ArsivKaydi | null> {
   const kayit = await prisma.ayar.findUnique({
     where: { anahtar: ARSIV_ANAHTARI },
   });
