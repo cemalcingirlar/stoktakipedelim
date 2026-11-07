@@ -156,8 +156,16 @@ export default async function SevkiyatlarSayfasi({
                       {t.kaynakMagaza.ad} → {t.hedefMagaza.ad}
                     </div>
                     <div className="text-xs text-slate-500">
-                      {t.transferNo} · {ozet.bekleyen} cihaz bekliyor ·{" "}
-                      {t.gonderen.adSoyad} · {tarihSaatYaz(t.gonderimTarihi)}
+                      {/* Numara da sevkiyatı açıyor; paneldeki kartla aynı. */}
+                      <Link
+                        href={`/sevkiyat/${t.id}`}
+                        data-test="sevk-no-baglantisi"
+                        className="underline-offset-2 hover:text-blue-700 hover:underline"
+                      >
+                        {t.transferNo}
+                      </Link>{" "}
+                      · {ozet.bekleyen} cihaz bekliyor · {t.gonderen.adSoyad} ·{" "}
+                      {tarihSaatYaz(t.gonderimTarihi)}
                     </div>
                   </div>
                   <Link

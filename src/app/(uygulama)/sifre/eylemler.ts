@@ -1,7 +1,8 @@
 "use server";
 
 import { logYaz } from "@/lib/log";
-import { oturumAc } from "@/lib/oturum";
+import { redirect } from "next/navigation";
+import { oturumAc, oturumKapat } from "@/lib/oturum";
 import { oturumBilgisiKur } from "@/lib/oturumKur";
 import { prisma } from "@/lib/prisma";
 import { LOG_ISLEM } from "@/lib/sabitler";
@@ -103,4 +104,41 @@ export async function kendiSifremiDegistir(
     console.error("Şifre değiştirilemedi:", hata);
     return { hata: "İşlem tamamlanamadı. Lütfen tekrar deneyin." };
   }
+}
+
+/**
+ * Tüm cihazlardan çıkış.
+ *
+ * Telefonunu kaybeden ya da ortak bilgisayarda oturumunu açık bıraktığından
+ * şüphelenen kişinin şifresini değiştirmeden de her yerden çıkabilmesi
+ * gerekiyor. Damga bu andan ÖNCE üretilmiş bütün jetonları geçersiz kılıyor
+ * (src/lib/oturumGecerlilik.ts); bu ekrandaki oturum da dahil, o yüzden
+ * ardından giriş sayfasına düşülüyor.
+ */
+export async function tumCihazlardanCik(): Promise<void> {
+  let basarili = false;
+  try {
+    const oturum = await oturumZorunlu();
+
+    await prisma.kullanici.update({
+      where: { id: oturum.kullaniciId },
+      data: { oturumSifirlama: new Date() },
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.CIKIS_YAP,
+      hedefTip: "Kullanici",
+      hedefId: oturum.kullaniciId,
+      detay: "Tüm cihazlardan çıkıldı",
+    });
+
+    await oturumKapat();
+    basarili = true;
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) redirect("/giris");
+    console.error("Tüm cihazlardan çıkılamadı:", hata);
+  }
+  // redirect bir istisna fırlatıyor; try içinde olsaydı kendi catch'imize
+  // düşerdi.
+  if (basarili) redirect("/giris");
 }

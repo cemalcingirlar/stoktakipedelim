@@ -45,19 +45,6 @@ export async function simdiYedekle(
   }
 }
 
-/** Son prova kaydını okur; bozuksa yok sayar. */
-export async function provaKaydiniOku(): Promise<ProvaKaydi | null> {
-  const kayit = await prisma.ayar.findUnique({
-    where: { anahtar: PROVA_ANAHTARI },
-  });
-  if (!kayit) return null;
-  try {
-    const coz = JSON.parse(kayit.deger) as ProvaKaydi;
-    return typeof coz.tarihISO === "string" ? coz : null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Geri yükleme provası: Drive'daki en yeni yedeği indirip açar.

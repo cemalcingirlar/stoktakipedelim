@@ -1,4 +1,5 @@
 import { Link } from "@/bilesenler/Bag";
+import { CikisKarti } from "@/bilesenler/CikisKarti";
 import { DonemSecici } from "@/bilesenler/DonemSecici";
 import { HareketGrafigi } from "@/bilesenler/HareketGrafigi";
 import { Kart, SayiKarti } from "@/bilesenler/Kart";
@@ -47,9 +48,7 @@ import {
   formTarihiCevir,
   gunBasi,
   inputTarih,
-  saatYaz,
   tarihSaatYaz,
-  tarihYaz,
 } from "@/lib/tarih";
 import { gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { oturumGerekli } from "@/lib/yetki";
@@ -255,125 +254,40 @@ export default async function PanelSayfasi({
       </Kart>
 
       <div id="cikanlar" className="grid scroll-mt-4 grid-cols-1 gap-6 lg:grid-cols-2">
-        <Kart
-          baslikYolu={cikisCihazYolu}
+        <CikisKarti
           baslik={cikisKartBasligi}
-          eylem={
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {cikislar.adet > 0 ? (
-                <span className="text-xs text-slate-500">
-                  {cikislar.adet} cihaz ·{" "}
-                  {kurusuTLYazSembollu(cikislar.ciroKurus)} ciro ·{" "}
-                  <span
-                    className={
-                      cikislar.karKurus >= 0
-                        ? "text-emerald-700"
-                        : "text-red-600"
-                    }
-                  >
-                    {kurusuTLYazSembollu(cikislar.karKurus)} kâr
-                  </span>
-                </span>
-              ) : null}
-              <DonemSecici
-                donemler={CIKIS_DONEMLERI}
-                secili={cikisDonemi}
-                testAdi="cikis-donem-secici"
-                adres={(anahtar) =>
-                  panelAdresi({ ...secimler, cikisDonem: anahtar }, "cikanlar")
-                }
-                aralikFormu={{
-                  gizli: {
-                    donem: secimler.donem,
-                    satisDonem: secimler.satisDonem,
-                    olcu: secimler.olcu,
-                    urunDonem: secimler.urunDonem,
-                    satisBas: secimler.satisBas,
-                    satisBit: secimler.satisBit,
-                    cikisDonem: "aralik",
-                  },
-                  basAdi: "cikisBas",
-                  bitAdi: "cikisBit",
-                  bas: secimler.cikisBas || inputTarih(cikisAraligi.baslangic),
-                  bit: secimler.cikisBit || inputTarih(cikisAraligi.bitis),
-                }}
-              />
-            </div>
+          cihazListesiYolu={cikisCihazYolu}
+          ozet={cikislar}
+          tekGun={cikisTekGun}
+          bosNotu={
+            cikisDonemi.anahtar === "gun"
+              ? "Bugün henüz satış yapılmadı."
+              : `Seçilen dönemde (${cikisBasligi}) stoktan çıkan cihaz yok.`
           }
-        >
-          {cikislar.adet === 0 ? (
-            <p className="text-sm text-slate-500" data-test="cikis-bos">
-              {cikisDonemi.anahtar === "gun"
-                ? "Bugün henüz satış yapılmadı."
-                : `Seçilen dönemde (${cikisBasligi}) stoktan çıkan cihaz yok.`}
-            </p>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {cikislar.kalemler.map((k) => (
-                <li
-                  key={k.anahtar}
-                  data-test={
-                    k.aktarimMi ? "bugun-aktarim-satisi" : "bugun-cihaz-satisi"
-                  }
-                  className="flex items-center justify-between gap-3 py-2 text-sm"
-                >
-                  <div className="min-w-0">
-                    {/* Satış kartı varsa oraya: aynı satışta satılan bütün
-                        cihazlar müşteri bilgisiyle birlikte orada. Yoksa
-                        (aktarım satışı, göç öncesi kayıt) cihaza. */}
-                    <Link
-                      href={k.satisId ? `/satislar/${k.satisId}` : `/cihazlar/${k.cihazId}`}
-                      data-test={k.satisId ? "satis-karti-baglantisi" : "cihaz-baglantisi"}
-                      className="truncate font-medium text-slate-800 underline-offset-2 hover:underline"
-                    >
-                      {k.marka} {k.model}
-                    </Link>
-                    {/* Mağaza içi aktarımda cihaz satılıp hemen geri alınıyor,
-                        yani stokta kalıyor; cihaz listesinde "satıldı"
-                        görünmediği için burada işaretleniyor. */}
-                    {k.aktarimMi ? (
-                      <span
-                        data-test="aktarim-rozeti"
-                        className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-800"
-                      >
-                        mağaza içi aktarım
-                      </span>
-                    ) : null}
-                    <div className="text-xs text-slate-500">
-                      {k.seriNo ? `${k.seriNo} · ` : ""}
-                      {k.magazaAdi}
-                      {k.musteriAdSoyad ? ` · ${k.musteriAdSoyad}` : ""}
-                      {k.satanAdSoyad ? ` · ${k.satanAdSoyad}` : ""}
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-right">
-                    <span className="block font-medium text-slate-800 tabular-nums">
-                      {kurusuTLYazSembollu(k.satisFiyatiKurus)}
-                    </span>
-                    <span className="block text-xs text-slate-500">
-                      {cikisTekGun
-                        ? saatYaz(k.satisTarihi)
-                        : tarihYaz(k.satisTarihi)}
-                    </span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {cikislar.adet > cikislar.kalemler.length ? (
-            <p className="mt-2 text-xs text-slate-500">
-              İlk {cikislar.kalemler.length} kayıt gösteriliyor;{" "}
-              <Link
-                href={cikisCihazYolu}
-                className="text-sky-700 underline-offset-2 hover:underline"
-              >
-                stoktan çıkanların tamamını görün
-              </Link>
-              . Mağaza içi aktarımda cihaz satılıp hemen geri alındığı için
-              stokta kalır; o liste onları içermiyor.
-            </p>
-          ) : null}
-        </Kart>
+          secici={{
+            donemler: CIKIS_DONEMLERI,
+            secili: cikisDonemi,
+            testAdi: "cikis-donem-secici",
+            eylem: "/panel",
+            adres: (anahtar) =>
+              panelAdresi({ ...secimler, cikisDonem: anahtar }, "cikanlar"),
+            aralikFormu: {
+              gizli: {
+                donem: secimler.donem,
+                satisDonem: secimler.satisDonem,
+                olcu: secimler.olcu,
+                urunDonem: secimler.urunDonem,
+                satisBas: secimler.satisBas,
+                satisBit: secimler.satisBit,
+                cikisDonem: "aralik",
+              },
+              basAdi: "cikisBas",
+              bitAdi: "cikisBit",
+              bas: secimler.cikisBas || inputTarih(cikisAraligi.baslangic),
+              bit: secimler.cikisBit || inputTarih(cikisAraligi.bitis),
+            },
+          }}
+        />
 
         <Kart baslik="Onay Bekleyen Sevkiyatlar">
           {bekleyen.length === 0 ? (
@@ -392,8 +306,16 @@ export default async function PanelSayfasi({
                       {t.kaynakMagaza.ad} → {t.hedefMagaza.ad}
                     </div>
                     <div className="text-xs text-slate-500">
-                      {t.transferNo} · {t._count.kalemler} cihaz ·{" "}
-                      {t.gonderen.adSoyad}
+                      {/* Numaraya tıklamak da sevkiyatı açıyor: "İncele"
+                          düğmesini aramak gerekmesin. */}
+                      <Link
+                        href={`/sevkiyat/${t.id}`}
+                        data-test="sevk-no-baglantisi"
+                        className="underline-offset-2 hover:text-blue-700 hover:underline"
+                      >
+                        {t.transferNo}
+                      </Link>{" "}
+                      · {t._count.kalemler} cihaz · {t.gonderen.adSoyad}
                     </div>
                   </div>
                   <Link
@@ -419,6 +341,7 @@ export default async function PanelSayfasi({
             donemler={SATIS_DONEMLERI}
             secili={satisDonemi}
             testAdi="satis-donem-secici"
+            eylem="/panel"
             adres={(anahtar) =>
               panelAdresi({ ...secimler, satisDonem: anahtar }, "satislar")
             }

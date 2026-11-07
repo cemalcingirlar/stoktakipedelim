@@ -379,6 +379,7 @@ export async function aktarilanCihaziDuzelt(
 
     revalidatePath("/cihazlar");
     revalidatePath("/panel");
+    revalidatePath("/satis");
 
     return {
       durum: "TAMAM",
@@ -715,6 +716,7 @@ export async function aktarimSatisiKaydet(
     revalidatePath("/aktarim");
     revalidatePath("/cihazlar");
     revalidatePath("/panel");
+    revalidatePath("/satis");
     revalidatePath("/rapor");
     revalidatePath("/musteriler");
 

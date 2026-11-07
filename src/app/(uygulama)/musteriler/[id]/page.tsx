@@ -5,8 +5,8 @@ import { Kart } from "@/bilesenler/Kart";
 import { Rozet } from "@/bilesenler/Rozet";
 import { gorunurMagazaIdleri, magazaKosulu } from "@/lib/gorunurluk";
 import {
-  alimOzeti,
   alimlariSirala,
+  ozetleriBirlestir,
   type MusteriAlimi,
 } from "@/lib/musteriAlimlari";
 import { kurusuTLYazSembollu } from "@/lib/para";
@@ -16,6 +16,15 @@ import { tarihYaz } from "@/lib/tarih";
 import { oturumGerekli } from "@/lib/yetki";
 
 export const metadata = { title: "Müşteri Kartı — Stok Takip" };
+
+/**
+ * Kartta listelenen en çok alım.
+ *
+ * Toplamlar bu sınırdan etkilenmiyor; onlar ayrı toplama sorgusundan
+ * geliyor. Sınır yalnız ekranı koruyor: binlerce satırlık bir kart hem
+ * yavaş hem okunmaz.
+ */
+const EN_COK_ALIM = 200;
 
 function Satir({ etiket, children }: { etiket: string; children: ReactNode }) {
   return (
@@ -48,14 +57,20 @@ export default async function MusteriKartiSayfasi({
   // dökümü (müşteriler listesindeki kuralın aynısı).
   const gorunur = gorunurMagazaIdleri(oturum);
 
-  const [musteri, cihazlar, aktarimlar] = await Promise.all([
+  const cihazKosulu = {
+    musteriId,
+    durum: STOK_DURUM.SATILDI,
+    ...magazaKosulu(gorunur),
+  };
+  const aktarimKosulu = { musteriId, ...magazaKosulu(gorunur) };
+
+  const [musteri, cihazlar, aktarimlar, cihazToplam, aktarimToplam] =
+    await Promise.all([
     prisma.musteri.findUnique({ where: { id: musteriId } }),
     prisma.stokKalemi.findMany({
-      where: {
-        musteriId,
-        durum: STOK_DURUM.SATILDI,
-        ...magazaKosulu(gorunur),
-      },
+      where: cihazKosulu,
+      orderBy: { satisTarihi: "desc" },
+      take: EN_COK_ALIM,
       select: {
         id: true,
         marka: true,
@@ -70,7 +85,9 @@ export default async function MusteriKartiSayfasi({
       },
     }),
     prisma.aktarimSatisi.findMany({
-      where: { musteriId, ...magazaKosulu(gorunur) },
+      where: aktarimKosulu,
+      orderBy: { satisTarihi: "desc" },
+      take: EN_COK_ALIM,
       select: {
         id: true,
         satisTarihi: true,
@@ -80,6 +97,22 @@ export default async function MusteriKartiSayfasi({
           select: { id: true, marka: true, model: true, seriNo: true, barkod: true },
         },
       },
+    }),
+    // Adet, tutar ve ilk/son alış listeden değil toplamadan: liste kesilse
+    // bile özet doğru kalmalı.
+    prisma.stokKalemi.aggregate({
+      where: cihazKosulu,
+      _count: { _all: true },
+      _sum: { satisFiyatiKurus: true },
+      _min: { satisTarihi: true },
+      _max: { satisTarihi: true },
+    }),
+    prisma.aktarimSatisi.aggregate({
+      where: aktarimKosulu,
+      _count: { _all: true },
+      _sum: { satisFiyatiKurus: true },
+      _min: { satisTarihi: true },
+      _max: { satisTarihi: true },
     }),
   ]);
   if (!musteri) notFound();
@@ -114,7 +147,21 @@ export default async function MusteriKartiSayfasi({
       aktarimMi: true,
     })),
   ]);
-  const ozet = alimOzeti(alimlar);
+  const ozet = ozetleriBirlestir([
+    {
+      adet: cihazToplam._count._all,
+      toplamKurus: cihazToplam._sum.satisFiyatiKurus ?? 0,
+      ilkTarih: cihazToplam._min.satisTarihi,
+      sonTarih: cihazToplam._max.satisTarihi,
+    },
+    {
+      adet: aktarimToplam._count._all,
+      toplamKurus: aktarimToplam._sum.satisFiyatiKurus ?? 0,
+      ilkTarih: aktarimToplam._min.satisTarihi,
+      sonTarih: aktarimToplam._max.satisTarihi,
+    },
+  ]);
+  const kesildi = ozet.adet > alimlar.length;
 
   return (
     <div className="space-y-5">
@@ -246,6 +293,19 @@ export default async function MusteriKartiSayfasi({
               </table>
             </div>
           )}
+          {kesildi ? (
+            <p className="mt-2 text-xs text-slate-500" data-test="alim-kesildi">
+              Son {alimlar.length} alım gösteriliyor; toplam {ozet.adet} alım
+              var. Tamamı için{" "}
+              <Link
+                href={`/cihazlar?durum=SATILDI&musteri=${encodeURIComponent(musteri.adSoyad)}`}
+                className="text-sky-700 underline-offset-2 hover:underline"
+              >
+                cihaz listesinde bu müşteriyi süzün
+              </Link>
+              .
+            </p>
+          ) : null}
         </Kart>
       </div>
     </div>

@@ -20,18 +20,23 @@ export function jetonAni(iatSn: number | undefined): Date | null {
 /**
  * Jeton hâlâ geçerli mi?
  *
- * `sifreDegisikligi` null ise (eski kayıtlar, hiç şifre değişmemiş) oturum
- * geçerli: sürüm yükseltmesi kimseyi dışarı atmamalı.
+ * İki damga da jetonu kesiyor: şifre değişikliği ve "tüm cihazlardan çık".
+ * İkisi de null ise (eski kayıtlar, hiç kullanılmamış) oturum geçerli —
+ * sürüm yükseltmesi kimseyi dışarı atmamalı.
  *
- * Bir saniyelik tolerans var: JWT `iat` saniyeye yuvarlanıyor, şifre
- * değişikliği milisaniyeli. Toleranssız, kullanıcının kendi şifresini
- * değiştirdiği anda kendi oturumu da düşüyordu.
+ * Bir saniyelik tolerans var: JWT `iat` saniyeye yuvarlanıyor, damgalar
+ * milisaniyeli. Toleranssız, kullanıcının kendi şifresini değiştirdiği anda
+ * kendi oturumu da düşüyordu.
  */
 export function oturumGecerliMi(
   jetonAnı: Date | null,
   sifreDegisikligi: Date | null,
+  oturumSifirlama: Date | null = null,
 ): boolean {
-  if (!sifreDegisikligi) return true;
+  const damgalar = [sifreDegisikligi, oturumSifirlama].filter(
+    (d): d is Date => d !== null,
+  );
+  if (damgalar.length === 0) return true;
   if (!jetonAnı) return false;
-  return sifreDegisikligi.getTime() <= jetonAnı.getTime() + 1000;
+  return damgalar.every((d) => d.getTime() <= jetonAnı.getTime() + 1000);
 }
