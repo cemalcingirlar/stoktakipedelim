@@ -310,6 +310,9 @@ export type PanelSecimleri = {
   cikisBit?: string;
   satisBas?: string;
   satisBit?: string;
+  /** Ürün kartlarında kaç satır gösterildiği. */
+  stokAdet?: string;
+  satanAdet?: string;
 };
 
 export function panelAdresi(secimler: PanelSecimleri, capa: string): string {
@@ -327,6 +330,8 @@ export function panelAdresi(secimler: PanelSecimleri, capa: string): string {
     ["cikisBit", secimler.cikisBit],
     ["satisBas", secimler.satisBas],
     ["satisBit", secimler.satisBit],
+    ["stokAdet", secimler.stokAdet],
+    ["satanAdet", secimler.satanAdet],
   ] as const) {
     if (deger) sorgu.set(ad, deger);
   }

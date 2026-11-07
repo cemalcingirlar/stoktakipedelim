@@ -1,5 +1,6 @@
 import { Link } from "@/bilesenler/Bag";
 import { CikisKarti } from "@/bilesenler/CikisKarti";
+import { SayiSecici } from "@/bilesenler/SayiSecici";
 import { DonemSecici } from "@/bilesenler/DonemSecici";
 import { HareketGrafigi } from "@/bilesenler/HareketGrafigi";
 import { Kart, SayiKarti } from "@/bilesenler/Kart";
@@ -12,11 +13,12 @@ import {
   panelAdresi,
 } from "@/lib/grafikDonem";
 import {
-  PANEL_URUN_SAYISI,
   URUN_DONEMLERI,
+  URUN_SAYILARI,
   urunAdi,
   urunDonemBaslangici,
   urunDonemiCoz,
+  urunSayisiCoz,
 } from "@/lib/urunSiralamasi";
 import { kurusuTLYaz, kurusuTLYazSembollu } from "@/lib/para";
 import { HAREKET_TIP_ETIKET, type HareketTip } from "@/lib/sabitler";
@@ -70,6 +72,10 @@ export default async function PanelSayfasi({
   const donem = donemiCoz(tek("donem"));
   const olcu = olcuyuCoz(tek("olcu"));
   const urunDonemi = urunDonemiCoz(tek("urunDonem"));
+  // İki ürün kartı kendi satır sayısını taşıyor: biri 10'a açılırken diğeri
+  // kısa kalabilsin.
+  const stokAdedi = urunSayisiCoz(tek("stokAdet"));
+  const satanAdedi = urunSayisiCoz(tek("satanAdet"));
 
   // Satış dökümü ve stoktan çıkanlar listesi kendi dönemlerini taşıyor;
   // ikisinde de hazır dönemlerin yanında serbest tarih aralığı var.
@@ -97,6 +103,8 @@ export default async function PanelSayfasi({
     cikisDonem: cikisDonemi.anahtar,
     cikisBas: cikisOzel.bas ? inputTarih(cikisOzel.bas) : "",
     cikisBit: cikisOzel.bit ? inputTarih(cikisOzel.bit) : "",
+    stokAdet: String(stokAdedi),
+    satanAdet: String(satanAdedi),
     satisBas: satisOzel.bas ? inputTarih(satisOzel.bas) : "",
     satisBit: satisOzel.bit ? inputTarih(satisOzel.bit) : "",
   };
@@ -135,12 +143,8 @@ export default async function PanelSayfasi({
     hareketRaporu(donem, gorunur),
     magazaSatisRaporu(satisAraligi, gorunur),
     kullaniciSatisRaporu(satisAraligi, gorunur),
-    stoktaEnCokUrunler(gorunur, PANEL_URUN_SAYISI),
-    enCokSatanUrunler(
-      urunDonemBaslangici(urunDonemi),
-      gorunur,
-      PANEL_URUN_SAYISI,
-    ),
+    stoktaEnCokUrunler(gorunur, stokAdedi),
+    enCokSatanUrunler(urunDonemBaslangici(urunDonemi), gorunur, satanAdedi),
   ]);
 
   const bugun = bugunAyri ?? cikislar;
@@ -555,7 +559,19 @@ export default async function PanelSayfasi({
         id="urunler"
         className="grid scroll-mt-4 grid-cols-1 gap-4 lg:grid-cols-2"
       >
-        <Kart baslik="Stokta En Çok Bulunan Ürünler">
+        <Kart
+          baslik="Stokta En Çok Bulunan Ürünler"
+          eylem={
+            <SayiSecici
+              sayilar={URUN_SAYILARI}
+              secili={stokAdedi}
+              testAdi="stok-adet-secici"
+              adres={(sayi) =>
+                panelAdresi({ ...secimler, stokAdet: String(sayi) }, "urunler")
+              }
+            />
+          }
+        >
           {stoktakiUrunler.length === 0 ? (
             <p className="text-sm text-slate-500">Stokta cihaz yok.</p>
           ) : (
@@ -592,7 +608,19 @@ export default async function PanelSayfasi({
         <Kart
           baslik="En Çok Satan Ürünler"
           eylem={
-            <div className="flex flex-wrap gap-1" data-test="urun-donem-secici">
+            <div className="flex flex-wrap items-center gap-2">
+              <SayiSecici
+                sayilar={URUN_SAYILARI}
+                secili={satanAdedi}
+                testAdi="satan-adet-secici"
+                adres={(sayi) =>
+                  panelAdresi(
+                    { ...secimler, satanAdet: String(sayi) },
+                    "urunler",
+                  )
+                }
+              />
+              <div className="flex flex-wrap gap-1" data-test="urun-donem-secici">
               {URUN_DONEMLERI.map((d) => (
                 <Link
                   key={d.anahtar}
@@ -613,6 +641,7 @@ export default async function PanelSayfasi({
                   {d.etiket}
                 </Link>
               ))}
+              </div>
             </div>
           }
         >
