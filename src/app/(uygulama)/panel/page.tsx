@@ -1,4 +1,5 @@
 import { Link } from "@/bilesenler/Bag";
+import { DonemSecici } from "@/bilesenler/DonemSecici";
 import { HareketGrafigi } from "@/bilesenler/HareketGrafigi";
 import { Kart, SayiKarti } from "@/bilesenler/Kart";
 import {
@@ -26,19 +27,30 @@ import {
   stoktaEnCokUrunler,
 } from "@/lib/raporlar";
 import {
+  CIKIS_DONEMLERI,
   SATIS_DONEMLERI,
+  cikisDonemiCoz,
+  donemBasligi,
   satisDonemAraligi,
   satisDonemiCoz,
   satisToplami,
+  tekGunMu,
 } from "@/lib/satisDonemi";
 import {
   bekleyenSevkiyatlar,
-  bugunSatilanlar,
   magazaStokOzeti,
+  satilanlar,
   sonHareketler,
   vadesiGecenCihazSayisi,
 } from "@/lib/sorgular";
-import { inputTarih, saatYaz, tarihSaatYaz } from "@/lib/tarih";
+import {
+  formTarihiCevir,
+  gunBasi,
+  inputTarih,
+  saatYaz,
+  tarihSaatYaz,
+  tarihYaz,
+} from "@/lib/tarih";
 import { gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { oturumGerekli } from "@/lib/yetki";
 
@@ -50,24 +62,44 @@ export default async function PanelSayfasi({
   const oturum = await oturumGerekli();
 
   const params = await searchParams;
-  const donem = donemiCoz(
-    Array.isArray(params.donem) ? params.donem[0] : params.donem,
-  );
-  const satisDonemi = satisDonemiCoz(
-    Array.isArray(params.satisDonem) ? params.satisDonem[0] : params.satisDonem,
-  );
-  const satisAraligi = satisDonemAraligi(satisDonemi);
-  const olcu = olcuyuCoz(
-    Array.isArray(params.olcu) ? params.olcu[0] : params.olcu,
-  );
-  const urunDonemi = urunDonemiCoz(
-    Array.isArray(params.urunDonem) ? params.urunDonem[0] : params.urunDonem,
-  );
+  const tek = (ad: string) => {
+    const deger = params[ad];
+    return Array.isArray(deger) ? deger[0] : deger;
+  };
+
+  const simdi = new Date();
+  const donem = donemiCoz(tek("donem"));
+  const olcu = olcuyuCoz(tek("olcu"));
+  const urunDonemi = urunDonemiCoz(tek("urunDonem"));
+
+  // Satış dökümü ve stoktan çıkanlar listesi kendi dönemlerini taşıyor;
+  // ikisinde de hazır dönemlerin yanında serbest tarih aralığı var.
+  const satisDonemi = satisDonemiCoz(tek("satisDonem"));
+  const satisOzel = {
+    bas: formTarihiCevir(tek("satisBas")),
+    bit: formTarihiCevir(tek("satisBit")),
+  };
+  const satisAraligi = satisDonemAraligi(satisDonemi, simdi, satisOzel);
+
+  const cikisDonemi = cikisDonemiCoz(tek("cikisDonem"));
+  const cikisOzel = {
+    bas: formTarihiCevir(tek("cikisBas")),
+    bit: formTarihiCevir(tek("cikisBit")),
+  };
+  const cikisAraligi = satisDonemAraligi(cikisDonemi, simdi, cikisOzel);
+
+  // Adreslere tarihler çözülmüş halleriyle yazılıyor: kullanıcıdan gelen
+  // bozuk bir değer bağlantılarda dolaşmasın.
   const secimler = {
     donem: donem.anahtar,
     satisDonem: satisDonemi.anahtar,
     olcu,
     urunDonem: urunDonemi.anahtar,
+    cikisDonem: cikisDonemi.anahtar,
+    cikisBas: cikisOzel.bas ? inputTarih(cikisOzel.bas) : "",
+    cikisBit: cikisOzel.bit ? inputTarih(cikisOzel.bit) : "",
+    satisBas: satisOzel.bas ? inputTarih(satisOzel.bas) : "",
+    satisBit: satisOzel.bit ? inputTarih(satisOzel.bit) : "",
   };
 
   // Tek kural: yönetici her mağazayı görür, diğer herkes yalnız yetkili
@@ -75,10 +107,16 @@ export default async function PanelSayfasi({
   // geçiyor; biri atlanırsa ekrandaki rakamlar birbirini tutmaz.
   const gorunur = gorunurMagazaIdleri(oturum);
 
+  // Stat kartı her zaman BUGÜNÜ gösteriyor, liste ise seçilen dönemi. İkisi
+  // aynı olduğunda (varsayılan) tek sorgu yetiyor; panel ağır bir sayfa.
+  const bugunAraligi = { baslangic: gunBasi(simdi), bitis: simdi };
+  const bugunSeciliMi = cikisDonemi.anahtar === "gun";
+
   const [
     ozetler,
     vadeDurumu,
-    bugun,
+    cikislar,
+    bugunAyri,
     bekleyen,
     hareketler,
     kovalar,
@@ -89,7 +127,10 @@ export default async function PanelSayfasi({
   ] = await Promise.all([
     magazaStokOzeti(gorunur),
     vadesiGecenCihazSayisi(gorunur),
-    bugunSatilanlar(gorunur),
+    satilanlar(gorunur, cikisAraligi),
+    // Liste başka bir döneme bakıyorsa bugünün özeti ayrıca gerekiyor; liste
+    // kısmı kullanılmadığı için tek satır çekiliyor.
+    bugunSeciliMi ? Promise.resolve(null) : satilanlar(gorunur, bugunAraligi, 1),
     bekleyenSevkiyatlar(gorunur),
     sonHareketler(gorunur, 10),
     hareketRaporu(donem, gorunur),
@@ -103,13 +144,29 @@ export default async function PanelSayfasi({
     ),
   ]);
 
+  const bugun = bugunAyri ?? cikislar;
+
   const magazaToplami = satisToplami(magazaSatislari);
   const personelToplami = satisToplami(personelSatislari);
 
-  // Bugün satılanların tam listesi: cihaz listesinde satış tarihi bugüne
+  // Stoktan çıkanların tam listesi: cihaz listesinde satış tarihi aralığa
   // kısıtlanmış filtre. Panel ilk 10'u gösteriyor, bağlantı tamamını açıyor.
-  const bugunku = inputTarih(new Date());
-  const bugunCikanlarYolu = `/cihazlar?durum=SATILDI&satisBas=${bugunku}&satisBit=${bugunku}`;
+  const cihazListesiYolu = (aralik: { baslangic: Date; bitis: Date }) =>
+    `/cihazlar?durum=SATILDI&satisBas=${inputTarih(aralik.baslangic)}&satisBit=${inputTarih(aralik.bitis)}`;
+  const bugunCikanlarYolu = cihazListesiYolu(bugunAraligi);
+  const cikisCihazYolu = cihazListesiYolu(cikisAraligi);
+  const cikisBasligi = donemBasligi(cikisDonemi, cikisAraligi);
+  // Hazır dönemlerde kullanıcının diliyle: "Bugün Stoktan Çıkanlar".
+  const cikisKartBasligi =
+    cikisDonemi.anahtar === "aralik"
+      ? `Stoktan Çıkanlar — ${cikisBasligi}`
+      : `${cikisDonemi.etiket} Stoktan Çıkanlar`;
+  const satisBosNotu =
+    satisDonemi.anahtar === "aralik"
+      ? `Seçilen dönemde (${donemBasligi(satisDonemi, satisAraligi)}) satış yapılmadı.`
+      : `${satisDonemi.baslik} satış yapılmadı.`;
+  // Aralık birden çok güne yayılıyorsa satırda saat yetmez, tarih de gerek.
+  const cikisTekGun = tekGunMu(cikisAraligi);
 
   const toplamAdet = ozetler.reduce((t, o) => t + o.adet, 0);
   const toplamDeger = ozetler.reduce((t, o) => t + o.degerKurus, 0);
@@ -197,33 +254,62 @@ export default async function PanelSayfasi({
         </div>
       </Kart>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div id="cikanlar" className="grid scroll-mt-4 grid-cols-1 gap-6 lg:grid-cols-2">
         <Kart
-          baslikYolu={bugunCikanlarYolu}
-          baslik="Bugün Stoktan Çıkanlar"
+          baslikYolu={cikisCihazYolu}
+          baslik={cikisKartBasligi}
           eylem={
-            bugun.adet > 0 ? (
-              <span className="text-xs text-slate-500">
-                {bugun.adet} cihaz · {kurusuTLYazSembollu(bugun.ciroKurus)} ciro
-                ·{" "}
-                <span
-                  className={
-                    bugun.karKurus >= 0 ? "text-emerald-700" : "text-red-600"
-                  }
-                >
-                  {kurusuTLYazSembollu(bugun.karKurus)} kâr
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {cikislar.adet > 0 ? (
+                <span className="text-xs text-slate-500">
+                  {cikislar.adet} cihaz ·{" "}
+                  {kurusuTLYazSembollu(cikislar.ciroKurus)} ciro ·{" "}
+                  <span
+                    className={
+                      cikislar.karKurus >= 0
+                        ? "text-emerald-700"
+                        : "text-red-600"
+                    }
+                  >
+                    {kurusuTLYazSembollu(cikislar.karKurus)} kâr
+                  </span>
                 </span>
-              </span>
-            ) : null
+              ) : null}
+              <DonemSecici
+                donemler={CIKIS_DONEMLERI}
+                secili={cikisDonemi}
+                testAdi="cikis-donem-secici"
+                adres={(anahtar) =>
+                  panelAdresi({ ...secimler, cikisDonem: anahtar }, "cikanlar")
+                }
+                aralikFormu={{
+                  gizli: {
+                    donem: secimler.donem,
+                    satisDonem: secimler.satisDonem,
+                    olcu: secimler.olcu,
+                    urunDonem: secimler.urunDonem,
+                    satisBas: secimler.satisBas,
+                    satisBit: secimler.satisBit,
+                    cikisDonem: "aralik",
+                  },
+                  basAdi: "cikisBas",
+                  bitAdi: "cikisBit",
+                  bas: secimler.cikisBas || inputTarih(cikisAraligi.baslangic),
+                  bit: secimler.cikisBit || inputTarih(cikisAraligi.bitis),
+                }}
+              />
+            </div>
           }
         >
-          {bugun.adet === 0 ? (
-            <p className="text-sm text-slate-500">
-              Bugün henüz satış yapılmadı.
+          {cikislar.adet === 0 ? (
+            <p className="text-sm text-slate-500" data-test="cikis-bos">
+              {cikisDonemi.anahtar === "gun"
+                ? "Bugün henüz satış yapılmadı."
+                : `Seçilen dönemde (${cikisBasligi}) stoktan çıkan cihaz yok.`}
             </p>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {bugun.kalemler.slice(0, 10).map((k) => (
+              {cikislar.kalemler.map((k) => (
                 <li
                   key={k.anahtar}
                   data-test={
@@ -265,18 +351,20 @@ export default async function PanelSayfasi({
                       {kurusuTLYazSembollu(k.satisFiyatiKurus)}
                     </span>
                     <span className="block text-xs text-slate-500">
-                      {saatYaz(k.satisTarihi)}
+                      {cikisTekGun
+                        ? saatYaz(k.satisTarihi)
+                        : tarihYaz(k.satisTarihi)}
                     </span>
                   </span>
                 </li>
               ))}
             </ul>
           )}
-          {bugun.adet > 10 ? (
+          {cikislar.adet > cikislar.kalemler.length ? (
             <p className="mt-2 text-xs text-slate-500">
-              İlk 10 kayıt gösteriliyor;{" "}
+              İlk {cikislar.kalemler.length} kayıt gösteriliyor;{" "}
               <Link
-                href={bugunCikanlarYolu}
+                href={cikisCihazYolu}
                 className="text-sky-700 underline-offset-2 hover:underline"
               >
                 stoktan çıkanların tamamını görün
@@ -325,26 +413,31 @@ export default async function PanelSayfasi({
       <div id="satislar" className="scroll-mt-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800">
-            Satış Dökümü — {satisDonemi.baslik}
+            Satış Dökümü — {donemBasligi(satisDonemi, satisAraligi)}
           </h2>
-          <div className="flex flex-wrap gap-1" data-test="satis-donem-secici">
-            {SATIS_DONEMLERI.map((d) => (
-              <Link
-                key={d.anahtar}
-                href={`/panel?donem=${donem.anahtar}&satisDonem=${d.anahtar}#satislar`}
-                aria-current={
-                  d.anahtar === satisDonemi.anahtar ? "page" : undefined
-                }
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                  d.anahtar === satisDonemi.anahtar
-                    ? "bg-slate-800 text-white"
-                    : "border border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {d.etiket}
-              </Link>
-            ))}
-          </div>
+          <DonemSecici
+            donemler={SATIS_DONEMLERI}
+            secili={satisDonemi}
+            testAdi="satis-donem-secici"
+            adres={(anahtar) =>
+              panelAdresi({ ...secimler, satisDonem: anahtar }, "satislar")
+            }
+            aralikFormu={{
+              gizli: {
+                donem: secimler.donem,
+                olcu: secimler.olcu,
+                urunDonem: secimler.urunDonem,
+                cikisDonem: secimler.cikisDonem,
+                cikisBas: secimler.cikisBas,
+                cikisBit: secimler.cikisBit,
+                satisDonem: "aralik",
+              },
+              basAdi: "satisBas",
+              bitAdi: "satisBit",
+              bas: secimler.satisBas || inputTarih(satisAraligi.baslangic),
+              bit: secimler.satisBit || inputTarih(satisAraligi.bitis),
+            }}
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -370,7 +463,7 @@ export default async function PanelSayfasi({
           >
             {personelSatislari.length === 0 ? (
               <p className="text-sm text-slate-500">
-                {satisDonemi.baslik} satış yapılmadı.
+                {satisBosNotu}
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -436,7 +529,7 @@ export default async function PanelSayfasi({
           >
             {magazaSatislari.length === 0 ? (
               <p className="text-sm text-slate-500">
-                {satisDonemi.baslik} satış yapılmadı.
+                {satisBosNotu}
               </p>
             ) : (
               <div className="overflow-x-auto">

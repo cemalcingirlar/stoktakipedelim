@@ -20,6 +20,9 @@ import { MusteriDuzenleme } from "./MusteriDuzenleme";
 
 export const metadata = { title: "Müşteriler — Stok Takip" };
 
+/** Listede müşteri başına gösterilen cihaz sayısı; gerisi müşteri kartında. */
+const SON_CIHAZ = 5;
+
 export default async function MusterilerSayfasi({
   searchParams,
 }: PageProps<"/musteriler">) {
@@ -66,20 +69,41 @@ export default async function MusterilerSayfasi({
     take: SAYFA_BOYUTU,
     include: {
       _count: { select: { satinAlinanlar: true, aktarimSatislari: true } },
+      // Listede yalnız son birkaç cihaz gösteriliyor; tamamı müşteri
+      // kartında. Eskiden her müşterinin BÜTÜN satışları çekiliyordu ve
+      // sayfa uygulamanın en ağırıydı.
       satinAlinanlar: {
         where: { durum: STOK_DURUM.SATILDI, ...magazaKosulu(gorunur) },
         orderBy: { satisTarihi: "desc" },
+        take: SON_CIHAZ,
         select: {
           id: true,
           marka: true,
           model: true,
-          seriNo: true,
           satisTarihi: true,
-          satisFiyatiKurus: true,
         },
       },
     },
   });
+
+  // Adet ve tutar kısaltılmış listeden değil, tek bir toplama sorgusundan:
+  // "3 cihaz" yazıp 12 cihaz satılmış olması yanlış olurdu.
+  const ozetler = await prisma.stokKalemi.groupBy({
+    by: ["musteriId"],
+    where: {
+      musteriId: { in: musteriler.map((m) => m.id) },
+      durum: STOK_DURUM.SATILDI,
+      ...magazaKosulu(gorunur),
+    },
+    _count: { _all: true },
+    _sum: { satisFiyatiKurus: true },
+  });
+  const ozetHarita = new Map(
+    ozetler.map((o) => [
+      o.musteriId,
+      { adet: o._count._all, toplam: o._sum.satisFiyatiKurus ?? 0 },
+    ]),
+  );
 
   return (
     <div className="space-y-5">
@@ -135,17 +159,21 @@ export default async function MusterilerSayfasi({
         ) : (
           <ul className="divide-y divide-slate-100">
             {musteriler.map((m) => {
-              const toplam = m.satinAlinanlar.reduce(
-                (t, c) => t + (c.satisFiyatiKurus ?? 0),
-                0,
-              );
+              const ozet = ozetHarita.get(m.id) ?? { adet: 0, toplam: 0 };
+              const gizlenen = ozet.adet - m.satinAlinanlar.length;
               return (
                 <li key={m.id} className="py-3">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <div>
-                      <span className="font-medium text-slate-900">
+                      {/* Ada tıklayınca müşteri kartı: bugüne kadar aldığı
+                          her şey tarihiyle orada. */}
+                      <Link
+                        href={`/musteriler/${m.id}`}
+                        data-test="musteri-karti-baglantisi"
+                        className="font-medium text-slate-900 underline-offset-2 hover:text-blue-700 hover:underline"
+                      >
                         {m.adSoyad}
-                      </span>
+                      </Link>
                       {m.telefon ? (
                         <span className="ml-2 text-sm text-slate-600">
                           {m.telefon}
@@ -158,9 +186,9 @@ export default async function MusterilerSayfasi({
                       ) : null}
                     </div>
                     <div className="text-sm text-slate-600">
-                      {m.satinAlinanlar.length} cihaz ·{" "}
+                      {ozet.adet} cihaz ·{" "}
                       <span className="font-medium text-slate-800">
-                        {kurusuTLYazSembollu(toplam)}
+                        {kurusuTLYazSembollu(ozet.toplam)}
                       </span>
                     </div>
                   </div>
@@ -202,6 +230,17 @@ export default async function MusterilerSayfasi({
                           </Link>
                         </li>
                       ))}
+                      {gizlenen > 0 ? (
+                        <li>
+                          <Link
+                            href={`/musteriler/${m.id}`}
+                            data-test="musteri-tumu"
+                            className="inline-block rounded-lg border border-dashed border-slate-300 px-2.5 py-1 text-xs text-slate-500 transition hover:border-blue-300 hover:text-blue-700"
+                          >
+                            +{gizlenen} cihaz · tümünü gör
+                          </Link>
+                        </li>
+                      ) : null}
                     </ul>
                   ) : null}
                 </li>

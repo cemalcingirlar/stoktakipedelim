@@ -242,6 +242,26 @@ test("panel adresi bütün seçimleri birden koruyor", () => {
   assert.ok(adres.endsWith("#grafik"));
 });
 
+test("panel adresi seçili tarih aralıklarını da taşıyor", () => {
+  const adres = panelAdresi(
+    {
+      donem: "1a",
+      satisDonem: "aralik",
+      olcu: "adet",
+      urunDonem: "tum",
+      cikisDonem: "dun",
+      satisBas: "2026-10-01",
+      satisBit: "2026-10-05",
+    },
+    "satislar",
+  );
+  assert.match(adres, /cikisDonem=dun/);
+  assert.match(adres, /satisBas=2026-10-01/);
+  assert.match(adres, /satisBit=2026-10-05/);
+  // Boş olanlar yazılmamalı: seçilmemiş aralık adresi kirletmesin.
+  assert.ok(!adres.includes("cikisBas"));
+});
+
 test("sıfır değer çubuk çizdirmiyor", () => {
   assert.equal(cubukYuzdesi(0, 10), 0);
   assert.equal(cubukYuzdesi(-1, 10), 0);

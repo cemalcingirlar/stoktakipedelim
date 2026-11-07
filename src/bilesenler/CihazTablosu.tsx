@@ -65,12 +65,24 @@ function Hucre({
           {`${satir.marka} ${satir.model}`.trim()}
         </Link>
       );
-    case "seriNo":
-      return satir.seriNo ? (
-        <span className="font-mono text-xs text-slate-700">{satir.seriNo}</span>
-      ) : (
-        <span className="text-slate-300">—</span>
+    case "seriNo": {
+      if (!satir.seriNo) return <span className="text-slate-300">—</span>;
+      // Seri numarası satılmış cihazda satış kartına, diğerlerinde cihaz
+      // detayına götürüyor: elindeki IMEI'nin hangi fişte olduğunu bulmak
+      // en sık sorulan soru.
+      const yol = satir.satisId
+        ? `/satislar/${satir.satisId}`
+        : `/cihazlar/${satir.id}`;
+      return (
+        <Link
+          href={yol}
+          data-test={satir.satisId ? "seri-satis-baglantisi" : "seri-cihaz-baglantisi"}
+          className="font-mono text-xs text-slate-700 underline-offset-2 hover:text-blue-700 hover:underline"
+        >
+          {satir.seriNo}
+        </Link>
       );
+    }
     case "barkod":
       return satir.barkod ? (
         <span className="font-mono text-xs text-slate-700">{satir.barkod}</span>
@@ -100,6 +112,23 @@ function Hucre({
       if (k === null) return <span className="text-slate-300">—</span>;
       return (
         <span className={k < 0 ? "text-red-600" : "text-emerald-700"}>{kurusuTLYaz(k)}</span>
+      );
+    }
+    case "musteri": {
+      if (!satir.musteri) return <span className="text-slate-300">—</span>;
+      // Alıcıya tıklayınca satışın fişi; fişi olmayan kayıtlarda (aktarım
+      // satışı, göç öncesi) müşteri kartı.
+      const yol = satir.satisId
+        ? `/satislar/${satir.satisId}`
+        : `/musteriler/${satir.musteri.id}`;
+      return (
+        <Link
+          href={yol}
+          data-test={satir.satisId ? "alici-satis-baglantisi" : "alici-musteri-baglantisi"}
+          className="text-slate-700 underline-offset-2 hover:text-blue-700 hover:underline"
+        >
+          {satir.musteri.adSoyad}
+        </Link>
       );
     }
     case "not":
