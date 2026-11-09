@@ -286,7 +286,86 @@ try {
   const geriMetin = (await sayfa.locator('[data-test="satis-kalemleri"]').textContent()) ?? "";
   kontrol("karttaki tek cihaz üçüncüsü", geriMetin.includes(imei(3)) && !geriMetin.includes(imei(2)));
 
-  // ============== 7) Satış raporu etkilenmedi (kart rapora dokunmamalı)
+  // ===== 7) CANLIDAKİ HATA: silinen karttan sonra numara çakışıyordu
+  //
+  // Satış numarası o gün kaç satış kaydı olduğundan türetiliyordu. Satış
+  // geri alınınca boşalan kart siliniyor, sayı geri düşüyor ve bir sonraki
+  // satış var olan bir numarayı istiyordu:
+  //   "Unique constraint failed on the fields: (satisNo)"
+  // Kullanıcı bu yığın mesajını satış ekranında gördü ve satışı kaydedemedi.
+  //
+  // Burada aynı durum kuruluyor: tek cihazlık bir satış geri alınıp kartı
+  // siliniyor, sonra yeni bir satış yapılıyor.
+  const oncekiNolar = async () => {
+    await sayfa.goto(`${hedef}/panel?cikisDonem=gun`, { waitUntil: "networkidle" });
+    return (await sayfa.locator("main").textContent()) ?? "";
+  };
+  await oncekiNolar();
+
+  // Tek cihazlık satışı (imei 4) geri al: kartı boşalınca siliniyor.
+  await sayfa.goto(`${hedef}/cihazlar?ara=${imei(4)}`, { waitUntil: "networkidle" });
+  if (!/\/cihazlar\/\d+$/.test(sayfa.url())) {
+    await sayfa.locator('table tbody tr a[href^="/cihazlar/"]').first().click();
+    await sayfa.waitForURL(/\/cihazlar\/\d+$/, { timeout: 20000 });
+  }
+  await sayfa.locator('[data-test="satis-duzenle-ac"]').click();
+  await sayfa.waitForTimeout(400);
+  await sayfa.locator('[data-test="satis-geri-al"]').click();
+  await sayfa.waitForTimeout(300);
+  await sayfa.click('button:has-text("Evet, satışı geri al")');
+  await sayfa.waitForTimeout(2500);
+  kontrol(
+    "hazırlık: tek cihazlık satış geri alındı",
+    /Stokta/.test((await sayfa.locator("main").textContent()) ?? ""),
+  );
+
+  // Silinen kartın ardından yeni satış: numara çakışmamalı.
+  // Kaydedilemezse betiği zaman aşımıyla çökertmek yerine ekrandaki hatayı
+  // kontrol metnine yazıyoruz — hata canlıda böyle görünmüştü.
+  let yeniKartYolu2 = "";
+  let kayitHatasi = "";
+  try {
+    yeniKartYolu2 = await sat([imei(2)], MUSTERI, "8.000,00");
+  } catch {
+    kayitHatasi = ((await sayfa.locator("main").textContent()) ?? "")
+      .replace(/\s+/g, " ")
+      .slice(0, 140);
+  }
+  kontrol(
+    "silinen karttan sonra satış kaydedilebiliyor",
+    /^\/satislar\/\d+$/.test(yeniKartYolu2),
+    kayitHatasi || yeniKartYolu2,
+  );
+  if (!yeniKartYolu2) throw new Error(`satış kaydedilemedi: ${kayitHatasi}`);
+  const yeniKartMetni = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "ekranda ham veritabanı hatası yok",
+    !/Unique constraint|prisma\.|invocation/i.test(yeniKartMetni),
+    yeniKartMetni.replace(/\s+/g, " ").slice(0, 100),
+  );
+  const yeniNo = ((await sayfa.locator("h1").first().textContent()) ?? "").trim();
+  kontrol("yeni satış kendi numarasını aldı", /^SAT-\d{8}-\d{3}$/.test(yeniNo), yeniNo);
+
+  // Numaralar gerçekten tekil mi? Günün bütün kartlarını gezip bakıyoruz.
+  const gununNolari = [];
+  for (let id = 1; id <= 12; id += 1) {
+    const yanit = await sayfa.goto(`${hedef}/satislar/${id}`, { waitUntil: "domcontentloaded" });
+    if ((yanit?.status() ?? 404) !== 200) continue;
+    const no = ((await sayfa.locator("h1").first().textContent()) ?? "").trim();
+    if (/^SAT-/.test(no)) gununNolari.push(no);
+  }
+  kontrol(
+    "bütün satış numaraları tekil",
+    new Set(gununNolari).size === gununNolari.length,
+    gununNolari.join(", "),
+  );
+  kontrol(
+    "silinen numaranın yerine yenisi veriliyor",
+    gununNolari.includes(yeniNo) && gununNolari.length >= 4,
+    `${gununNolari.length} kart`,
+  );
+
+  // ============== 8) Satış raporu etkilenmedi (kart rapora dokunmamalı)
   await sayfa.goto(`${hedef}/rapor`, { waitUntil: "networkidle" });
   const rapor = (await sayfa.locator("main").textContent()) ?? "";
   kontrol("rapor sayfası açılıyor", rapor.length > 200, `${rapor.length} karakter`);

@@ -64,3 +64,19 @@ export {
   yetkiliMagazalar,
 };
 export type { Rol };
+
+/**
+ * Kullanıcıya gösterilmesi amaçlanan hata.
+ *
+ * Sunucu eylemleri yakaladıkları her hatanın metnini ekrana basıyordu;
+ * beklenmeyen bir veritabanı hatası da olduğu gibi kullanıcıya gidiyordu
+ * (canlıda "Unique constraint failed on the fields: (satisNo)" görüldü).
+ * Bu sınıfla işaretlenen mesajlar gösteriliyor, gerisi günlüğe yazılıp
+ * yerine anlaşılır bir cümle konuyor.
+ */
+export class KullaniciHatasi extends Error {
+  constructor(mesaj: string) {
+    super(mesaj);
+    this.name = "KullaniciHatasi";
+  }
+}

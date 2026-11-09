@@ -14,7 +14,7 @@ import {
   iptalGeriAlmaEngeli,
 } from "@/lib/kayitIptali";
 import { satisBagiKarari } from "@/lib/satisKarti";
-import { satisNoUret } from "@/lib/satisNo";
+import { cakismadaYenidenDene, satisNoUret } from "@/lib/satisNo";
 
 /** İptal ve geri alma aynı sayfaları tazeliyor; tek yerde dursun. */
 function cihazYollariniTazele(cihazId: number): void {
@@ -124,7 +124,10 @@ export async function satisiDuzenle(
       yeniSatis,
     );
 
-    await prisma.$transaction(async (tx) => {
+    // Kopan cihaz yeni bir satış kartı alıyorsa numarası eşzamanlı bir
+    // satışla çakışabilir; takılan işlem baştan deneniyor.
+    await cakismadaYenidenDene(() =>
+      prisma.$transaction(async (tx) => {
       // Kopan cihaz, müşterisi varsa kendi kartını alıyor; "satış kartı yok"
       // durumuna düşmesin.
       const yeniKart =
@@ -188,7 +191,8 @@ export async function satisiDuzenle(
         });
         if (kalan === 0) await tx.satis.delete({ where: { id: bagliSatis.id } });
       }
-    });
+      }),
+    );
 
     await logYaz(oturum, {
       islem: LOG_ISLEM.STOK_DUZENLE,
