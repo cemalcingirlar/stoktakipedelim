@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hareketAni } from "@/lib/tarih";
 import {
   envanteriOku,
   type EnvanterHatasi,
@@ -306,7 +307,7 @@ export async function envanteriKaydet(
               hedefMagazaId: satir.magazaId,
               kullaniciId: oturum.kullaniciId,
               aciklama,
-              tarih: veri.girisTarihi,
+              tarih: hareketAni(veri.girisTarihi),
             },
           });
         }

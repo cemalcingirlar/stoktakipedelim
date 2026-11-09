@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hareketAni } from "@/lib/tarih";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logYaz } from "@/lib/log";
@@ -669,7 +670,7 @@ export async function satisKaydet(
             kaynakMagazaId: cihaz.magazaId,
             kullaniciId: satanId,
             aciklama: `${musteri.adSoyad} müşterisine satıldı`,
-            tarih: veri.satisTarihi,
+            tarih: hareketAni(veri.satisTarihi),
           },
         });
       }

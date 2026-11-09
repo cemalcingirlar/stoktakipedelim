@@ -119,3 +119,25 @@ export function formTarihiCevir(
   const d = new Date(deger);
   return Number.isNaN(d.getTime()) ? null : d;
 }
+
+/**
+ * Bir stok hareketinin zaman damgası.
+ *
+ * Hareket tarihçesi "bu cihaza ne zaman ne oldu" sorusunu cevaplıyor, ama
+ * damga iş gününden (satış tarihi, fatura tarihi) alınıyordu. O alanlar
+ * `<input type="date">` değeri: saat taşımıyor ve UTC gece yarısına
+ * düşüyor. Sonuç: tarihçedeki her satır "03:00" yazıyordu — İstanbul'da
+ * UTC gece yarısının karşılığı.
+ *
+ * Kural: iş günü BUGÜNSE gerçek saat yazılıyor (olağan durum). Kullanıcı
+ * kaydı geçmişe tarihlediyse o günün saati bilinmiyor; günün ortası
+ * kullanılıyor — hem tarihçe doğru güne oturuyor hem de saat dilimi
+ * farkıyla bir gün kaymıyor (bkz. gunOrtasi).
+ */
+export function hareketAni(isGunu: Date | null | undefined, simdi: Date = new Date()): Date {
+  if (!isGunu) return simdi;
+  const gun = new Date(isGunu);
+  if (Number.isNaN(gun.getTime())) return simdi;
+  if (gunFarki(gun, simdi) === 0) return simdi;
+  return gunOrtasi(gun.getFullYear(), gun.getMonth(), gun.getDate());
+}
