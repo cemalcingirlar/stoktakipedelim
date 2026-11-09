@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin", "latin-ext"],
-});
+// Yazı tipi (Inter) kendi sunucumuzdan: tanımı globals.css'te, dosyaları
+// public/yazitipi altında. Eskiden next/font/google kullanılıyordu; o,
+// DERLEME SIRASINDA Google'a bağlanıyor ve sunucuda o adrese çıkış olmadığı
+// için güncelleme derlemede duruyordu.
 
 export const metadata: Metadata = {
   title: "Stok Takip",
@@ -14,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="tr" className={`${inter.variable} h-full antialiased`}>
+    <html lang="tr" className="h-full antialiased">
       <body className="min-h-full font-sans">{children}</body>
     </html>
   );
