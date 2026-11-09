@@ -60,7 +60,10 @@ export async function sistemOlcumu(): Promise<{
 async function veritabaniBoyutu(yol: string): Promise<number> {
   const boyutlar = await Promise.all(
     [yol, `${yol}-wal`, `${yol}-shm`].map((d) =>
-      stat(d)
+      // turbopackIgnore: yol çalışma anında DATABASE_URL'den geliyor.
+      // Paketleyici bunu göremediği için "bütün projeyi izlemeye alıyorum"
+      // diye uyarıyor ve kaynak ağacının tamamını çıktıya katıyordu.
+      stat(/* turbopackIgnore: true */ d)
         .then((s) => s.size)
         .catch(() => 0),
     ),

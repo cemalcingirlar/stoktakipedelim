@@ -157,9 +157,45 @@ if [ "$RAM_MB" -lt 6000 ]; then
   export NODE_OPTIONS="--max-old-space-size=3072${NODE_OPTIONS:+ $NODE_OPTIONS}"
 fi
 
-# Eski parça dosyaları yenileriyle karışmasın diye sıfırdan.
-rm -rf "$UYGULAMA/.next"
-sudo -u "$KULLANICI" --preserve-env=NODE_OPTIONS npm run build
+# Eski parça dosyaları yenileriyle karışmasın diye sıfırdan derleniyor; ama
+# eski derleme SİLİNMİYOR, bir yana alınıyor.
+#
+# Neden: derleme başarısız olunca (bir kez oldu — yazı tipi derleme sırasında
+# Google'dan indiriliyordu ve sunucuda o adrese çıkış yok) betik burada
+# duruyordu. Servis 3/7'de durdurulmuş, .next de silinmişti: dükkân, düzeltme
+# gelene kadar kapalı kaldı. Artık derleme tutmazsa eski derleme geri konup
+# servis başlatılıyor — güncelleme yapılmamış olur, ama kimse kapalı kalmaz.
+ONCEKI_DERLEME="$UYGULAMA/.next.onceki"
+rm -rf "$ONCEKI_DERLEME"
+# `[ -d x ] && mv` yazılamaz: set -e açıkken dizin yoksa betik orada ölür.
+if [ -d "$UYGULAMA/.next" ]; then
+  mv "$UYGULAMA/.next" "$ONCEKI_DERLEME"
+fi
+
+if ! sudo -u "$KULLANICI" --preserve-env=NODE_OPTIONS npm run build; then
+  kirmizi "✗ Derleme başarısız. Eski sürüme dönülüyor."
+  rm -rf "$UYGULAMA/.next"
+  if [ -d "$ONCEKI_DERLEME" ]; then
+    # Yalnız derleme geri konuyor; kaynak dosyalara dokunulmuyor. Çalışan
+    # kod .next içinde, dolayısıyla eski sürüm olduğu gibi ayağa kalkıyor.
+    # (Göçler çalıştıysa şemada yeni sütun/tablo olabilir; eklemeler eski
+    # kodu bozmuyor, o yüzden geri dönüş güvenli.)
+    mv "$ONCEKI_DERLEME" "$UYGULAMA/.next"
+    systemctl start "$SERVIS"
+    sleep 3
+    GERI_KOD=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:3000/giris || echo 000)
+    if [ "$GERI_KOD" = "200" ]; then
+      kirmizi "  Eski sürüm ($ONCEKI) çalışıyor; uygulama ayakta. Hatayı giderip tekrar deneyin."
+    else
+      kirmizi "  Eski sürüm de ayağa kalkmadı (HTTP $GERI_KOD). Günlükler:"
+      journalctl -u "$SERVIS" -n 30 --no-pager
+    fi
+  else
+    kirmizi "  Geri dönülecek eski derleme yok; uygulama kapalı. Hatayı giderip tekrar çalıştırın."
+  fi
+  exit 1
+fi
+rm -rf "$ONCEKI_DERLEME"
 
 baslik "7/7  Servis başlatılıyor"
 systemctl start "$SERVIS"
