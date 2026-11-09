@@ -1,48 +1,52 @@
 /**
- * Satış numarası: `SAT-20261106-001`.
+ * Satış numarası: `SAT-20261109-003`.
  *
- * Gün içindeki sıra, o gün oluşturulmuş satış kaydı sayısından geliyor.
- * Numara kullanıcının kartı sözle anmasına yarıyor ("SAT-20261106-003'ü aç");
- * tekilliği veritabanındaki benzersiz dizin güvenceye alıyor.
+ * Numara kullanıcının kartı sözle anmasına yarıyor ("SAT-20261109-003'ü aç");
+ * tekilliği veritabanındaki benzersiz dizin güvenceye alıyor. Sıra hesabı ve
+ * çakışmada yeniden deneme ortak dosyada (src/lib/gunlukNumara.ts): sevkiyat
+ * numarası da aynı kuralla üretiliyor.
  *
  * Göçle toplanan eski satışlar "SAT-20261101-E0001" biçiminde numaralandı;
- * yeni satışlar onlarla çakışmasın diye ek kullanmıyor.
+ * onlar da aynı günün numaraları arasında sayılıyor.
  */
+import {
+  cakismadaYenidenDene as cakismadaDene,
+  gunOneki,
+  numaraYaz,
+  sonrakiNumara,
+  sonrakiSira,
+  type NumaraKaynagi,
+} from "./gunlukNumara";
 
-/** Yalnız `satis.count` gereken en küçük arayüz; Prisma istemcisi de uyuyor. */
-export type SatisSayaci = {
-  satis: {
-    count: (secenekler: {
-      where: { createdAt: { gte: Date; lt: Date } };
-    }) => Promise<number>;
-  };
-};
+/** Satış numarasının benzersiz alan adı; çakışma denetimi bunu arıyor. */
+export const SATIS_NO_ALANI = "satisNo";
+
+/** Numaranın gün öneki: `SAT-20261109-`. */
+export function satisNoOneki(tarih: Date): string {
+  return gunOneki("SAT-", tarih);
+}
 
 /** Tarih ve gün içi sıradan numara metni. */
 export function satisNoYaz(tarih: Date, sira: number): string {
-  const yil = tarih.getFullYear();
-  const ay = String(tarih.getMonth() + 1).padStart(2, "0");
-  const gun = String(tarih.getDate()).padStart(2, "0");
-  return `SAT-${yil}${ay}${gun}-${String(sira).padStart(3, "0")}`;
+  return numaraYaz(satisNoOneki(tarih), sira);
 }
 
-/** Verilen günün başı ve (dahil olmayan) sonu — yerel saat diliminde. */
-export function gunAraligi(tarih: Date): { gunBas: Date; gunBit: Date } {
-  const gunBas = new Date(tarih);
-  gunBas.setHours(0, 0, 0, 0);
-  const gunBit = new Date(gunBas);
-  gunBit.setDate(gunBit.getDate() + 1);
-  return { gunBas, gunBit };
-}
+/** Yalnız gereken en küçük arayüz; Prisma istemcisi de işlem nesnesi de uyuyor. */
+export type SatisNoKaynagi = { satis: NumaraKaynagi };
 
 /** Sıradaki satış numarası. */
 export async function satisNoUret(
-  sayac: SatisSayaci,
+  kaynak: SatisNoKaynagi,
   tarih: Date,
 ): Promise<string> {
-  const { gunBas, gunBit } = gunAraligi(tarih);
-  const bugunkuAdet = await sayac.satis.count({
-    where: { createdAt: { gte: gunBas, lt: gunBit } },
-  });
-  return satisNoYaz(gunBas, bugunkuAdet + 1);
+  return sonrakiNumara(kaynak.satis, SATIS_NO_ALANI, satisNoOneki(tarih));
 }
+
+/** İşlemi, satış numarası çakışmasında yeniden dener. */
+export async function cakismadaYenidenDene<T>(
+  islem: () => Promise<T>,
+): Promise<T> {
+  return cakismadaDene(islem, SATIS_NO_ALANI);
+}
+
+export { sonrakiSira };

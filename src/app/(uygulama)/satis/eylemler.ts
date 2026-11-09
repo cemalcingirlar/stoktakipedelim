@@ -6,7 +6,7 @@ import { z } from "zod";
 import { logYaz } from "@/lib/log";
 import { aramaMetniUret, aramaNormalize, kodNormalize } from "@/lib/metin";
 import { prisma } from "@/lib/prisma";
-import { satisNoUret } from "@/lib/satisNo";
+import { cakismadaYenidenDene, satisNoUret } from "@/lib/satisNo";
 import { cihazSec, type AdayCihaz } from "@/lib/cihazSecimi";
 import {
   EN_COK_GRUP,
@@ -33,6 +33,7 @@ import {
   magazadaIslemYapabilirMi,
   oturumZorunlu,
   yetkiliMagazalar,
+  KullaniciHatasi,
 } from "@/lib/yetki";
 
 /** Prisma kaydını seçim mantığının beklediği biçime çevirir. */
@@ -573,7 +574,10 @@ export async function satisKaydet(
       if (sorun) return { hata: sorun };
     }
 
-    const satis = await prisma.$transaction(async (tx) => {
+    // Eşzamanlı iki satış aynı numarayı isteyebiliyor; takılan işlem
+    // baştan deneniyor, ikinci okumada numara artmış oluyor.
+    const satis = await cakismadaYenidenDene(() =>
+      prisma.$transaction(async (tx) => {
       let musteriId = veri.musteriId;
 
       if (musteriId) {
@@ -581,7 +585,7 @@ export async function satisKaydet(
           where: { id: musteriId },
           select: { id: true },
         });
-        if (!varMi) throw new Error("Seçilen müşteri bulunamadı.");
+        if (!varMi) throw new KullaniciHatasi("Seçilen müşteri bulunamadı.");
       } else {
         // Aynı telefonla kayıtlı müşteri varsa tekrar oluşturma.
         const telefon = veri.musteriTelefon?.replace(/\s/g, "") || null;
@@ -676,7 +680,8 @@ export async function satisKaydet(
         satisId: satisKaydi.id,
         satisNo: satisKaydi.satisNo,
       };
-    });
+      }),
+    );
 
     const ozet = cihazlar
       .map((c) => `${c.marka} ${c.model} (${c.seriNo ?? "seri no yok"})`)
@@ -704,8 +709,12 @@ export async function satisKaydet(
     gidilecekYol = `/satislar/${satis.satisId}`;
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
-    if (hata instanceof Error && hata.message) return { hata: hata.message };
+    // Yalnız bizim yazdığımız mesajlar ekrana çıkıyor. Eskiden her Error'un
+    // metni gösteriliyordu ve kullanıcı canlıda "Invalid prisma.satis.create()
+    // invocation: Unique constraint failed on the fields: (satisNo)" gibi bir
+    // mesaj gördü: ne yapacağını söylemiyor, içeriyi anlatıyor.
     console.error("Satış kaydedilemedi:", hata);
+    if (hata instanceof KullaniciHatasi) return { hata: hata.message };
     return { hata: "Satış kaydedilemedi. Lütfen tekrar deneyin." };
   }
 

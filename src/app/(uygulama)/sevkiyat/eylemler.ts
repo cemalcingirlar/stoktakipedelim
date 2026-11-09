@@ -15,6 +15,11 @@ import {
 } from "@/lib/adetSecimi";
 import { prisma } from "@/lib/prisma";
 import {
+  cakismadaYenidenDene,
+  gunOneki,
+  sonrakiNumara,
+} from "@/lib/gunlukNumara";
+import {
   kabulDurumu,
   kabulUyarisi,
   sevkiyatAcilabilirMi,
@@ -327,21 +332,20 @@ const gonderimSemasi = z.object({
 
 export type SevkiyatDurumu = { hata?: string };
 
-/** Gün bazlı sıra numarası: SVK-20260912-001 */
+/** Sevkiyat numarasının benzersiz alan adı; çakışma denetimi bunu arıyor. */
+const TRANSFER_NO_ALANI = "transferNo";
+
+/**
+ * Gün bazlı sıra numarası: SVK-20260912-001
+ *
+ * Sıra o günün EN BÜYÜK numarasından türetiliyor, kayıt sayısından değil.
+ * Sayıma dayalı hâli satış numarasında canlıda çöktü (bkz.
+ * src/lib/gunlukNumara.ts); sevkiyatta kayıt silinmiyor ama iki mağaza aynı
+ * anda sevk oluşturduğunda ikisi de aynı sayıyı okuyup aynı numarayı
+ * isteyebiliyordu.
+ */
 async function transferNoUret(tx: typeof prisma, tarih: Date): Promise<string> {
-  const gunBas = new Date(tarih);
-  gunBas.setHours(0, 0, 0, 0);
-  const gunBit = new Date(gunBas);
-  gunBit.setDate(gunBit.getDate() + 1);
-
-  const bugunkuAdet = await tx.transfer.count({
-    where: { gonderimTarihi: { gte: gunBas, lt: gunBit } },
-  });
-
-  const yil = gunBas.getFullYear();
-  const ay = String(gunBas.getMonth() + 1).padStart(2, "0");
-  const gun = String(gunBas.getDate()).padStart(2, "0");
-  return `SVK-${yil}${ay}${gun}-${String(bugunkuAdet + 1).padStart(3, "0")}`;
+  return sonrakiNumara(tx.transfer, TRANSFER_NO_ALANI, gunOneki("SVK-", tarih));
 }
 
 export async function sevkiyatGonder(
@@ -398,7 +402,11 @@ export async function sevkiyatGonder(
 
     const benzersizIdler = [...new Set(veri.cihazIdleri)];
 
-    const transfer = await prisma.$transaction(async (tx) => {
+    // İki mağaza aynı anda sevk oluşturursa numara çakışabilir; takılan
+    // işlem baştan deneniyor, ikinci okumada numara artmış oluyor.
+    const transfer = await cakismadaYenidenDene(
+      () =>
+        prisma.$transaction(async (tx) => {
       // Cihazların hâlâ kaynak mağazada ve stokta olduğunu kilit altında doğrula.
       const cihazlar = await tx.stokKalemi.findMany({
         where: { id: { in: benzersizIdler } },
@@ -454,7 +462,9 @@ export async function sevkiyatGonder(
       }
 
       return olusan;
-    });
+        }),
+      TRANSFER_NO_ALANI,
+    );
 
     await logYaz(oturum, {
       islem: LOG_ISLEM.TRANSFER_GONDER,
