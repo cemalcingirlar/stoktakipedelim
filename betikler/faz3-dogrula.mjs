@@ -224,6 +224,36 @@ const musteri = (await sayfa.locator("dt:has-text('Müşteri') + dd").first().te
 // 7.500,50 satış − 5.000,00 alış = 2.500,50 kâr.
 kontrol("satış kârı doğru hesaplandı", kar.includes("2.500,50"), kar);
 kontrol("satış müşteriye bağlandı", musteri.includes("Ayşe Yılmaz"), musteri);
+// --- Tarihçedeki saat gerçek an olmalı
+// Damga iş gününden (satış/fatura tarihi) alınıyordu; o alan <input
+// type="date"> değeri, yani saat taşımıyor ve UTC gece yarısına düşüyor.
+// Sonuç: tarihçedeki her satır "03:00" yazıyordu (İstanbul'da UTC gece
+// yarısı). Ölçüt: ekrandaki saat, uygulamanın dilimindeki şimdiki saate
+// yakın olmalı.
+const tarihceMetni = (await sayfa.locator("ol").first().textContent()) ?? "";
+const saatler = [...tarihceMetni.matchAll(/(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2})/g)];
+const simdiDilimde = new Intl.DateTimeFormat("tr-TR", {
+  timeZone: process.env.UYGULAMA_DILIMI ?? "Europe/Istanbul",
+  hour: "2-digit",
+  minute: "2-digit",
+}).format(new Date());
+const [simdiSaat, simdiDakika] = simdiDilimde.split(":").map(Number);
+const simdiDk = simdiSaat * 60 + simdiDakika;
+const sapmalar = saatler.map((m) => {
+  const dk = Number(m[4]) * 60 + Number(m[5]);
+  return Math.min(Math.abs(dk - simdiDk), 1440 - Math.abs(dk - simdiDk));
+});
+kontrol(
+  "tarihçede saat var",
+  saatler.length >= 1,
+  tarihceMetni.replace(/\s+/g, " ").slice(0, 80),
+);
+kontrol(
+  "tarihçedeki saatler gerçek an (03:00'a sabitlenmiyor)",
+  sapmalar.length > 0 && sapmalar.every((d) => d <= 10),
+  `şimdi ${simdiDilimde} · ekrandaki saatler ${saatler.map((m) => `${m[4]}:${m[5]}`).join(", ")}`,
+);
+
 const tarihce = await sayfa.locator("ol li").count();
 kontrol(
   "tarihçede giriş + sevk + kabul + satış var",

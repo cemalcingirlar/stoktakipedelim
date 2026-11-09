@@ -10,7 +10,9 @@ import {
 import { dukkanIciAktarabilirMi } from "@/lib/dukkan";
 import { logYaz } from "@/lib/log";
 import { aramaMetniUret, aramaNormalize, kodNormalize } from "@/lib/metin";
-import { formTarihiCevir } from "@/lib/tarih";
+import { formTarihiCevir,
+  hareketAni,
+} from "@/lib/tarih";
 import { kurusuTLYaz } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { saticiSorunu, type SaticiAdayi } from "@/lib/satici";
@@ -209,7 +211,7 @@ export async function dukkanIciAktar(
           kaynakMagazaId: kaynakMagazaId,
           hedefMagazaId: hedefMagazaId,
           kullaniciId: oturum.kullaniciId,
-          tarih: islemTarihi,
+          tarih: hareketAni(islemTarihi),
           aciklama:
             `Dükkân içi aktarım: ${kaynak.ad} → ${hedef.ad}` +
             (temizNot ? ` · ${temizNot}` : ""),
@@ -689,7 +691,7 @@ export async function aktarimSatisiKaydet(
           tip: HAREKET_TIP.SATIS,
           kaynakMagazaId: kaynak.id,
           kullaniciId: satanId,
-          tarih: veri.satisTarihi,
+          tarih: hareketAni(veri.satisTarihi),
           aciklama: aktarimSatisAciklamasi({
             musteriAdi: musteri.adSoyad,
             satisFiyatiYazi: kurusuTLYaz(veri.satisFiyatiKurus),

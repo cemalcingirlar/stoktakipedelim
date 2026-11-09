@@ -1,4 +1,5 @@
 import "server-only";
+import { hareketAni } from "./tarih";
 import { prisma } from "./prisma";
 import { IPTAL_HARIC } from "@/lib/kayitIptali";
 import { aramaMetniUret, kodNormalize } from "./metin";
@@ -138,7 +139,8 @@ export async function faturaOlustur(
           hedefMagazaId: veri.magazaId,
           kullaniciId,
           aciklama: `${veri.faturaNo} numaralı alış faturası`,
-          tarih: veri.faturaTarihi,
+          // Damga gerçek an; fatura tarihi iş günü olarak kaydın kendisinde.
+          tarih: hareketAni(veri.faturaTarihi),
         },
       });
     }
