@@ -10,6 +10,12 @@ import {
 } from "react";
 import { GIRDI_SINIFI } from "./Alan";
 import { KameraDugmesi } from "./KameraOkuyucu";
+import { okutmayiSeslendir, sesiHazirla } from "./ses";
+import {
+  SES_TERCIHI_ANAHTARI,
+  sesAcikMi,
+  sesTercihiYaz,
+} from "@/lib/sesliOkutma";
 
 export type OkutmaGeriBildirimi = {
   tur: "basari" | "uyari" | "hata";
@@ -34,6 +40,7 @@ export function OkutmaKutusu({
   devreDisi = false,
   kameraSurekli = true,
   odakVer = false,
+  sesli = false,
   yanAlan,
 }: {
   etiket: string;
@@ -55,9 +62,18 @@ export function OkutmaKutusu({
    * açılışta ekran klavyesini açmak işi zorlaştırıyor.
    */
   odakVer?: boolean;
+  /**
+   * Okutma sonucunu sesle de bildirir: sayılan cihazda "okudu", diğer
+   * durumlarda "hata var". Sayımda raftaki cihaza bakılırken göz ekranda
+   * olmuyor. Öntanımlı kapalı; yalnız isteyen ekran açıyor.
+   */
+  sesli?: boolean;
 }) {
   const [deger, setDeger] = useState("");
   const [geriBildirim, setGeriBildirim] = useState<OkutmaGeriBildirimi>(null);
+  // Ses tercihi tarayıcıda saklanıyor: kalabalık mağazada kapatan kişi her
+  // sayımda yeniden kapatmak zorunda kalmasın.
+  const [sesAcik, setSesAcik] = useState(true);
   const [bekliyor, basla] = useTransition();
   const girdiRef = useRef<HTMLInputElement>(null);
   // Okutma kutudan başlatıldıysa, istek bitince imleci oraya geri veriyoruz.
@@ -76,18 +92,32 @@ export function OkutmaKutusu({
     if (inceIsaretci) girdiRef.current?.focus();
   }, [odakVer, devreDisi]);
 
+  useEffect(() => {
+    if (!sesli) return;
+    try {
+      setSesAcik(sesAcikMi(window.localStorage.getItem(SES_TERCIHI_ANAHTARI)));
+    } catch {
+      // Gizli kipte localStorage okunamıyor; öntanımlı açık kalır.
+    }
+  }, [sesli]);
+
   const kodGonder = useCallback(
     (kod: string, odakGeri = false) => {
       const temiz = kod.trim();
       if (!temiz) return;
       odagiGeriVer.current = odakGeri;
       setDeger("");
+      // Konuşma motoru okutma ANINDA uyandırılıyor: iOS ilk konuşmayı
+      // kullanıcı hareketine bağlıyor, sonuç ise sunucu cevabından sonra
+      // geliyor.
+      if (sesli && sesAcik) sesiHazirla();
       basla(async () => {
         const sonuc = await okut(temiz);
         setGeriBildirim(sonuc);
+        if (sesli && sesAcik && sonuc) okutmayiSeslendir(sonuc.tur);
       });
     },
-    [okut],
+    [okut, sesli, sesAcik],
   );
 
   /**
@@ -153,7 +183,36 @@ export function OkutmaKutusu({
           />
         )}
       </div>
-      {ipucu ? <p className="mt-1.5 text-xs text-blue-800">{ipucu}</p> : null}
+      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+        {ipucu ? <p className="text-xs text-blue-800">{ipucu}</p> : <span />}
+        {sesli ? (
+          <button
+            type="button"
+            data-test="ses-dugmesi"
+            aria-pressed={sesAcik}
+            onClick={() => {
+              const yeni = !sesAcik;
+              setSesAcik(yeni);
+              try {
+                window.localStorage.setItem(
+                  SES_TERCIHI_ANAHTARI,
+                  sesTercihiYaz(yeni),
+                );
+              } catch {
+                // Saklanamıyorsa tercih yalnız bu ekran için geçerli.
+              }
+              if (yeni) sesiHazirla();
+            }}
+            className={`shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium transition ${
+              sesAcik
+                ? "border-blue-300 bg-white text-blue-800 hover:bg-blue-100"
+                : "border-slate-300 bg-slate-100 text-slate-500 hover:bg-slate-200"
+            }`}
+          >
+            {sesAcik ? "🔊 Sesli bildirim açık" : "🔇 Sesli bildirim kapalı"}
+          </button>
+        ) : null}
+      </div>
       {geriBildirim ? (
         <p
           role="status"
