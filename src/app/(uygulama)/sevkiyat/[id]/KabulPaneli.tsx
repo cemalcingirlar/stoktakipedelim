@@ -81,6 +81,7 @@ export function KabulPaneli({
 
       <OkutmaKutusu
         odakVer
+        sesli
         etiket="Gelen Cihazı Okut"
         ipucu="Paketten çıkan her cihazı okutun. Adetle izlenen aksesuarlarda kutudaki adedi yazıp barkodu bir kez okutmanız yeter; adet her okutmadan sonra 1'e döner. Listede olmayan bir cihaz okutulursa uyarır."
         okut={okut}
