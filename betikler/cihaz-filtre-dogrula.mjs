@@ -195,6 +195,15 @@ try {
   await sayfa.fill('[data-test="filtre-seriNo"]', "999999999999999");
   await sayfa.waitForTimeout(1600);
   kontrol("eşleşmeyen filtre sıfır cihaz veriyor", (await cihazSayisi()) === 0);
+  kontrol(
+    "boş listede filtre satırı duruyor",
+    (await sayfa.locator('[data-test="filtre-seriNo"]').count()) === 1,
+    "kullanıcı filtreyi gevşetebilmeli",
+  );
+  kontrol(
+    "boş listede yol gösteren mesaj var",
+    ((await sayfa.locator("tbody").textContent()) ?? "").includes("gevşetebilirsiniz"),
+  );
 
   // ---- arama kutusu: eşleşenler önce arama dizininden bulunuyor
   // Az eşleşen aramada liste sorgusu eşleşenlerin kimlikleriyle sınırlanıyor
@@ -230,16 +239,6 @@ try {
     "eşleşmeyen arama boş liste veriyor, bütün listeyi değil",
     (await cihazSayisi()) === 0,
     `${await cihazSayisi()} cihaz`,
-  );
-  await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
-  kontrol(
-    "boş listede filtre satırı duruyor",
-    (await sayfa.locator('[data-test="filtre-seriNo"]').count()) === 1,
-    "kullanıcı filtreyi gevşetebilmeli",
-  );
-  kontrol(
-    "boş listede yol gösteren mesaj var",
-    ((await sayfa.locator("tbody").textContent()) ?? "").includes("gevşetebilirsiniz"),
   );
 
   // ------------------------------------------- 6) Fiyat aralığı filtresi
