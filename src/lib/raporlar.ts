@@ -6,14 +6,19 @@ import {
   magazaKosulu,
   transferKosulu,
 } from "./gorunurluk";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "./prisma";
 import { kapsamEtiketi } from "./sayimKapsami";
 import { SAYIM_DURUM, STOK_DURUM, TRANSFER_DURUM } from "./sabitler";
 import {
   donemKovalari,
+  gunlukToplamlariKovala,
   kovaAnahtari,
+  sabitSaatFarkiDk,
+  sqliteSaatKaydirmasi,
   type GrafikDonemi,
   type GrafikKovasi,
+  type GunlukToplam,
 } from "./grafikDonem";
 import { gunSonu } from "./tarih";
 import {
@@ -384,6 +389,18 @@ export async function sayimRaporu(gorunur: number[] | null) {
   });
 }
 
+type HamGunluk = { gun: string | null; adet: bigint | number; kurus: bigint | number | null };
+
+function gunlukCevir(satirlar: HamGunluk[]): GunlukToplam[] {
+  return satirlar
+    .filter((s): s is HamGunluk & { gun: string } => typeof s.gun === "string")
+    .map((s) => ({
+      gun: s.gun,
+      adet: Number(s.adet),
+      kurus: Number(s.kurus ?? 0),
+    }));
+}
+
 /**
  * Seçilen dönemin giriş ve satış adetleri — panel grafiği için.
  *
@@ -391,6 +408,74 @@ export async function sayimRaporu(gorunur: number[] | null) {
  * grafikDonem.ts içinde, saf ve test edilmiş halde duruyor.
  */
 export async function hareketRaporu(
+  donem: GrafikDonemi,
+  gorunur: number[] | null,
+  bugun: Date = new Date(),
+): Promise<GrafikKovasi[]> {
+  const { baslangic, kovalar } = donemKovalari(donem, bugun);
+
+  // Görebileceği mağaza yoksa veri de yok; boş IN () geçersiz SQL olurdu.
+  if (gorunur !== null && gorunur.length === 0) {
+    return gunlukToplamlariKovala(kovalar, donem.kova, [], []);
+  }
+
+  // Ölçüldü (90 bin cihaz, 12 aylık dönem): satırları tek tek çekip sunucuda
+  // saymak 232 ms sürüyordu — 77 bin satır yalnız sayılmak için nesneye
+  // çevriliyordu ve süre veriyle birlikte büyüyordu. Gün gün gruplamayı
+  // veritabanı yapınca en çok dönemdeki gün sayısı kadar satır dönüyor.
+  //
+  // Yerel gün SQL'de hesaplandığı için saat farkının dönem boyunca sabit
+  // olması gerekiyor (bkz. sabitSaatFarkiDk); değilse eski yol.
+  const farkDk = sabitSaatFarkiDk(baslangic, bugun);
+  if (farkDk === null) return hareketRaporuSatirSatir(donem, gorunur, bugun);
+
+  const kaydirma = sqliteSaatKaydirmasi(farkDk);
+  const magaza =
+    gorunur === null
+      ? Prisma.empty
+      : Prisma.sql`AND "magazaId" IN (${Prisma.join(gorunur)})`;
+
+  const [girisler, satislar, aktarimlar] = await Promise.all([
+    prisma.$queryRaw<HamGunluk[]>`
+      SELECT strftime('%Y-%m-%d', "girisTarihi", ${kaydirma}) AS gun,
+             COUNT(*) AS adet,
+             SUM("alisFiyatiKurus") AS kurus
+      FROM "StokKalemi"
+      WHERE "girisTarihi" >= ${baslangic} ${magaza}
+      GROUP BY gun`,
+    prisma.$queryRaw<HamGunluk[]>`
+      SELECT strftime('%Y-%m-%d', "satisTarihi", ${kaydirma}) AS gun,
+             COUNT(*) AS adet,
+             SUM("satisFiyatiKurus") AS kurus
+      FROM "StokKalemi"
+      WHERE "durum" = ${STOK_DURUM.SATILDI}
+        AND "satisTarihi" >= ${baslangic} ${magaza}
+      GROUP BY gun`,
+    // Aktarımdaki sat-geri al işlemleri de satış; grafikte görünmezse
+    // paneldeki döküm ile grafik birbirini tutmaz.
+    prisma.$queryRaw<HamGunluk[]>`
+      SELECT strftime('%Y-%m-%d', "satisTarihi", ${kaydirma}) AS gun,
+             COUNT(*) AS adet,
+             SUM("satisFiyatiKurus") AS kurus
+      FROM "AktarimSatisi"
+      WHERE "satisTarihi" >= ${baslangic} ${magaza}
+      GROUP BY gun`,
+  ]);
+
+  return gunlukToplamlariKovala(kovalar, donem.kova, gunlukCevir(girisler), [
+    ...gunlukCevir(satislar),
+    ...gunlukCevir(aktarimlar),
+  ]);
+}
+
+/**
+ * Aynı rapor, satırları tek tek okuyarak.
+ *
+ * Yaz saati uygulayan bir saat diliminde yerel gün tek bir sabit farkla
+ * hesaplanamıyor; o durumda bu yol kullanılıyor. Ayrıca iki yolun aynı sonucu
+ * verdiği testte bununla karşılaştırılıyor.
+ */
+export async function hareketRaporuSatirSatir(
   donem: GrafikDonemi,
   gorunur: number[] | null,
   bugun: Date = new Date(),

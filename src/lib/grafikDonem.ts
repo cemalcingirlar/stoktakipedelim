@@ -337,3 +337,87 @@ export function panelAdresi(secimler: PanelSecimleri, capa: string): string {
   }
   return `/panel?${sorgu.toString()}#${capa}`;
 }
+
+// ------------------------------------------------ günlük toplamlardan kovalar
+
+/** Veritabanının gün gün döndürdüğü toplam: yerel gün + adet + tutar. */
+export type GunlukToplam = { gun: string; adet: number; kurus: number };
+
+/**
+ * Aralık boyunca yerel saatin UTC'den farkı sabitse o farkı (dakika), değilse
+ * null döner.
+ *
+ * Grafik için gün gün gruplamayı veritabanına yaptırmak, yerel günü SQL'de
+ * hesaplamayı gerektiriyor; SQL'e ancak tek bir sabit fark verilebilir.
+ * Türkiye'de fark yıl boyu sabit (+180). Yaz saati uygulayan bir dilim
+ * seçilmişse aralığın içinde fark değişir ve tek sayı günleri kaydırır; o
+ * durumda çağıran taraf satır satır eski yola dönüyor.
+ *
+ * Gün gün örnekleniyor: bir yıllık aralıkta fark iki kez değişip başa
+ * dönebilir, yalnız uçlara bakmak bunu kaçırırdı.
+ */
+export function sabitSaatFarkiDk(baslangic: Date, bitis: Date): number | null {
+  const fark = -baslangic.getTimezoneOffset();
+  const GUN_MS = 86_400_000;
+  for (let t = baslangic.getTime(); t <= bitis.getTime(); t += GUN_MS) {
+    if (-new Date(t).getTimezoneOffset() !== fark) return null;
+  }
+  if (-bitis.getTimezoneOffset() !== fark) return null;
+  return fark;
+}
+
+/** SQLite tarih işlevlerine verilecek kaydırma: 180 -> "+180 minutes". */
+export function sqliteSaatKaydirmasi(farkDk: number): string {
+  return `${farkDk >= 0 ? "+" : "-"}${Math.abs(farkDk)} minutes`;
+}
+
+/** "2026-11-12" -> o yerel günün öğlesi; geçersizse null. */
+function yerelGun(gun: string): Date | null {
+  const e = /^(\d{4})-(\d{2})-(\d{2})$/.exec(gun);
+  if (!e) return null;
+  // Öğle: gün sınırındaki bir kayma tarihi komşu güne atmasın.
+  const t = new Date(Number(e[1]), Number(e[2]) - 1, Number(e[3]), 12);
+  return Number.isNaN(t.getTime()) ? null : t;
+}
+
+/**
+ * Günlük toplamları dönemin kovalarına dağıtır.
+ *
+ * Gün -> kova eşlemesi satır satır yoldakiyle aynı işlevden (kovaAnahtari)
+ * geçiyor; iki yolun farklı sonuç vermesi mümkün olmamalı. Dönemin dışına
+ * düşen günler (ilk kovadan önce) sessizce atlanıyor.
+ */
+export function gunlukToplamlariKovala(
+  kovalar: Kova[],
+  tur: KovaTuru,
+  girisler: GunlukToplam[],
+  satislar: GunlukToplam[],
+): GrafikKovasi[] {
+  const satirlar: GrafikKovasi[] = kovalar.map((k) => ({
+    anahtar: k.anahtar,
+    etiket: k.etiket,
+    giris: 0,
+    satis: 0,
+    girisKurus: 0,
+    ciroKurus: 0,
+  }));
+  const harita = new Map(satirlar.map((a) => [a.anahtar, a]));
+
+  for (const g of girisler) {
+    const t = yerelGun(g.gun);
+    const a = t ? harita.get(kovaAnahtari(t, tur)) : undefined;
+    if (a) {
+      a.giris += g.adet;
+      a.girisKurus += g.kurus;
+    }
+  }
+  for (const s of satislar) {
+    const t = yerelGun(s.gun);
+    const a = t ? harita.get(kovaAnahtari(t, tur)) : undefined;
+    if (a) {
+      a.satis += s.adet;
+      a.ciroKurus += s.kurus;
+    }
+  }
+  return satirlar;
+}
