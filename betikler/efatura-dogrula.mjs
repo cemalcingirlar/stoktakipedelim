@@ -477,6 +477,152 @@ try {
     duzMetni.replace(/\s+/g, " ").slice(0, 110).trim(),
   );
 
+  // ---------------------------------------- 10) kargo / hizmet satırlı fatura
+  // Gerçek faturalarda kalem tablosunun sonunda EAN'siz bir "NAK03 / Kargo /
+  // 5,00 TL" satırı var. Okuyucu satır başında EAN beklediği için bu satırı
+  // atlıyor, satır toplamı ara toplamı tutmuyor ve fatura tümden
+  // reddediliyordu. Satır artık okunuyor ama stoğa cihaz olarak açılmıyor.
+  const KARGO_FATURA_NO = `${FATURA_NO}K`;
+  const kargolu = efaturaSatirlari({
+    faturaNo: KARGO_FATURA_NO,
+    faturaTarihi: gunSonra(0),
+    vadeTarihi: gunSonra(45),
+    araToplam: "10.005,00",
+    genelToplam: "12.006,00",
+    kalemler: [
+      {
+        kod: "4000000000042",
+        ad: "DELTA FON 20 8/256GB SIYAH",
+        adet: 2,
+        birim: "5.000,00",
+        kdvTutari: "2.000,00",
+        tutar: "10.000,00",
+        seriler: [imei(11), imei(12)],
+      },
+      {
+        kod: "NAK03",
+        ad: "Kargo",
+        adet: 1,
+        birim: "5,00",
+        kdvTutari: "1,00",
+        tutar: "5,00",
+        seriler: [],
+      },
+    ],
+  });
+  const kargoYolu = join(klasor, "kargolu.pdf");
+  await writeFile(kargoYolu, pdfUret(kargolu));
+
+  await sayfa.goto(`${hedef}/cihazlar/tedarikci-faturasi`, {
+    waitUntil: "networkidle",
+  });
+  await sayfa.setInputFiles("#dosya", kargoYolu);
+  await sayfa.click('button:has-text("Dosyayı Oku")');
+  // Fatura reddedilirse önizleme hiç açılmıyor: betik çökmesin, tek bir ✗
+  // verip bölümün kalanını atlasın.
+  let kargoOkundu = true;
+  try {
+    await sayfa.waitForSelector(`text=${KARGO_FATURA_NO}`, { timeout: 30000 });
+  } catch {
+    kargoOkundu = false;
+  }
+  const kargoRed = kargoOkundu
+    ? ""
+    : (
+        (await sayfa
+          .locator('[role="alert"]:not(#__next-route-announcer__)')
+          .first()
+          .textContent()
+          .catch(() => "")) ?? ""
+      )
+        .replace(/\s+/g, " ")
+        .slice(0, 140)
+        .trim();
+  kontrol(
+    "kargo satırlı fatura kabul ediliyor",
+    kargoOkundu,
+    kargoOkundu ? KARGO_FATURA_NO : kargoRed,
+  );
+
+  if (kargoOkundu) {
+    const kargoOnizleme = (await sayfa.locator("main").textContent()) ?? "";
+    kontrol(
+      "kargo satırı ara toplamı bozmuyor",
+      !/ara toplam/i.test(kargoOnizleme),
+      (kargoOnizleme.match(/[^.]*ara toplam[^.]*\./i) ?? [""])[0].slice(0, 110),
+    );
+    kontrol(
+      "kargo satırı stoğa ürün olarak eklenmiyor",
+      (await sayfa.locator('[data-test="urun-satiri"]').count()) === 1,
+      `ürün satırı sayısı: ${await sayfa.locator('[data-test="urun-satiri"]').count()}`,
+    );
+    const kargoKaydet =
+      (await sayfa.locator('button:has-text("Cihazı Kaydet")').textContent()) ??
+      "";
+    kontrol(
+      "yalnız iki cihaz kaydedilecek",
+      kargoKaydet.includes("2 Cihazı Kaydet"),
+      kargoKaydet.trim(),
+    );
+    kontrol(
+      "kargo satırının atlandığı kullanıcıya söyleniyor",
+      /kargo \/ hizmet satırı/i.test(kargoOnizleme),
+      (kargoOnizleme.match(/[^.]*hizmet satırı[^.]*/i) ?? [
+        "uyarı yok",
+      ])[0].slice(0, 110),
+    );
+    kontrol(
+      "stok tutarı kargoyu içermiyor",
+      kargoOnizleme.includes("10.000,00") &&
+        !kargoOnizleme.includes("10.005,00"),
+      "10.000,00 bekleniyor",
+    );
+
+    await sayfa.selectOption("#topluKategori", { label: "Cep Telefonu" });
+    await sayfa.waitForTimeout(200);
+    await sayfa.selectOption("#topluAltKategori", { label: "Sıfır" });
+    await sayfa.waitForTimeout(200);
+    await sayfa.selectOption("#tedarikciId", { index: 1 });
+    await sayfa.selectOption("#magazaId", { index: 1 });
+    await Promise.all([
+      sayfa.waitForURL(/\/faturalar\/\d+$/, { timeout: 40000 }),
+      sayfa.click('button:has-text("Kaydet")'),
+    ]);
+    const kargoFaturasi = (
+      (await sayfa.locator("main").textContent()) ?? ""
+    ).replace(/\s+/g, " ");
+    kontrol(
+      "kargolu fatura kaydedildi",
+      kargoFaturasi.includes(KARGO_FATURA_NO),
+      sayfa.url(),
+    );
+    kontrol(
+      "faturada kargo cihazı yok",
+      !/NAK03|Kargo/.test(kargoFaturasi),
+      kargoFaturasi.slice(0, 110),
+    );
+
+    await sayfa.goto(`${hedef}/cihazlar?ara=NAK03`, {
+      waitUntil: "networkidle",
+    });
+    const kargoAramasi = (await sayfa.locator("main").textContent()) ?? "";
+    kontrol(
+      "stokta NAK03 kodlu cihaz yok",
+      !kargoAramasi.includes("NAK03"),
+      kargoAramasi.replace(/\s+/g, " ").slice(0, 90),
+    );
+
+    await sayfa.goto(`${hedef}/cihazlar?ara=${imei(11)}`, {
+      waitUntil: "networkidle",
+    });
+    const kargoCihazi = (await sayfa.locator("main").textContent()) ?? "";
+    kontrol(
+      "kargolu faturanın cihazı stokta",
+      kargoCihazi.includes("DELTA") || /Delta/i.test(kargoCihazi),
+      imei(11),
+    );
+  }
+
   await sayfa.screenshot({ path: `${cikti}-son.png`, fullPage: true });
 } catch (hata) {
   kontrol("betik tamamlandı", false, String(hata).slice(0, 300));

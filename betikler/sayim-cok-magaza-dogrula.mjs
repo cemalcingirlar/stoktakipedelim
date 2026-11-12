@@ -25,6 +25,28 @@ const tarayici = await chromium.launch(
   process.env.CHROME_YOLU ? { executablePath: process.env.CHROME_YOLU } : {},
 );
 const sayfa = await tarayici.newPage({ viewport: { width: 1500, height: 1200 }, locale: "tr-TR" });
+
+// Konuşma sentezi yerine sahtesi: başsız tarayıcıda ses yüklü değil, ama
+// HANGİ metnin söylendiği ölçülebilir olmalı. Sayfa açılmadan kuruluyor.
+await sayfa.addInitScript(() => {
+  const sesler = [];
+  Object.defineProperty(window, "__sesler", { get: () => sesler });
+  const sahte = {
+    speaking: false,
+    pending: false,
+    speak: (konusma) => {
+      const metin = String(konusma?.text ?? "");
+      // Boş konuşma motoru uyandırmak için; ölçüme girmemeli.
+      if (metin.trim() !== "") sesler.push(metin);
+    },
+    cancel: () => {},
+    getVoices: () => [],
+  };
+  Object.defineProperty(window, "speechSynthesis", {
+    configurable: true,
+    get: () => sahte,
+  });
+});
 const hatalar = [];
 sayfa.on("console", (m) => {
   if (m.type() === "error") hatalar.push(m.text());
@@ -141,14 +163,34 @@ try {
     (await sayfa.locator('[data-test="kapsam-notu"]').count()) === 0,
   );
 
+  const sesleriOku = () => sayfa.evaluate(() => [...window.__sesler]);
+  const sesSayisi = async () => (await sesleriOku()).length;
+
+  const basariOncesi = await sesSayisi();
   const tekKendi = await okut(M1_IMEI);
   kontrol("tek sayımda kendi cihazı bulundu", /bulundu/i.test(tekKendi), tekKendi);
+  // Sayımda göz rafta: sonucu duymak ekrana bakmaktan hızlı.
+  const basariSesleri = await sesleriOku();
+  kontrol(
+    "sayılan cihazda 'okudu' deniyor",
+    basariSesleri.length === basariOncesi + 1 &&
+      basariSesleri[basariSesleri.length - 1] === "okudu",
+    basariSesleri.slice(-3).join(" · ") || "(ses yok)",
+  );
 
+  const hataOncesi = await sesSayisi();
   const tekDiger = await okut(M2_IMEI);
   kontrol(
     "tek sayımda diğer mağazanın cihazı FAZLA sayılıyor",
     /deposunda kayıtlı/i.test(tekDiger),
     tekDiger,
+  );
+  const hataSesleri = await sesleriOku();
+  kontrol(
+    "yanlış mağazanın cihazında 'hata var' deniyor",
+    hataSesleri.length === hataOncesi + 1 &&
+      hataSesleri[hataSesleri.length - 1] === "hata var",
+    hataSesleri.slice(-3).join(" · ") || "(ses yok)",
   );
   const tekSayac = await sayaclar();
   kontrol("tek sayımda fazla 1", tekSayac.fazla === 1, JSON.stringify(tekSayac));
@@ -201,6 +243,58 @@ try {
     "kapsam dışı mağazanın cihazı hâlâ fazla sayılıyor",
     /deposunda kayıtlı/i.test(kapsamDisi),
     kapsamDisi,
+  );
+
+  // ---- Sesli bildirimin kalan durumları ve kapatma düğmesi
+  const kayitsizOncesi = await sesSayisi();
+  await okut(`${damga}000999`); // hiçbir cihaza denk gelmeyen kod
+  const kayitsizSesler = await sesleriOku();
+  kontrol(
+    "kayıtsız kodda 'hata var' deniyor",
+    kayitsizSesler.length === kayitsizOncesi + 1 &&
+      kayitsizSesler[kayitsizSesler.length - 1] === "hata var",
+    kayitsizSesler.slice(-3).join(" · ") || "(ses yok)",
+  );
+
+  const zatenOncesi = await sesSayisi();
+  await okut(M1_IMEI); // bu sayımda zaten okutuldu
+  const zatenSesler = await sesleriOku();
+  kontrol(
+    "zaten sayılmış cihazda da 'hata var' deniyor",
+    zatenSesler.length === zatenOncesi + 1 &&
+      zatenSesler[zatenSesler.length - 1] === "hata var",
+    zatenSesler.slice(-3).join(" · ") || "(ses yok)",
+  );
+
+  // Kalabalık mağazada ses istenmeyebilir: kapatılabiliyor ve tercih kalıyor.
+  const sesDugmesi = sayfa.locator('[data-test="ses-dugmesi"]');
+  kontrol("ses düğmesi ekranda", (await sesDugmesi.count()) === 1);
+  kontrol(
+    "ses öntanımlı açık",
+    (await sesDugmesi.getAttribute("aria-pressed")) === "true",
+  );
+  await sesDugmesi.click();
+  const kapaliOncesi = await sesSayisi();
+  await okut(M2_IMEI);
+  kontrol(
+    "ses kapalıyken konuşma yok",
+    (await sesSayisi()) === kapaliOncesi,
+    `${(await sesSayisi()) - kapaliOncesi} yeni ses`,
+  );
+
+  await sayfa.reload({ waitUntil: "networkidle" });
+  kontrol(
+    "ses tercihi sayfa yenilenince korunuyor",
+    (await sayfa.locator('[data-test="ses-dugmesi"]').getAttribute("aria-pressed")) ===
+      "false",
+  );
+  await sayfa.locator('[data-test="ses-dugmesi"]').click();
+  const acikOncesi = await sesSayisi();
+  await okut(M1_IMEI);
+  kontrol(
+    "ses tekrar açılınca konuşma dönüyor",
+    (await sesSayisi()) === acikOncesi + 1,
+    (await sesleriOku()).slice(-2).join(" · ") || "(ses yok)",
   );
 
   await sayfa.screenshot({ path: `${cikti}-sayim.png`, fullPage: true });

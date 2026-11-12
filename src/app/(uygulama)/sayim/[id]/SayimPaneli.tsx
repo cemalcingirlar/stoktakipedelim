@@ -73,6 +73,8 @@ export function SayimPaneli({
 
       <OkutmaKutusu
         odakVer
+        // Sayımda göz rafta: sonucu duymak ekrana bakmaktan hızlı.
+        sesli
         etiket="Cihazı Okut"
         ipucu="Raftaki her cihazı okutun. Bu mağazaya ait olmayan veya kayıtsız cihazlar fazla listesine düşer."
         okut={okut}
