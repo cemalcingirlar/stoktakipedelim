@@ -7,7 +7,8 @@
 //
 // Kapsam: gönderme, tek tek okutma, hepsi okutulunca panelin durması, kabulün
 // tamamlanması, bekleyen listelerinden düşmesi, kısmi kabul, ek yetkili
-// kullanıcının kabul edebilmesi ve yetkisiz kullanıcının edememesi.
+// kullanıcının kabul edebilmesi, yetkisiz kullanıcının edememesi ve okutma
+// sonucunun sesle bildirilmesi (sevk eden ve kabul eden ekranda).
 import { chromium } from "@playwright/test";
 
 const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
@@ -22,6 +23,29 @@ const tarayici = await chromium.launch(
 );
 const baglam = await tarayici.newContext({ viewport: { width: 1500, height: 1200 }, locale: "tr-TR" });
 const sayfa = await baglam.newPage();
+
+// Konuşma sentezi yerine sahtesi: başsız tarayıcıda ses yüklü değil, ama
+// HANGİ metnin söylendiği ölçülebilir olmalı. Sayfa gezinmeden önce kuruluyor.
+await sayfa.addInitScript(() => {
+  const sesler = [];
+  Object.defineProperty(window, "__sesler", { get: () => sesler });
+  const sahte = {
+    speaking: false,
+    pending: false,
+    speak: (konusma) => {
+      const metin = String(konusma?.text ?? "");
+      // Boş konuşma motoru uyandırmak için; ölçüme girmemeli.
+      if (metin.trim() !== "") sesler.push(metin);
+    },
+    cancel: () => {},
+    getVoices: () => [],
+  };
+  Object.defineProperty(window, "speechSynthesis", {
+    configurable: true,
+    get: () => sahte,
+  });
+});
+
 const konsolHatalari = [];
 sayfa.on("console", (m) => {
   if (m.type() === "error") konsolHatalari.push(m.text());
@@ -40,6 +64,19 @@ async function giris(kullanici) {
   await sayfa.fill("#kullaniciAdi", kullanici);
   await sayfa.fill("#sifre", SIFRE);
   await Promise.all([sayfa.waitForURL("**/panel"), sayfa.click('button[type="submit"]')]);
+}
+
+const sesleriOku = () => sayfa.evaluate(() => [...window.__sesler]);
+const sesSayisi = async () => (await sesleriOku()).length;
+
+/** Son okutmada söylenen metin beklenen mi? */
+async function sesKontrolu(ad, oncesi, beklenen) {
+  const sesler = await sesleriOku();
+  kontrol(
+    ad,
+    sesler.length === oncesi + 1 && sesler[sesler.length - 1] === beklenen,
+    sesler.slice(-3).join(" · ") || "(ses yok)",
+  );
 }
 
 async function okut(kod) {
@@ -106,9 +143,26 @@ try {
   const odak = () => sayfa.evaluate(() => document.activeElement?.id ?? "");
   kontrol("açılışta imleç okutma kutusunda", (await odak()) === "okutmaKutusu", await odak());
 
+  kontrol(
+    "sevk ekranında ses düğmesi var",
+    (await sayfa.locator('[data-test="ses-dugmesi"]').count()) === 1,
+  );
+
+  const sevkBasariOncesi = await sesSayisi();
   await sayfa.keyboard.type(imei(1));
   await sayfa.keyboard.press("Enter");
   await sayfa.waitForTimeout(1200);
+  // Sevkiyatta da göz ekranda değil kolide: sonucu duymak ekrana bakmaktan
+  // hızlı.
+  await sesKontrolu("sevk ekranında eklenen cihazda 'okudu' deniyor", sevkBasariOncesi, "okudu");
+
+  // Aynı cihaz ikinci kez: listeye girmiyor, uyarı veriyor — ses de uyarmalı,
+  // yoksa operatör eklendi sanıp sıradakine geçer.
+  const sevkUyariOncesi = await sesSayisi();
+  await sayfa.keyboard.type(imei(1));
+  await sayfa.keyboard.press("Enter");
+  await sayfa.waitForTimeout(1200);
+  await sesKontrolu("sevk ekranında zaten listedeki cihazda 'hata var' deniyor", sevkUyariOncesi, "hata var");
   kontrol(
     "1. cihaz klavyeden okutuldu (tıklamadan)",
     (await sayfa.locator("tbody tr").count()) === 1,
@@ -189,8 +243,21 @@ try {
   const odakli = await sayfa.evaluate(() => document.activeElement?.id ?? "");
   kontrol("imleç okutma kutusunda", odakli === "okutmaKutusu", odakli || "(odak yok)");
 
+  kontrol(
+    "kabul ekranında ses düğmesi var",
+    (await sayfa.locator('[data-test="ses-dugmesi"]').count()) === 1,
+  );
+
   // Cihazları tek tek okut.
+  const kabulBasariOncesi = await sesSayisi();
   await okut(imei(1));
+  await sesKontrolu("kabulde gelen cihazda 'okudu' deniyor", kabulBasariOncesi, "okudu");
+
+  // Aynı cihazı ikinci kez okutmak kabul sayısını artırmıyor; ses uyarmalı.
+  const kabulUyariOncesi = await sesSayisi();
+  await okut(imei(1));
+  await sesKontrolu("kabulde ikinci kez okutulan cihazda 'hata var' deniyor", kabulUyariOncesi, "hata var");
+
   await okut(imei(2));
 
   const okutmaSonrasi = (await sayfa.locator("main").textContent()) ?? "";

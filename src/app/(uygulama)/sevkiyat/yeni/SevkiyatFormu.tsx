@@ -268,6 +268,7 @@ export function SevkiyatFormu({
 
       <OkutmaKutusu
         odakVer
+        sesli
         etiket="Sevk Edilecek Cihazı Okut"
         ipucu="Cihaz gönderen mağazada ve stokta olmalı. Aynı cihaz iki kez okutulursa uyarır."
         okut={okut}
