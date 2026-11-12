@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { logYaz } from "@/lib/log";
 import { LOG_ISLEM } from "@/lib/sabitler";
 import { yedekAl } from "@/lib/yedek";
+import { yerelIstekMi } from "@/lib/yerelIstek";
 
 /** Sabit zamanlı anahtar karşılaştırması. */
 function anahtarDogru(gelen: string | null, beklenen: string): boolean {
@@ -18,7 +19,21 @@ function anahtarDogru(gelen: string | null, beklenen: string): boolean {
  *
  *   curl -fsS -H "X-Yedek-Anahtari: $ANAHTAR" http://127.0.0.1:3000/api/yedek
  */
+/**
+ * Dışarıdan gelen isteğe verilen cevap: uç yokmuş gibi.
+ *
+ * 401 ya da 403 ucun var olduğunu söylerdi; var olmayan bir adresin cevabıyla
+ * aynı olmalı.
+ */
+function bulunamadi(): Response {
+  return new Response("Not Found", { status: 404 });
+}
+
 export async function POST(istek: Request) {
+  // Yalnız sunucunun kendisi çağırabilir (bkz. yerelIstek.ts). Anahtar
+  // kontrolünden ÖNCE: dışarıdan anahtar denenememeli.
+  if (!yerelIstekMi(istek.headers)) return bulunamadi();
+
   const beklenen = process.env.YEDEK_ANAHTARI;
   if (!beklenen || beklenen.length < 16) {
     return Response.json(
@@ -51,6 +66,7 @@ export async function POST(istek: Request) {
 }
 
 /** Sağlık kontrolü — cron'un doğru adrese vurduğunu doğrulamak için. */
-export async function GET() {
+export async function GET(istek: Request) {
+  if (!yerelIstekMi(istek.headers)) return bulunamadi();
   return Response.json({ durum: "hazir", yontem: "POST" });
 }

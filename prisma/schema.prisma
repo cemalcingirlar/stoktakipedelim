@@ -562,6 +562,23 @@ model IptalJeton {
   @@index([bitis])
 }
 
+/// Oturumun son etkinlik anı — hareketsizlikte oturumu kapatmak için.
+///
+/// Jeton başına bir satır. Her istekte yazılmıyor: son yazımdan birkaç dakika
+/// geçmeden yeniden yazmak, her sayfa görüntülemeyi bir veritabanı yazımına
+/// çevirirdi (bkz. src/lib/hareketsizlik.ts).
+model OturumEtkinligi {
+  /// JWT'nin `jti` alanı.
+  jti String @id
+
+  sonEtkinlik DateTime
+
+  /// Jetonun kendi son kullanma anı; bundan sonra kayıt gereksiz.
+  bitis DateTime
+
+  @@index([bitis])
+}
+
 model Log {
   id           Int      @id @default(autoincrement())
   kullaniciId  Int?

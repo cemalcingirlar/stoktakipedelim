@@ -23,7 +23,7 @@ type LogGirdisi = {
  * yollayabilir; o noktada zaten sunucunun ağındadır. Dışarıdan gelen
  * istekler için kayıt artık güvenilir.
  */
-async function istemciIp(): Promise<string | undefined> {
+export async function istemciIp(): Promise<string | undefined> {
   try {
     const basliklar = await headers();
     return (

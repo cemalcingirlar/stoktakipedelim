@@ -19,6 +19,8 @@ const SAYFA_BOYUTU = 100;
 
 const ISLEM_ETIKET: Record<string, string> = {
   GIRIS_YAP: "Giriş yaptı",
+  GIRIS_BASARISIZ: "Hatalı giriş denemesi",
+  GIRIS_KILITLENDI: "Giriş kilitlendi",
   CIKIS_YAP: "Çıkış yaptı",
   FATURA_EKLE: "Alış faturası ekledi",
   STOK_EKLE: "Stok ekledi",
@@ -42,6 +44,8 @@ const ISLEM_ETIKET: Record<string, string> = {
 
 const ISLEM_TONU: Record<string, RozetTonu> = {
   GIRIS_YAP: "nötr",
+  GIRIS_BASARISIZ: "sari",
+  GIRIS_KILITLENDI: "kirmizi",
   CIKIS_YAP: "nötr",
   FATURA_EKLE: "mavi",
   TRANSFER_GONDER: "mor",

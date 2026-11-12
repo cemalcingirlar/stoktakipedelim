@@ -2,7 +2,12 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { gorunurMagazalar, hareketKosulu, magazaKosulu } from "./gorunurluk";
 import { prisma } from "./prisma";
-import { STOK_DURUM, TRANSFER_DURUM } from "./sabitler";
+import { LOG_ISLEM, STOK_DURUM, TRANSFER_DURUM } from "./sabitler";
+import {
+  girisUyarisi,
+  yedekUyarisi,
+  type SistemUyarisi,
+} from "./sistemUyarilari";
 import { gunBasi, gunSonu } from "./tarih";
 
 export type MagazaOzeti = {
@@ -297,4 +302,47 @@ export async function sonHareketler(gorunur: number[] | null, adet = 10) {
       hedefMagaza: { select: { ad: true } },
     },
   });
+}
+
+/**
+ * Panelde yöneticiye gösterilecek sistem uyarıları (yedek ve giriş).
+ *
+ * Üç küçük sorgu; hepsi dizinli ve yalnız yönetici panelinde çalışıyor.
+ */
+export async function sistemUyarilariniOku(
+  simdi: Date = new Date(),
+): Promise<SistemUyarisi[]> {
+  const birGunOnce = new Date(simdi.getTime() - 24 * 3_600_000);
+  const [sonYedekler, sonBasarili, girisler] = await Promise.all([
+    prisma.yedek.findMany({
+      orderBy: { id: "desc" },
+      take: 5,
+      select: { durum: true, tarih: true, hata: true },
+    }),
+    prisma.yedek.findFirst({
+      where: { durum: "BASARILI" },
+      orderBy: { id: "desc" },
+      select: { tarih: true },
+    }),
+    prisma.log.groupBy({
+      by: ["islem"],
+      where: {
+        islem: {
+          in: [LOG_ISLEM.GIRIS_BASARISIZ, LOG_ISLEM.GIRIS_KILITLENDI],
+        },
+        tarih: { gte: birGunOnce },
+      },
+      _count: { _all: true },
+    }),
+  ]);
+  const say = (islem: string) =>
+    girisler.find((g) => g.islem === islem)?._count._all ?? 0;
+
+  return [
+    yedekUyarisi(sonYedekler, sonBasarili?.tarih ?? null, simdi),
+    girisUyarisi(
+      say(LOG_ISLEM.GIRIS_BASARISIZ),
+      say(LOG_ISLEM.GIRIS_KILITLENDI),
+    ),
+  ].filter((u): u is SistemUyarisi => u !== null);
 }

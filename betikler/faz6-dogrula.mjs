@@ -120,6 +120,34 @@ kontrol(
   `HTTP ${sorguyla.status()}`,
 );
 
+// Uç yalnız sunucunun kendisinden çağrılabilmeli. Tünelden gelen her isteğe
+// Cloudflare kendi başlıklarını yazıyor; böyle bir istek DOĞRU anahtarla bile
+// kabul edilmemeli ve ucun varlığı görünmemeli (404).
+const disaridanSaglik = await sayfa.request.get(`${hedef}/api/yedek`, {
+  headers: { "CF-Connecting-IP": "203.0.113.7", "CF-Ray": "test" },
+});
+kontrol(
+  "dışarıdan gelen isteğe sağlık ucu görünmüyor",
+  disaridanSaglik.status() === 404,
+  `HTTP ${disaridanSaglik.status()}`,
+);
+const disaridanDogruAnahtar = await sayfa.request.post(`${hedef}/api/yedek`, {
+  headers: { "X-Yedek-Anahtari": anahtar, "CF-Connecting-IP": "203.0.113.7" },
+});
+kontrol(
+  "dışarıdan gelen istek doğru anahtarla bile yedek alamıyor",
+  disaridanDogruAnahtar.status() === 404,
+  `HTTP ${disaridanDogruAnahtar.status()}`,
+);
+const disaridanYanlis = await sayfa.request.post(`${hedef}/api/yedek`, {
+  headers: { "X-Yedek-Anahtari": "yanlis-anahtar-123456", "CF-Ray": "test" },
+});
+kontrol(
+  "dışarıdan anahtar denenemiyor (401 yerine 404)",
+  disaridanYanlis.status() === 404,
+  `HTTP ${disaridanYanlis.status()}`,
+);
+
 // 9) Mobil
 await giris("admin");
 await sayfa.setViewportSize({ width: 390, height: 844 });
