@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
   type ReactNode,
 } from "react";
@@ -12,10 +13,11 @@ import { GIRDI_SINIFI } from "./Alan";
 import { KameraDugmesi } from "./KameraOkuyucu";
 import { okutmayiSeslendir, sesiHazirla } from "./ses";
 import {
-  SES_TERCIHI_ANAHTARI,
-  sesAcikMi,
-  sesTercihiYaz,
-} from "@/lib/sesliOkutma";
+  sesAcikOku,
+  sesAcikSunucuda,
+  sesTercihiniIzle,
+  sesTercihiniKaydet,
+} from "./sesTercihi";
 
 export type OkutmaGeriBildirimi = {
   tur: "basari" | "uyari" | "hata";
@@ -72,8 +74,13 @@ export function OkutmaKutusu({
   const [deger, setDeger] = useState("");
   const [geriBildirim, setGeriBildirim] = useState<OkutmaGeriBildirimi>(null);
   // Ses tercihi tarayıcıda saklanıyor: kalabalık mağazada kapatan kişi her
-  // sayımda yeniden kapatmak zorunda kalmasın.
-  const [sesAcik, setSesAcik] = useState(true);
+  // sayımda yeniden kapatmak zorunda kalmasın. Dış kaynak olarak okunuyor
+  // (bkz. sesTercihi.ts): sunucuda localStorage yok.
+  const sesAcik = useSyncExternalStore(
+    sesTercihiniIzle,
+    sesAcikOku,
+    sesAcikSunucuda,
+  );
   const [bekliyor, basla] = useTransition();
   const girdiRef = useRef<HTMLInputElement>(null);
   // Okutma kutudan başlatıldıysa, istek bitince imleci oraya geri veriyoruz.
@@ -91,15 +98,6 @@ export function OkutmaKutusu({
       window.matchMedia("(pointer: fine)").matches;
     if (inceIsaretci) girdiRef.current?.focus();
   }, [odakVer, devreDisi]);
-
-  useEffect(() => {
-    if (!sesli) return;
-    try {
-      setSesAcik(sesAcikMi(window.localStorage.getItem(SES_TERCIHI_ANAHTARI)));
-    } catch {
-      // Gizli kipte localStorage okunamıyor; öntanımlı açık kalır.
-    }
-  }, [sesli]);
 
   const kodGonder = useCallback(
     (kod: string, odakGeri = false) => {
@@ -192,15 +190,7 @@ export function OkutmaKutusu({
             aria-pressed={sesAcik}
             onClick={() => {
               const yeni = !sesAcik;
-              setSesAcik(yeni);
-              try {
-                window.localStorage.setItem(
-                  SES_TERCIHI_ANAHTARI,
-                  sesTercihiYaz(yeni),
-                );
-              } catch {
-                // Saklanamıyorsa tercih yalnız bu ekran için geçerli.
-              }
+              sesTercihiniKaydet(yeni);
               if (yeni) sesiHazirla();
             }}
             className={`shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium transition ${

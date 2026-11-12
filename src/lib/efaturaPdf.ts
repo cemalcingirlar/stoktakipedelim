@@ -18,7 +18,7 @@
  * ve test edilebilir kalıyor.
  */
 import { aramaNormalize, kodNormalize } from "./metin";
-import { tlyiKurusaCevir } from "./para";
+import { kurusuTLYazSembollu, tlyiKurusaCevir } from "./para";
 import { gunOrtasi } from "./tarih";
 import {
   markayiTuret,
@@ -46,6 +46,15 @@ export type EFaturaKalemi = {
   /** KDV hariç satır tutarı. */
   tutarKurus: number;
   seriNolar: string[];
+  /**
+   * Stoğa girmeyen satır: kargo, nakliye, hizmet bedeli gibi.
+   *
+   * Ayırt edici işaret ilk kod sütunu: cihaz satırlarında her zaman EAN var,
+   * masraf satırlarında tedarikçinin kendi kodu ("NAK03") geliyor. Bu satırlar
+   * ara toplama giriyor — okunmazlarsa toplam tutmuyor ve fatura reddediliyor
+   * — ama stoğa cihaz olarak açılmıyor.
+   */
+  hizmetMi: boolean;
 };
 
 export type EFaturaOkumasi = {
@@ -200,18 +209,42 @@ const URUN_KODU_KALIBI =
 const AYRACSIZ_KOD_KALIBI = /^(?=.*\d)(?=.*[A-ZÇĞİÖŞÜ])[A-ZÇĞİÖŞÜ0-9]{8,}$/;
 
 /**
+ * Satır başındaki, EAN olmayan tedarikçi kodu: "NAK03", "HZM-01" gibi.
+ *
+ * Kargo ve hizmet satırları böyle geliyor. Kalıp EAN'e göre gevşek (kısa
+ * olabiliyor) ama yine de dar: küçük harf içeremez, hem rakam hem büyük harf
+ * taşımalı, en az üç karakter olmalı. Satır başı asıl olarak beklenen sıra
+ * numarasıyla tanınıyor; bu kalıp yalnız o numaradan sonra bakılıyor.
+ */
+const HIZMET_KODU_KALIBI =
+  /^(?=.*\d)(?=.*[A-ZÇĞİÖŞÜ])[A-ZÇĞİÖŞÜ0-9][A-ZÇĞİÖŞÜ0-9/\-_.]{2,19}$/;
+
+/**
+ * Sıra numarasından sonraki parça, kalem satırını başlatan kod olabilir mi?
+ *
+ * Cihaz satırlarında EAN, masraf satırlarında tedarikçi kodu.
+ */
+function satirBasiKoduMu(parca: string): boolean {
+  return EAN_KALIBI.test(parca) || HIZMET_KODU_KALIBI.test(parca);
+}
+
+/**
  * EAN'den sonraki bir parça kod sütunu mu?
  *
  * EAN kalıbı da kabul ediliyor: bazı faturalarda üç kod sütununun üçü de aynı
  * EAN'i taşıyor. Yalnız rakamlı kalıba bakmak, sonu harfli EAN'lerde (…132D)
  * tekrarları kod saymayıp ürün adının başına yapıştırıyordu.
  */
-function ekKodMu(parca: string): boolean {
+function ekKodMu(parca: string, genis = false): boolean {
   return (
     EAN_KALIBI.test(parca) ||
     KOD_KALIBI.test(parca) ||
     URUN_KODU_KALIBI.test(parca) ||
-    AYRACSIZ_KOD_KALIBI.test(parca)
+    AYRACSIZ_KOD_KALIBI.test(parca) ||
+    // Masraf satırlarında kod kısa ("NAK03") ve üç sütunda da aynı geliyor.
+    // Yalnız o satırlarda açılıyor: cihaz satırlarında kısa kalıba izin vermek
+    // açıklamanın başındaki "128GB" gibi parçaları kod sanmaya yol açar.
+    (genis && HIZMET_KODU_KALIBI.test(parca))
   );
 }
 
@@ -231,19 +264,20 @@ const KOD_BASI_KALIBI = /^[A-ZÇĞİÖŞÜ0-9]{1,8}[-_]$/;
 function kodSutunuOku(
   parcalar: string[],
   j: number,
+  genis = false,
 ): { kod: string; sonraki: number } | null {
   const parca = parcalar[j];
   if (parca === undefined) return null;
 
   if (KOD_BASI_KALIBI.test(parca)) {
     const devam = parcalar[j + 1];
-    if (devam !== undefined && ekKodMu(`${parca}${devam}`)) {
+    if (devam !== undefined && ekKodMu(`${parca}${devam}`, genis)) {
       return { kod: `${parca}${devam}`, sonraki: j + 2 };
     }
     return null;
   }
 
-  return ekKodMu(parca) ? { kod: parca, sonraki: j + 1 } : null;
+  return ekKodMu(parca, genis) ? { kod: parca, sonraki: j + 1 } : null;
 }
 
 /** Seri numarası en az bu kadar karakter olmalı. */
@@ -445,7 +479,7 @@ function kalemleriOku(parcalar: string[]): {
     // Satır başlangıcı: beklenen sıra numarası + hemen ardından bir ürün kodu.
     if (
       parcalar[i] !== String(beklenenSira) ||
-      !EAN_KALIBI.test(parcalar[i + 1] ?? "")
+      !satirBasiKoduMu(parcalar[i + 1] ?? "")
     ) {
       i += 1;
       continue;
@@ -454,13 +488,17 @@ function kalemleriOku(parcalar: string[]): {
     const siraNo = beklenenSira;
     let j = i + 1;
 
+    // Cihaz satırı mı masraf satırı mı: ilk kod sütunu söylüyor. EAN varsa
+    // cihaz; "NAK03" gibi tedarikçi kodu varsa kargo / hizmet satırı.
+    const hizmetMi = !EAN_KALIBI.test(parcalar[j]);
+
     // Üç kod sütunu: EAN, satıcı ürün kodu, alıcı ürün kodu. Bazı faturalarda
     // alıcı kodu boş geliyor, bu yüzden kaç tane varsa okunuyor. İlki her zaman
     // EAN; sonraki en çok iki sütun model kodu da olabiliyor.
     const kodlar: string[] = [parcalar[j]];
     j += 1;
     while (j < parcalar.length && kodlar.length < 3) {
-      const sutun = kodSutunuOku(parcalar, j);
+      const sutun = kodSutunuOku(parcalar, j, hizmetMi);
       if (!sutun) break;
       kodlar.push(sutun.kod);
       j = sutun.sonraki;
@@ -476,6 +514,13 @@ function kalemleriOku(parcalar: string[]): {
     }
 
     if (j >= parcalar.length || !ADET_KALIBI.test(parcalar[j])) {
+      // Masraf kodu kalıbı EAN'e göre gevşek. Böyle başlayan bir satır kalem
+      // değilse (açıklamanın içinden geçen bir parça) faturanın tamamını
+      // reddetmek yerine atlanıyor; EAN'li satırda hata yine hata.
+      if (hizmetMi) {
+        i += 1;
+        continue;
+      }
       hatalar.push(`${siraNo}. kalemde adet okunamadı.`);
       break;
     }
@@ -503,6 +548,10 @@ function kalemleriOku(parcalar: string[]): {
     }
 
     if (tutarlar.length < 3) {
+      if (hizmetMi) {
+        i += 1;
+        continue;
+      }
       hatalar.push(`${siraNo}. kalemde fiyat sütunları okunamadı.`);
       break;
     }
@@ -518,6 +567,7 @@ function kalemleriOku(parcalar: string[]): {
       birimFiyatKurus,
       kdvOrani,
       tutarKurus,
+      hizmetMi,
     });
 
     beklenenSira += 1;
@@ -634,13 +684,22 @@ export function efaturaCoz(metin: string): EFaturaOkumasi {
       );
     }
 
-    if (seriNolar.length > 0 && seriNolar.length !== k.adet) {
+    if (!k.hizmetMi && seriNolar.length > 0 && seriNolar.length !== k.adet) {
       hatalar.push(
         `${k.siraNo}. kalemde adet ${k.adet} ama ${seriNolar.length} seri numarası var. ` +
           "Fatura eksik okunmuş olabilir.",
       );
     }
-    if (seriNolar.length === 0) {
+    if (k.hizmetMi) {
+      // Kargo / hizmet satırı: ara toplama katılıyor (yoksa toplam tutmaz) ama
+      // stoğa cihaz olarak açılmıyor. Kullanıcı yine de görsün: gerçekten ürün
+      // satırıysa Excel ile aktarması gerekiyor.
+      uyarilar.push(
+        `${k.siraNo}. kalem (${k.urunAdi} — ${kurusuTLYazSembollu(k.tutarKurus)}) ` +
+          `ürün kodu (${k.barkod}) EAN olmadığı için kargo / hizmet satırı ` +
+          "sayıldı; fatura toplamına katılıyor ama stoğa cihaz olarak eklenmeyecek.",
+      );
+    } else if (seriNolar.length === 0) {
       uyarilar.push(
         `${k.siraNo}. kalem (${k.urunAdi}) için seri numarası yok; ${k.adet} adet ` +
           "seri numarasız cihaz olarak açılacak.",
@@ -676,6 +735,15 @@ export function efaturaCoz(metin: string): EFaturaOkumasi {
 
     return { ...k, seriNolar };
   });
+
+  // Tek bir cihaz satırı bile okunamadıysa fatura işe yaramaz: masraf
+  // satırları stoğa girmiyor.
+  if (kalemler.length > 0 && kalemler.every((k) => k.hizmetMi)) {
+    hatalar.push(
+      "Faturada stoğa eklenecek ürün satırı okunamadı; yalnız kargo / hizmet " +
+        "satırları bulundu.",
+    );
+  }
 
   // Satır toplamları ara toplamı vermeli: bir kalem atlanmışsa burada yakalanır.
   if (araToplamKurus !== null && kalemler.length > 0) {
@@ -772,40 +840,44 @@ export function efaturadanTedarikciFaturasi(
     return { faturalar: [], hatalar: okuma.hatalar, basliklarTamam: false };
   }
 
-  const gruplar: TedarikciUrunGrubu[] = okuma.kalemler.map((kalem) => {
-    // Seri numarası verilmişse her seri bir cihaz; verilmemişse adet kadar
-    // seri numarasız cihaz açılıyor (aksesuar kalemleri böyle geliyor).
-    const cihazlar =
-      kalem.seriNolar.length > 0
-        ? kalem.seriNolar.map((seriNo) => ({
-            excelSatiri: kalem.siraNo,
-            seriNo,
-            barkod: kalem.barkod,
-            urunAdi: kalem.urunAdi,
-            marka: markayiTuret(kalem.urunAdi),
-            alisFiyatiKurus: kalem.birimFiyatKurus,
-          }))
-        : Array.from(
-            { length: Math.max(1, Math.min(500, kalem.adet)) },
-            () => ({
+  // Kargo / hizmet satırları ara toplamı tutturmak için okundu; stoğa cihaz
+  // olarak açılmıyorlar.
+  const gruplar: TedarikciUrunGrubu[] = okuma.kalemler
+    .filter((kalem) => !kalem.hizmetMi)
+    .map((kalem) => {
+      // Seri numarası verilmişse her seri bir cihaz; verilmemişse adet kadar
+      // seri numarasız cihaz açılıyor (aksesuar kalemleri böyle geliyor).
+      const cihazlar =
+        kalem.seriNolar.length > 0
+          ? kalem.seriNolar.map((seriNo) => ({
               excelSatiri: kalem.siraNo,
-              seriNo: null,
+              seriNo,
               barkod: kalem.barkod,
               urunAdi: kalem.urunAdi,
               marka: markayiTuret(kalem.urunAdi),
               alisFiyatiKurus: kalem.birimFiyatKurus,
-            }),
-          );
+            }))
+          : Array.from(
+              { length: Math.max(1, Math.min(500, kalem.adet)) },
+              () => ({
+                excelSatiri: kalem.siraNo,
+                seriNo: null,
+                barkod: kalem.barkod,
+                urunAdi: kalem.urunAdi,
+                marka: markayiTuret(kalem.urunAdi),
+                alisFiyatiKurus: kalem.birimFiyatKurus,
+              }),
+            );
 
-    return {
-      barkod: kalem.barkod,
-      urunAdi: kalem.urunAdi,
-      marka: markayiTuret(kalem.urunAdi),
-      alisFiyatiKurus: kalem.birimFiyatKurus,
-      fiyatFarkliMi: false,
-      cihazlar,
-    };
-  });
+      return {
+        barkod: kalem.barkod,
+        urunAdi: kalem.urunAdi,
+        marka: markayiTuret(kalem.urunAdi),
+        alisFiyatiKurus: kalem.birimFiyatKurus,
+        fiyatFarkliMi: false,
+        cihazlar,
+      };
+    });
 
   const fatura: TedarikciFaturasi = {
     faturaNo: okuma.faturaNo,

@@ -871,3 +871,111 @@ test("adet ile seri sayısı tutmazsa hata veriliyor", () => {
     s.hatalar.join(" | "),
   );
 });
+
+// -------------------------------------------- kargo / hizmet satırı (masraf)
+
+/**
+ * Gerçek faturalarda kalem tablosunun sonuna bir kargo satırı ekleniyor:
+ * sıra numarası, EAN yerine tedarikçinin kendi kodu ("NAK03"), açıklama
+ * "Kargo", 1 adet ve 5,00 TL. Bu satır ara toplama giriyor.
+ *
+ * Okuyucu satır başında EAN beklediği için satırı hiç görmüyordu: satır
+ * toplamı ara toplamdan 500 kuruş eksik kalıyor, "Bazı satırlar okunamamış
+ * olabilir" hatası çıkıyor ve faturaların hiçbiri yüklenemiyordu.
+ */
+function kargoluMetin(ayarlar: { araToplam?: string; kargoKodu?: string } = {}): string {
+  const kod = ayarlar.kargoKodu ?? "NAK03";
+  return ornekMetin({
+    araToplam: ayarlar.araToplam ?? "8.005,00",
+    kalemler: [
+      ["1", "4000000000011", "4000000000011", "4000000000011", "ALFA FON 10 4/128GB SIYAH", "2,00", "1.000,00 TL", "%20", "200,00 TL", "2.000,00 TL"].join("\n"),
+      ["2", "4000000000028", "4000000000028", "4000000000028", "BETA FON 70 PRO 5G 8/128GB", "MAVI", "3,00", "2.000,00", "TL", "%20", "1.200,00", "TL", "6.000,00 TL"].join("\n"),
+      // Kargo satırı: kod sütunları EAN değil, açıklama tek kelime.
+      ["3", kod, kod, "Kargo", "1,00", "5,00 TL", "%20", "1,00 TL", "5,00 TL"].join("\n"),
+    ],
+  });
+}
+
+test("kargo satırı okunuyor ve ara toplam tutuyor", () => {
+  const s = efaturaCoz(kargoluMetin());
+  assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+  assert.equal(s.kalemler.length, 3);
+  const kargo = s.kalemler[2];
+  assert.equal(kargo.hizmetMi, true);
+  assert.equal(kargo.barkod, "NAK03");
+  assert.equal(kargo.urunAdi, "Kargo");
+  assert.equal(kargo.adet, 1);
+  assert.equal(kargo.tutarKurus, 500);
+  assert.equal(
+    s.kalemler.reduce((t, k) => t + k.tutarKurus, 0),
+    s.araToplamKurus,
+  );
+});
+
+test("cihaz satırları kargo satırından etkilenmiyor", () => {
+  const s = efaturaCoz(kargoluMetin());
+  assert.equal(s.kalemler[0].hizmetMi, false);
+  assert.equal(s.kalemler[0].urunAdi, "ALFA FON 10 4/128GB SIYAH");
+  assert.equal(s.kalemler[1].urunAdi, "BETA FON 70 PRO 5G 8/128GB MAVI");
+  assert.equal(s.kalemler[1].tutarKurus, 600000);
+});
+
+test("kargo satırı için seri numarası beklenmiyor", () => {
+  const s = efaturaCoz(kargoluMetin());
+  assert.deepEqual(s.kalemler[2].seriNolar, []);
+  // "seri numarasız cihaz olarak açılacak" uyarısı masraf satırına çıkmamalı.
+  assert.ok(
+    !s.uyarilar.some((u) => /^3\. kalem.*seri numarası yok/.test(u)),
+    s.uyarilar.join(" | "),
+  );
+  assert.ok(
+    s.uyarilar.some((u) => /kargo \/ hizmet satırı sayıldı/.test(u)),
+    s.uyarilar.join(" | "),
+  );
+});
+
+test("kargo satırı stoğa cihaz olarak eklenmiyor", () => {
+  const sonuc = efaturadanTedarikciFaturasi(efaturaCoz(kargoluMetin()));
+  const f = sonuc.faturalar[0];
+  assert.ok(f, sonuc.hatalar.join(" | "));
+  assert.equal(f.gruplar.length, 2, "yalnız iki cihaz grubu olmalı");
+  assert.equal(f.cihazSayisi, 5);
+  assert.ok(!f.gruplar.some((g) => g.barkod === "NAK03"), "kargo grubu stoğa girmemeli");
+  // Stok tutarı kargoyu içermiyor: 2.000,00 + 6.000,00.
+  assert.equal(f.toplamKurus, 800000);
+});
+
+test("yalnız hizmet satırı olan fatura reddediliyor", () => {
+  const s = efaturaCoz(
+    ornekMetin({
+      araToplam: "5,00",
+      kalemler: [["1", "NAK03", "NAK03", "Kargo", "1,00", "5,00 TL", "%20", "1,00 TL", "5,00 TL"].join("\n")],
+      notlar: [],
+    }),
+  );
+  assert.ok(
+    s.hatalar.some((h) => /stoğa eklenecek ürün satırı okunamadı/.test(h)),
+    s.hatalar.join(" | "),
+  );
+  assert.deepEqual(
+    efaturadanTedarikciFaturasi(s).faturalar,
+    [],
+    "stoğa açılacak cihaz yoksa fatura üretilmemeli",
+  );
+});
+
+test("EAN olmayan kodla başlayan yarım satır faturayı reddetmiyor", () => {
+  // Masraf kodu kalıbı EAN'e göre gevşek. Böyle başlayıp devamı gelmeyen bir
+  // parça (açıklamanın içinden geçen bir kelime) kalem sanılıp faturanın
+  // tamamını reddetmemeli; satır atlanmalı.
+  const s = efaturaCoz(`${kargoluMetin()}\n4\nNAK03`);
+  assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+  assert.equal(s.kalemler.length, 3);
+});
+
+test("kargo kodu tireli de olabilir", () => {
+  const s = efaturaCoz(kargoluMetin({ kargoKodu: "HZM-01" }));
+  assert.deepEqual(s.hatalar, [], s.hatalar.join(" | "));
+  assert.equal(s.kalemler[2].hizmetMi, true);
+  assert.equal(s.kalemler[2].barkod, "HZM-01");
+});
