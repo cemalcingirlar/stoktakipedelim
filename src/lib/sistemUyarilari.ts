@@ -23,7 +23,7 @@ export const YEDEK_BAYAT_SAAT = 48;
 
 export type SistemUyarisi = {
   /** Test ve anahtar için kısa ad. */
-  tur: "yedek-hata" | "yedek-bayat" | "giris";
+  tur: "yedek-hata" | "yedek-bayat" | "stok-listesi" | "giris";
   mesaj: string;
   baglanti: string;
   baglantiMetni: string;
@@ -105,5 +105,28 @@ export function girisUyarisi(
       (kilitlenme > 0 ? `; ${kilitlenme} kez giriş kilitlendi.` : "."),
     baglanti: "/ayarlar/loglar?islem=GIRIS_BASARISIZ",
     baglantiMetni: "Kayıtları gör",
+  };
+}
+
+/**
+ * Günlük stok listesi uyarısı: son yükleme başarısızsa.
+ *
+ * Liste hiç denenmemişse (kayıt yok) uyarı yok. Tek başarısızlık yeter:
+ * yedekten farklı olarak listenin hatası geçici olmaz, genelde klasör ya da
+ * yetki sorunudur ve kendiliğinden düzelmez.
+ */
+export function stokListesiUyarisi(
+  kayit: { basarili: boolean; hata?: string } | null,
+): SistemUyarisi | null {
+  if (!kayit || kayit.basarili) return null;
+  const sebep = (kayit.hata ?? "").replace(/\s+/g, " ").trim();
+  const kisa = sebep.length > 140 ? `${sebep.slice(0, 140)}…` : sebep;
+  return {
+    tur: "stok-listesi",
+    mesaj:
+      "Günlük stok listesi (Excel) Drive'a yüklenemedi." +
+      (kisa ? ` Hata: ${kisa}` : ""),
+    baglanti: "/ayarlar/yedekleme",
+    baglantiMetni: "Yedeklemeye git",
   };
 }

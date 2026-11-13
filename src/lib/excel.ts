@@ -84,6 +84,13 @@ export async function excelUret(sayfalar: ExcelSayfasi[]): Promise<Buffer> {
   return Buffer.from(veri);
 }
 
+/** Akışla yazılan bir sayfa: satırlar bir üreticiden geliyor. */
+export type AkisSayfasi = Omit<ExcelSayfasi, "satirlar"> & {
+  satirUret: () =>
+    | AsyncGenerator<(string | number | null)[]>
+    | Generator<(string | number | null)[]>;
+};
+
 /**
  * Satırları akış halinde yazan .xlsx üreticisi.
  *
@@ -98,9 +105,20 @@ export async function excelUret(sayfalar: ExcelSayfasi[]): Promise<Buffer> {
  */
 export async function excelAkisaYaz(
   hedef: import("node:stream").Writable,
-  sayfaTanimi: Omit<ExcelSayfasi, "satirlar"> & {
-    satirUret: () => AsyncGenerator<(string | number | null)[]>;
-  },
+  sayfaTanimi: AkisSayfasi,
+): Promise<void> {
+  await excelSayfalariAkisaYaz(hedef, [sayfaTanimi]);
+}
+
+/**
+ * Birden çok sayfayı akışla yazar; sayfalar verilen sırayla dosyaya girer.
+ *
+ * Günlük stok listesi üç sayfa (liste, mağaza özeti, ürün özeti) ve tek
+ * sayfalık sürümle aynı bellek kaygısını taşıyor.
+ */
+export async function excelSayfalariAkisaYaz(
+  hedef: import("node:stream").Writable,
+  sayfalar: AkisSayfasi[],
 ): Promise<void> {
   const kitap = new ExcelJS.stream.xlsx.WorkbookWriter({
     stream: hedef,
@@ -109,6 +127,16 @@ export async function excelAkisaYaz(
   kitap.creator = "Stok Takip";
   kitap.created = new Date();
 
+  for (const sayfaTanimi of sayfalar) {
+    await akisSayfasiYaz(kitap, sayfaTanimi);
+  }
+  await kitap.commit();
+}
+
+async function akisSayfasiYaz(
+  kitap: ExcelJS.stream.xlsx.WorkbookWriter,
+  sayfaTanimi: AkisSayfasi,
+): Promise<void> {
   const guvenliAd = sayfaTanimi.ad.replace(/[*?:/\\[\]]/g, "-").slice(0, 31);
   const sayfa = kitap.addWorksheet(guvenliAd, {
     views: [
@@ -157,7 +185,6 @@ export async function excelAkisaYaz(
   }
 
   sayfa.commit();
-  await kitap.commit();
 }
 
 /** Tarayıcının dosyayı indirmesi için Content-Disposition başlığı üretir. */

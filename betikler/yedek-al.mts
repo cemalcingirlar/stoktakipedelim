@@ -29,5 +29,11 @@ if (sonuc.basarili) {
   console.error(`${new Date().toISOString()} ✗ Yedekleme başarısız: ${sonuc.hata}`);
 }
 
+if (sonuc.stokListesi) {
+  const l = sonuc.stokListesi;
+  if (l.basarili) console.log(`${new Date().toISOString()} ✓ ${l.dosyaAdi} yüklendi (${l.cihazSayisi} cihaz)`);
+  else console.error(`${new Date().toISOString()} ✗ Stok listesi yüklenemedi: ${l.hata}`);
+}
+
 await prisma.$disconnect();
 process.exit(sonuc.basarili ? 0 : 1);

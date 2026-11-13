@@ -272,6 +272,16 @@ Alternatif olarak uygulama sunucusundan bağımsız çalışan betik:
 0 3 * * * cd /opt/stok/app && /usr/bin/npm run yedek >> /var/log/stok-yedek.log 2>&1
 ```
 
+Her yedekle birlikte Drive'a bir de **günlük stok listesi** (Excel) yüklenir:
+yedek klasörünün içindeki `Stok Listeleri` alt klasörüne, `stok-listesi-YYYY-AA-GG.xlsx`
+adıyla, günde bir dosya. İçinde elde olan bütün cihazlar (stokta, transferde,
+iade, arızalı) alış fiyatlarıyla, ayrıca mağaza ve ürün özeti sayfaları var;
+satılan ve iptal edilen kayıtlar yok. Son 30 gün saklanır
+(`STOK_LISTESI_SAKLAMA`). Liste yüklenemezse veritabanı yedeği bundan
+etkilenmez; yönetici panelinde uyarı çıkar. Aynı dosya **Ayarlar → Yedekleme**
+ekranından "Şimdi indir" ile de alınabilir. Dosya şifresizdir ve alış
+fiyatlarını taşır: Drive klasörünü paylaşırken bunu hesaba katın.
+
 Yedekleme durumu, son yedek zamanı ve başarısız denemeler **Ayarlar →
 Yedekleme** ekranında görünür. Son başarılı yedeğin üzerinden 48 saat geçerse
 ekran uyarı verir.
