@@ -5,9 +5,11 @@ import { prisma } from "./prisma";
 import { LOG_ISLEM, STOK_DURUM, TRANSFER_DURUM } from "./sabitler";
 import {
   girisUyarisi,
+  stokListesiUyarisi,
   yedekUyarisi,
   type SistemUyarisi,
 } from "./sistemUyarilari";
+import { STOK_LISTESI_ANAHTARI, stokListesiKaydiniCoz } from "./stokListesi";
 import { gunBasi, gunSonu } from "./tarih";
 
 export type MagazaOzeti = {
@@ -313,7 +315,7 @@ export async function sistemUyarilariniOku(
   simdi: Date = new Date(),
 ): Promise<SistemUyarisi[]> {
   const birGunOnce = new Date(simdi.getTime() - 24 * 3_600_000);
-  const [sonYedekler, sonBasarili, girisler] = await Promise.all([
+  const [sonYedekler, sonBasarili, girisler, listeKaydi] = await Promise.all([
     prisma.yedek.findMany({
       orderBy: { id: "desc" },
       take: 5,
@@ -334,12 +336,14 @@ export async function sistemUyarilariniOku(
       },
       _count: { _all: true },
     }),
+    prisma.ayar.findUnique({ where: { anahtar: STOK_LISTESI_ANAHTARI } }),
   ]);
   const say = (islem: string) =>
     girisler.find((g) => g.islem === islem)?._count._all ?? 0;
 
   return [
     yedekUyarisi(sonYedekler, sonBasarili?.tarih ?? null, simdi),
+    stokListesiUyarisi(stokListesiKaydiniCoz(listeKaydi?.deger)),
     girisUyarisi(
       say(LOG_ISLEM.GIRIS_BASARISIZ),
       say(LOG_ISLEM.GIRIS_KILITLENDI),

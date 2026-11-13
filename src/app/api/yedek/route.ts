@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { logYaz } from "@/lib/log";
 import { LOG_ISLEM } from "@/lib/sabitler";
+import { stokListesiOzeti } from "@/lib/stokListesi";
 import { yedekAl } from "@/lib/yedek";
 import { yerelIstekMi } from "@/lib/yerelIstek";
 
@@ -57,9 +58,11 @@ export async function POST(istek: Request) {
   await logYaz(null, {
     islem: LOG_ISLEM.YEDEK_AL,
     hedefTip: "Yedek",
-    detay: sonuc.basarili
-      ? `Zamanlanmış yedek: ${sonuc.dosyaAdi} (${sonuc.boyutBayt} bayt)`
-      : `Zamanlanmış yedek başarısız: ${sonuc.hata}`,
+    detay:
+      (sonuc.basarili
+        ? `Zamanlanmış yedek: ${sonuc.dosyaAdi} (${sonuc.boyutBayt} bayt)`
+        : `Zamanlanmış yedek başarısız: ${sonuc.hata}`) +
+      stokListesiOzeti(sonuc.stokListesi),
   });
 
   return Response.json(sonuc, { status: sonuc.basarili ? 200 : 500 });

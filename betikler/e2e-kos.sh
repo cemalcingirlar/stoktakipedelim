@@ -29,6 +29,12 @@ else
   PORT=$(( 3100 + TOPLAM % 700 ))
 fi
 
+# Next bazı portları "ayrılmış" sayıp açmayı reddediyor ("Bad port: 3659 is
+# reserved for apple-sasl"). Süit adından türeyen port bunlardan birine denk
+# gelirse sunucu hiç açılmıyor ve süit sahte "SUNUCU AÇILMADI" veriyor.
+# Aralığımıza (3100-3799) düşen tek ayrılmış port 3659.
+if [ "$PORT" = "3659" ]; then PORT=3660; fi
+
 # Port boş olmalı. Önceki bir çalıştırmadan kalan sunucu aynı portu
 # tutuyorsa curl hemen cevap alır ve süit ESKİ derlemeye karşı koşar —
 # sonuçlar sessizce yanlış çıkar. Boş port bulunana kadar ilerliyoruz.

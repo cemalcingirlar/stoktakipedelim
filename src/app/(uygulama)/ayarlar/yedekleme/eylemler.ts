@@ -5,6 +5,7 @@ import { logYaz } from "@/lib/log";
 import { LOG_ISLEM } from "@/lib/sabitler";
 import { YetkiHatasi, adminZorunlu } from "@/lib/yetki";
 import { prisma } from "@/lib/prisma";
+import { stokListesiOzeti } from "@/lib/stokListesi";
 import { PROVA_ANAHTARI, type ProvaKaydi } from "@/lib/yedekProvasi";
 import { baglantiyiSina, geriYuklemeProvasi, yedekAl } from "@/lib/yedek";
 
@@ -22,9 +23,11 @@ export async function simdiYedekle(
     await logYaz(oturum, {
       islem: LOG_ISLEM.YEDEK_AL,
       hedefTip: "Yedek",
-      detay: sonuc.basarili
-        ? `Elle yedek: ${sonuc.dosyaAdi} (${sonuc.boyutBayt} bayt)`
-        : `Elle yedek başarısız: ${sonuc.hata}`,
+      detay:
+        (sonuc.basarili
+          ? `Elle yedek: ${sonuc.dosyaAdi} (${sonuc.boyutBayt} bayt)`
+          : `Elle yedek başarısız: ${sonuc.hata}`) +
+        stokListesiOzeti(sonuc.stokListesi),
     });
 
     revalidatePath("/ayarlar/yedekleme");
@@ -37,7 +40,11 @@ export async function simdiYedekle(
     const silinenMetni = sonuc.silinen
       ? ` ${sonuc.silinen} eski yedek silindi.`
       : "";
-    return { basari: `${sonuc.dosyaAdi} yüklendi (${kb} KB).${silinenMetni}` };
+    return {
+      basari:
+        `${sonuc.dosyaAdi} yüklendi (${kb} KB).${silinenMetni}` +
+        stokListesiOzeti(sonuc.stokListesi),
+    };
   } catch (hata) {
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Yedekleme eylemi başarısız:", hata);

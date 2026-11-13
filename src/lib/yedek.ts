@@ -1,11 +1,32 @@
 import "server-only";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, stat } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { google } from "googleapis";
+import { excelSayfalariAkisaYaz } from "./excel";
 import { prisma } from "./prisma";
+import {
+  LISTEYE_GIREN_DURUMLAR,
+  MAGAZA_OZETI_SUTUNLARI,
+  STOK_LISTESI_ANAHTARI,
+  STOK_LISTESI_KLASORU,
+  STOK_LISTESI_ONEKI,
+  STOK_LISTESI_SAKLAMA,
+  STOK_SUTUNLARI,
+  URUN_OZETI_SUTUNLARI,
+  bosOzet,
+  magazaOzetiSatirlari,
+  ozeteEkle,
+  silinecekListeler,
+  stokListesiDosyaAdi,
+  stokSatiri,
+  urunOzetiSatirlari,
+  ustBilgiler,
+  type StokListesiCihazi,
+  type StokListesiKaydi,
+} from "./stokListesi";
 import {
   anlikGoruntuAl,
   butunlukKontrolu,
@@ -41,6 +62,18 @@ export type YedekSonucu = {
   dogrulama?: Dogrulama;
   /** Drive'ın bildirdiği dosya boyutu. */
   uzakBoyutBayt?: number | null;
+  /** Yedekle birlikte yüklenen günlük stok listesi (Excel). */
+  stokListesi?: StokListesiSonucu;
+};
+
+export type StokListesiSonucu = {
+  basarili: boolean;
+  dosyaAdi: string;
+  cihazSayisi: number;
+  boyutBayt: number;
+  /** Rotasyonda ve aynı günün eski kopyası olarak silinen dosya sayısı. */
+  silinen?: number;
+  hata?: string;
 };
 
 /** Saklanacak yedek sayısı; daha eskiler rotasyonda silinir. */
@@ -249,6 +282,263 @@ export async function yedekAl(
     } catch (hata) {
       console.error("Yedek kaydı yazılamadı:", hata);
     }
+  }
+
+  // Günlük stok listesi yedeğin ARDINDAN ve ondan bağımsız: liste üretilemez
+  // ya da yüklenemezse veritabanı yedeğinin sonucu değişmiyor. Tersi de
+  // geçerli — yedek başarısız olsa bile liste denenir; elde okunabilir bir
+  // dosya olması tam da o gün işe yarar.
+  if (kayitYap && yedekAyariniOku().yontem !== "YOK") {
+    sonuc.stokListesi = await stokListesiniYukle(tarih);
+  }
+
+  return sonuc;
+}
+
+type DriveIstemcisi = ReturnType<typeof driveIstemcisi>;
+
+/**
+ * Stok listesini verilen yola .xlsx olarak yazar; yazılan cihaz sayısını döner.
+ *
+ * Drive'dan ayrı tutuluyor: aynı dosya yedekleme ekranından da indirilebiliyor,
+ * böylece Drive'a ne gittiği görülebiliyor ve içerik Drive olmadan sınanabiliyor.
+ *
+ * Cihazlar öbek öbek okunup düz satırlara çevriliyor; kitap akışla yazılıyor.
+ * Düz satırlar bellekte tutuluyor (özet sayfaları ve sıralama için gerekli):
+ * on binlerce cihazda birkaç on MB, exceljs'in bellekteki kitabının çok altında.
+ */
+export async function stokListesiDosyasiUret(
+  hedef: import("node:stream").Writable,
+  tarih: Date = new Date(),
+): Promise<number> {
+  const OBEK = 2000;
+  const cihazlar: StokListesiCihazi[] = [];
+  let sonId = 0;
+  for (;;) {
+    const obek = await prisma.stokKalemi.findMany({
+      where: { durum: { in: LISTEYE_GIREN_DURUMLAR }, id: { gt: sonId } },
+      orderBy: { id: "asc" },
+      take: OBEK,
+      select: {
+        id: true,
+        durum: true,
+        marka: true,
+        model: true,
+        renk: true,
+        kapasite: true,
+        seriNo: true,
+        barkod: true,
+        alisFiyatiKurus: true,
+        girisTarihi: true,
+        not: true,
+        magaza: { select: { ad: true } },
+        kategori: { select: { ad: true } },
+        altKategori: { select: { ad: true } },
+        tedarikci: { select: { ad: true } },
+      },
+    });
+    if (obek.length === 0) break;
+    for (const c of obek) {
+      cihazlar.push({
+        magaza: c.magaza.ad,
+        durum: c.durum,
+        kategori: c.kategori.ad,
+        altKategori: c.altKategori?.ad ?? null,
+        marka: c.marka,
+        model: c.model,
+        renk: c.renk,
+        kapasite: c.kapasite,
+        seriNo: c.seriNo,
+        barkod: c.barkod,
+        tedarikci: c.tedarikci?.ad ?? null,
+        alisFiyatiKurus: c.alisFiyatiKurus,
+        girisTarihi: c.girisTarihi,
+        not: c.not,
+      });
+    }
+    sonId = obek[obek.length - 1].id;
+    if (obek.length < OBEK) break;
+  }
+
+  // Mağaza, marka, model sırası: rafta arar gibi okunabilsin.
+  cihazlar.sort(
+    (a, b) =>
+      a.magaza.localeCompare(b.magaza, "tr", { numeric: true }) ||
+      a.marka.localeCompare(b.marka, "tr") ||
+      a.model.localeCompare(b.model, "tr", { numeric: true }) ||
+      (a.seriNo ?? "").localeCompare(b.seriNo ?? ""),
+  );
+
+  const ozet = bosOzet();
+  for (const c of cihazlar) ozeteEkle(ozet, c);
+  const bilgiler = ustBilgiler(tarih, ozet);
+
+  await excelSayfalariAkisaYaz(hedef, [
+    {
+      ad: "Stok",
+      ustBilgiler: bilgiler,
+      sutunlar: STOK_SUTUNLARI,
+      satirUret: function* () {
+        for (const c of cihazlar) yield stokSatiri(c);
+      },
+    },
+    {
+      ad: "Mağaza Özeti",
+      ustBilgiler: [bilgiler[0]],
+      sutunlar: MAGAZA_OZETI_SUTUNLARI,
+      satirUret: function* () {
+        yield* magazaOzetiSatirlari(ozet);
+      },
+    },
+    {
+      ad: "Ürün Özeti",
+      ustBilgiler: [bilgiler[0]],
+      sutunlar: URUN_OZETI_SUTUNLARI,
+      satirUret: function* () {
+        yield* urunOzetiSatirlari(ozet);
+      },
+    },
+  ]);
+
+  return cihazlar.length;
+}
+
+/** "Stok Listeleri" alt klasörünü bulur, yoksa açar. */
+async function stokListesiKlasoru(
+  drive: DriveIstemcisi,
+  ustKlasorId: string | null,
+): Promise<string> {
+  const liste = await drive.files.list({
+    q: [
+      "mimeType = 'application/vnd.google-apps.folder'",
+      `name = '${STOK_LISTESI_KLASORU}'`,
+      "trashed = false",
+      ...(ustKlasorId ? [`'${ustKlasorId}' in parents`] : []),
+    ].join(" and "),
+    orderBy: "createdTime",
+    fields: "files(id)",
+    pageSize: 1,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  const mevcut = liste.data.files?.[0]?.id;
+  if (mevcut) return mevcut;
+
+  const yeni = await drive.files.create({
+    requestBody: {
+      name: STOK_LISTESI_KLASORU,
+      mimeType: "application/vnd.google-apps.folder",
+      ...(ustKlasorId ? { parents: [ustKlasorId] } : {}),
+    },
+    fields: "id",
+    supportsAllDrives: true,
+  });
+  if (!yeni.data.id) throw new Error("Stok listesi klasörü açılamadı.");
+  return yeni.data.id;
+}
+
+/**
+ * Günlük stok listesini üretip Drive'a yükler ve eski listeleri ayıklar.
+ *
+ * Hata fırlatmaz: sonuç döner ve son durum Ayar tablosuna yazılır; panel
+ * uyarısı oradan okuyor.
+ */
+export async function stokListesiniYukle(
+  tarih: Date = new Date(),
+  saklama = Number(process.env.STOK_LISTESI_SAKLAMA ?? STOK_LISTESI_SAKLAMA),
+  /** Yalnız test için: verilmezse yapılandırılmış Drive kullanılır. */
+  driveVerilen?: DriveIstemcisi,
+): Promise<StokListesiSonucu> {
+  const dosyaAdi = stokListesiDosyaAdi(tarih);
+  const gecici = path.join(tmpdir(), `stok-liste-${Date.now()}`);
+  const yol = path.join(gecici, dosyaAdi);
+  let sonuc: StokListesiSonucu = {
+    basarili: false,
+    dosyaAdi,
+    cihazSayisi: 0,
+    boyutBayt: 0,
+  };
+
+  try {
+    await mkdir(gecici, { recursive: true });
+    const akis = createWriteStream(yol);
+    const bitti = new Promise<void>((tamam, hata) => {
+      akis.on("finish", () => tamam());
+      akis.on("error", hata);
+    });
+    const cihazSayisi = await stokListesiDosyasiUret(akis, tarih);
+    await bitti;
+    const boyut = (await stat(yol)).size;
+
+    const ayar = yedekAyariniOku();
+    const drive = driveVerilen ?? driveIstemcisi();
+    const klasorId = await stokListesiKlasoru(
+      drive,
+      ayar.yontem === "YOK" ? null : ayar.klasorId,
+    );
+
+    const yukleme = await drive.files.create({
+      requestBody: { name: dosyaAdi, parents: [klasorId] },
+      media: {
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        body: createReadStream(yol),
+      },
+      fields: "id,name",
+      supportsAllDrives: true,
+    });
+    if (!yukleme.data.id) throw new Error("Drive yüklenen dosyanın kimliğini vermedi.");
+
+    // Ayıklama yüklemeden SONRA: yenisi yerine oturmadan eskisi silinmemeli.
+    const liste = await drive.files.list({
+      q: [
+        `name contains '${STOK_LISTESI_ONEKI}'`,
+        "trashed = false",
+        `'${klasorId}' in parents`,
+      ].join(" and "),
+      fields: "files(id,name,createdTime)",
+      pageSize: 500,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    let silinen = 0;
+    for (const id of silinecekListeler(liste.data.files ?? [], saklama)) {
+      // Az önce yüklenen dosya hiçbir koşulda silinmez.
+      if (id === yukleme.data.id) continue;
+      try {
+        await drive.files.delete({ fileId: id, supportsAllDrives: true });
+        silinen += 1;
+      } catch (hata) {
+        console.error("Eski stok listesi silinemedi:", hata);
+      }
+    }
+
+    sonuc = { basarili: true, dosyaAdi, cihazSayisi, boyutBayt: boyut, silinen };
+  } catch (hata) {
+    console.error("Stok listesi yüklenemedi:", hata);
+    sonuc = {
+      ...sonuc,
+      hata: hata instanceof Error ? hata.message : String(hata),
+    };
+  } finally {
+    await rm(gecici, { recursive: true, force: true });
+  }
+
+  const kayit: StokListesiKaydi = {
+    tarihISO: tarih.toISOString(),
+    basarili: sonuc.basarili,
+    dosyaAdi: sonuc.dosyaAdi,
+    cihazSayisi: sonuc.cihazSayisi,
+    ...(sonuc.hata ? { hata: sonuc.hata.slice(0, 500) } : {}),
+  };
+  try {
+    await prisma.ayar.upsert({
+      where: { anahtar: STOK_LISTESI_ANAHTARI },
+      update: { deger: JSON.stringify(kayit) },
+      create: { anahtar: STOK_LISTESI_ANAHTARI, deger: JSON.stringify(kayit) },
+    });
+  } catch (hata) {
+    console.error("Stok listesi kaydı yazılamadı:", hata);
   }
 
   return sonuc;

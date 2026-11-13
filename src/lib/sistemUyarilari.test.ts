@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { girisUyarisi, yedekUyarisi, type YedekOzeti } from "./sistemUyarilari";
+import {
+  girisUyarisi,
+  stokListesiUyarisi,
+  yedekUyarisi,
+  type YedekOzeti,
+} from "./sistemUyarilari";
 
 const SIMDI = new Date("2026-11-12T12:00:00Z");
 const once = (saat: number) => new Date(SIMDI.getTime() - saat * 3_600_000);
@@ -65,4 +70,21 @@ test("tek kilitlenme bile uyarı veriyor ve toplam doğru", () => {
   const u = girisUyarisi(7, 1);
   assert.match(u?.mesaj ?? "", /8 hatalı giriş denemesi/);
   assert.match(u?.mesaj ?? "", /1 kez giriş kilitlendi/);
+});
+
+test("stok listesi hiç denenmemişse ya da başarılıysa uyarı yok", () => {
+  assert.equal(stokListesiUyarisi(null), null);
+  assert.equal(stokListesiUyarisi({ basarili: true }), null);
+});
+
+test("stok listesi yüklenemediyse uyarı sebebiyle birlikte çıkıyor", () => {
+  const u = stokListesiUyarisi({ basarili: false, hata: "Klasöre yazma yetkisi yok" });
+  assert.equal(u?.tur, "stok-listesi");
+  assert.match(u?.mesaj ?? "", /yüklenemedi/);
+  assert.match(u?.mesaj ?? "", /Klasöre yazma yetkisi yok/);
+});
+
+test("stok listesi uyarısında uzun hata kırpılıyor", () => {
+  const u = stokListesiUyarisi({ basarili: false, hata: "x".repeat(900) });
+  assert.ok((u?.mesaj.length ?? 0) < 250, String(u?.mesaj.length));
 });

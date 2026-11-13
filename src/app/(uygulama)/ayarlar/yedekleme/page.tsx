@@ -1,6 +1,10 @@
 import { Link } from "@/bilesenler/Bag";
 import { Kart } from "@/bilesenler/Kart";
 import { Rozet } from "@/bilesenler/Rozet";
+import {
+  STOK_LISTESI_ANAHTARI,
+  stokListesiKaydiniCoz,
+} from "@/lib/stokListesi";
 import { provaYasi } from "@/lib/yedekProvasi";
 import { provaKaydiniOku } from "./sorgular";
 import { prisma } from "@/lib/prisma";
@@ -40,6 +44,10 @@ export default async function YedeklemeSayfasi() {
   const yapilandirildi = ayar.yontem !== "YOK";
 
   const prova = await provaKaydiniOku();
+  const stokListesi = stokListesiKaydiniCoz(
+    (await prisma.ayar.findUnique({ where: { anahtar: STOK_LISTESI_ANAHTARI } }))
+      ?.deger,
+  );
   const [yedekler, sonBasarili, hataSayisi, dogrulanmamis] = await Promise.all([
     prisma.yedek.findMany({ orderBy: { id: "desc" }, take: 30 }),
     prisma.yedek.findFirst({
@@ -144,6 +152,32 @@ export default async function YedeklemeSayfasi() {
               <dt className="text-slate-500">Geri yükleme provası</dt>
               <dd className="text-right text-sm" data-test="prova-yasi">
                 {provaYasi(prova)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3 border-b border-slate-100 pb-2">
+              <dt className="text-slate-500">Günlük stok listesi (Excel)</dt>
+              <dd className="text-right text-sm" data-test="stok-listesi-durumu">
+                {stokListesi ? (
+                  stokListesi.basarili ? (
+                    <span className="text-slate-800">
+                      {tarihSaatYaz(new Date(stokListesi.tarihISO))} ·{" "}
+                      {stokListesi.cihazSayisi} cihaz
+                    </span>
+                  ) : (
+                    <span className="font-medium text-red-700">
+                      Yüklenemedi: {stokListesi.hata ?? "bilinmeyen hata"}
+                    </span>
+                  )
+                ) : (
+                  <span className="text-slate-500">Henüz yüklenmedi</span>
+                )}
+                <a
+                  href="/ayarlar/yedekleme/stok-listesi"
+                  data-test="stok-listesi-indir"
+                  className="ml-2 font-medium text-blue-700 underline underline-offset-2"
+                >
+                  Şimdi indir
+                </a>
               </dd>
             </div>
             <div className="flex justify-between gap-3">
