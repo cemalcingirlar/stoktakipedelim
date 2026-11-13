@@ -270,7 +270,6 @@ model StokKalemi {
   @@index([magazaId, durum])
   @@index([durum])
   @@index([kategoriId])
-  @@index([girisTarihi])
   @@index([satisTarihi])
   @@index([model])
   // Müşteri kartı ve müşteri listesindeki toplamlar bu alandan geçiyordu ve
@@ -284,7 +283,16 @@ model StokKalemi {
   // Panelin ve satış ekranının en sık sorgusu: "şu aralıkta satılanlar".
   // Tek başına durum dizini seçiliyor, sıralama için geçici B-ağacı
   // kuruluyordu.
-  @@index([durum, satisTarihi])
+  //
+  // Sonradan KAPSAYAN hale getirildi: panel grafiği ve "en çok satanlar"
+  // dökümü bu aralığı gruplayıp tutarı topluyor; marka, model ve tutar
+  // dizinde olmayınca her satır için tabloya gidiliyordu
+  // (prisma/migrations/20261112150000_panel_kapsayan_dizinler).
+  @@index([durum, satisTarihi, magazaId, marka, model, satisFiyatiKurus])
+  // Grafiğin giriş tarafı ve giriş tarihine göre sıralı listeler.
+  @@index([girisTarihi, magazaId, alisFiyatiKurus])
+  // "Stokta en çok bulunan ürünler" dökümü.
+  @@index([durum, magazaId, marka, model, alisFiyatiKurus])
 }
 
 /// Mağaza içi aktarımda yapılan "müşteriye sat, geri al" işleminin satış kaydı.
@@ -558,6 +566,23 @@ model IptalJeton {
   bitis DateTime
 
   createdAt DateTime @default(now())
+
+  @@index([bitis])
+}
+
+/// Oturumun son etkinlik anı — hareketsizlikte oturumu kapatmak için.
+///
+/// Jeton başına bir satır. Her istekte yazılmıyor: son yazımdan birkaç dakika
+/// geçmeden yeniden yazmak, her sayfa görüntülemeyi bir veritabanı yazımına
+/// çevirirdi (bkz. src/lib/hareketsizlik.ts).
+model OturumEtkinligi {
+  /// JWT'nin `jti` alanı.
+  jti String @id
+
+  sonEtkinlik DateTime
+
+  /// Jetonun kendi son kullanma anı; bundan sonra kayıt gereksiz.
+  bitis DateTime
 
   @@index([bitis])
 }

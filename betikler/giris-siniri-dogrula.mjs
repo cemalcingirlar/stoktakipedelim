@@ -7,7 +7,13 @@
 // reddedildiği (korumanın asıl anlamı), başka kullanıcının etkilenmediği,
 // başarılı girişin sayacı sıfırladığı ve var olmayan kullanıcı adlarının da
 // sayıldığı (hesap taramasına karşı) ayrı ayrı sayılıyor.
+//
+// Ayrıca: kilidin denemeyi yapan ADRESE ait olduğu (adı bilen biri hesabın
+// sahibini kilitleyemesin), hatalı denemelerin denetim kaydına şifresiz
+// yazıldığı, yöneticinin panelde uyarıldığı ve hareketsiz kalan oturumun
+// kapandığı.
 import { chromium } from "@playwright/test";
+import Database from "better-sqlite3";
 
 const hedef = process.env.HEDEF ?? "http://127.0.0.1:3000";
 const cikti = process.env.CIKTI ?? "/tmp/giris-siniri";
@@ -117,6 +123,102 @@ try {
 
   const admin = await dene("admin", SIFRE);
   kontrol("yönetici de normal giriyor", admin === "", admin.slice(0, 50));
+
+  // ---------------- 6) Kilit denemeyi yapan adrese ait
+  // sorumlu3 yukarıda bu adresten kilitlendi. Hesabın sahibi BAŞKA adresten
+  // doğru şifreyle girebilmeli: yoksa adı bilen herkes onu sürekli kilitli
+  // tutabilir. Cloudflare'in yazdığı başlık taklit ediliyor.
+  const baskaAdres = await tarayici.newContext({
+    locale: "tr-TR",
+    extraHTTPHeaders: { "CF-Connecting-IP": "198.51.100.4" },
+  });
+  const sahibi = await baskaAdres.newPage();
+  await sahibi.goto(`${hedef}/giris`, { waitUntil: "networkidle" });
+  await sahibi.fill("#kullaniciAdi", "sorumlu3");
+  await sahibi.fill("#sifre", SIFRE);
+  await sahibi.click('button[type="submit"]');
+  await sahibi.waitForTimeout(1200);
+  kontrol(
+    "başka adresten hesabın sahibi kilide takılmıyor",
+    sahibi.url().includes("/panel"),
+    sahibi.url(),
+  );
+  await baskaAdres.close();
+
+  const halaKilitli = await dene("sorumlu3", SIFRE);
+  kontrol(
+    "kilitlenen adres hâlâ kilitli",
+    kilitliMi(halaKilitli),
+    halaKilitli.slice(0, 60),
+  );
+
+  // ---------------- 7) Hatalı denemeler denetim kaydında
+  await dene("admin", SIFRE);
+  await sayfa.goto(`${hedef}/ayarlar/loglar?islem=GIRIS_BASARISIZ`, { waitUntil: "networkidle" });
+  const hataliKayitlar = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "hatalı giriş denemeleri kayda geçiyor",
+    hataliKayitlar.includes("Denenen ad: sorumlu3") && hataliKayitlar.includes("Hatalı giriş denemesi"),
+    hataliKayitlar.replace(/\s+/g, " ").slice(0, 80),
+  );
+  kontrol(
+    "var olmayan ad da kayıtta ve işaretli",
+    hataliKayitlar.includes(`Denenen ad: ${yokAd}`) && hataliKayitlar.includes("kayıtlı değil"),
+  );
+  await sayfa.goto(`${hedef}/ayarlar/loglar?islem=GIRIS_KILITLENDI`, { waitUntil: "networkidle" });
+  const kilitKayitlari = (await sayfa.locator("main").textContent()) ?? "";
+  kontrol(
+    "kilitlenme ayrı bir kayıt olarak yazılıyor",
+    kilitKayitlari.includes("Giriş kilitlendi") && kilitKayitlari.includes("Denenen ad: sorumlu3"),
+  );
+  kontrol(
+    "denenen şifre hiçbir kayıtta yok",
+    !hataliKayitlar.includes(YANLIS) && !kilitKayitlari.includes(YANLIS),
+  );
+
+  // ---------------- 8) Yönetici panelde uyarılıyor
+  await sayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
+  const uyari = sayfa.locator('[data-test="sistem-uyarisi-giris"]');
+  const uyariMetni = (await uyari.count()) > 0 ? ((await uyari.textContent()) ?? "") : "";
+  kontrol(
+    "yönetici panelinde hatalı giriş uyarısı var",
+    /hatalı giriş denemesi/.test(uyariMetni) && /kilitlendi/.test(uyariMetni),
+    uyariMetni.replace(/\s+/g, " ").slice(0, 90) || "(uyarı yok)",
+  );
+  await dene("personel1", SIFRE);
+  kontrol(
+    "personel bu uyarıyı görmüyor",
+    (await sayfa.locator('[data-test="sistem-uyarilari"]').count()) === 0,
+  );
+
+  // ---------------- 9) Hareketsiz oturum kapanıyor
+  // Saat ileri alınamadığı için kayıtlı son etkinlik anı geriye çekiliyor.
+  await dene("admin", SIFRE);
+  await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
+  kontrol("etkin oturum sayfayı açıyor", sayfa.url().includes("/cihazlar"), sayfa.url());
+
+  const db = new Database((process.env.DATABASE_URL ?? "").replace(/^file:/, ""));
+  db.pragma("busy_timeout = 5000");
+  const etkinlikSayisi = db.prepare('SELECT COUNT(*) AS n FROM "OturumEtkinligi"').get().n;
+  kontrol("oturumun son etkinliği kaydediliyor", etkinlikSayisi >= 1, `${etkinlikSayisi} kayıt`);
+
+  // 60 dakika önce: sınırın (120 dk) altında, oturum yaşamalı.
+  const dkOnce = (dk) => new Date(Date.now() - dk * 60_000).toISOString();
+  db.prepare('UPDATE "OturumEtkinligi" SET "sonEtkinlik" = ?').run(dkOnce(60));
+  await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
+  kontrol("bir saat hareketsiz kalan oturum hâlâ açık", sayfa.url().includes("/cihazlar"), sayfa.url());
+
+  db.prepare('UPDATE "OturumEtkinligi" SET "sonEtkinlik" = ?').run(dkOnce(180));
+  await sayfa.goto(`${hedef}/cihazlar`, { waitUntil: "networkidle" });
+  kontrol("üç saat hareketsiz kalan oturum girişe düşüyor", sayfa.url().includes("/giris"), sayfa.url());
+
+  // Süresi dolmuş oturumla yapılan istek onu yeniden canlandırmamalı.
+  await sayfa.goto(`${hedef}/panel`, { waitUntil: "networkidle" });
+  kontrol("kapanan oturum tekrar denemeyle açılmıyor", sayfa.url().includes("/giris"), sayfa.url());
+  db.close();
+
+  const yeniden = await dene("admin", SIFRE);
+  kontrol("yeniden giriş yapılabiliyor", yeniden === "", yeniden.slice(0, 50));
 } catch (e) {
   kontrol("betik tamamlandı", false, String(e));
   await sayfa.screenshot({ path: `${cikti}-cokme.png`, fullPage: true }).catch(() => {});

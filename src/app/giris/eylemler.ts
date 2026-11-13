@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { sifreDogrula } from "@/lib/sifre";
+import { sifreDogrulaSabitSure } from "@/lib/sifre";
 import {
   oturumAc,
   oturumKapat,
@@ -10,13 +10,17 @@ import {
   type CozulmusOturum,
 } from "@/lib/oturum";
 import { oturumBilgisiKur } from "@/lib/oturumKur";
-import { logYaz } from "@/lib/log";
+import { istemciIp, logYaz } from "@/lib/log";
 import { LOG_ISLEM } from "@/lib/sabitler";
 import { guvenliHedef } from "@/lib/yonlendirme";
 import {
+  GENEL_EN_COK_DENEME,
   basarisizDenemeSonrasi,
+  denemeAnahtarlari,
+  kayitIcinAd,
   kilitDurumu,
   kilitMesaji,
+  type DenemeKaydi,
 } from "@/lib/girisSiniri";
 
 export type GirisDurumu = {
@@ -40,14 +44,23 @@ export async function girisYap(
     return { hata: "Kullanıcı adı ve şifre zorunludur.", kullaniciAdi, deneme };
   }
 
-  // Deneme sınırı şifre kontrolünden ÖNCE: kilitliyken scrypt çalıştırmak
-  // hem boşuna işlemci harcar hem de saldırgana zamanlama bilgisi verir.
-  const sayac = await prisma.girisDenemesi.findUnique({
-    where: { kullaniciAdi },
+  // İki sayaç: bu adresten bu ad için, ve bu ad için bütün adreslerden
+  // (bkz. girisSiniri.ts). Deneme sınırı şifre kontrolünden ÖNCE: kilitliyken
+  // scrypt çalıştırmak hem boşuna işlemci harcar hem de saldırgana zamanlama
+  // bilgisi verir.
+  const ip = await istemciIp();
+  const anahtar = denemeAnahtarlari(kullaniciAdi, ip);
+  const sayaclar = await prisma.girisDenemesi.findMany({
+    where: { kullaniciAdi: { in: [anahtar.ipli, anahtar.genel] } },
   });
-  const kilit = kilitDurumu(sayac);
-  if (kilit.kilitli) {
-    return { hata: kilitMesaji(kilit.kalanSn), kullaniciAdi, deneme };
+  const ipliSayac = sayaclar.find((k) => k.kullaniciAdi === anahtar.ipli) ?? null;
+  const genelSayac = sayaclar.find((k) => k.kullaniciAdi === anahtar.genel) ?? null;
+  const kalanSn = Math.max(
+    kilitDurumu(ipliSayac).kalanSn,
+    kilitDurumu(genelSayac).kalanSn,
+  );
+  if (kalanSn > 0) {
+    return { hata: kilitMesaji(kalanSn), kullaniciAdi, deneme };
   }
 
   const kullanici = await prisma.kullanici.findUnique({
@@ -58,32 +71,66 @@ export async function girisYap(
     },
   });
 
-  // Kullanıcı yok / şifre yanlış ayrımı yapılmaz: hesap taramasını zorlaştırır.
-  const gecerli = kullanici
-    ? await sifreDogrula(sifre, kullanici.sifreHash)
-    : false;
+  // Kullanıcı yok / şifre yanlış ayrımı yapılmaz: hesap taramasını
+  // zorlaştırır. Süre de ayırt etmemeli: kullanıcı yokken aynı maliyette
+  // sahte bir doğrulama çalışıyor (bkz. sifreDogrulaSabitSure).
+  const gecerli = await sifreDogrulaSabitSure(sifre, kullanici?.sifreHash);
   if (!kullanici || !gecerli) {
     // Var olmayan kullanıcı adları da sayılıyor: yalnız var olanlar sayılsaydı
     // "bu ad kilitlendi mi" sorusu hesap taramasının cevabı olurdu.
-    const yeni = basarisizDenemeSonrasi(sayac);
-    await prisma.girisDenemesi.upsert({
-      where: { kullaniciAdi },
-      update: {
-        basarisiz: yeni.basarisiz,
-        pencereBasi: yeni.pencereBasi,
-        kilitBitis: yeni.kilitBitis,
-      },
-      create: {
-        kullaniciAdi,
-        basarisiz: yeni.basarisiz,
-        pencereBasi: yeni.pencereBasi,
-        kilitBitis: yeni.kilitBitis,
-      },
-    });
+    const yeniIpli = basarisizDenemeSonrasi(ipliSayac);
+    const yeniGenel = basarisizDenemeSonrasi(
+      genelSayac,
+      new Date(),
+      GENEL_EN_COK_DENEME,
+    );
+    const sayacYaz = (ad: string, yeni: DenemeKaydi) =>
+      prisma.girisDenemesi.upsert({
+        where: { kullaniciAdi: ad },
+        update: {
+          basarisiz: yeni.basarisiz,
+          pencereBasi: yeni.pencereBasi,
+          kilitBitis: yeni.kilitBitis,
+        },
+        create: {
+          kullaniciAdi: ad,
+          basarisiz: yeni.basarisiz,
+          pencereBasi: yeni.pencereBasi,
+          kilitBitis: yeni.kilitBitis,
+        },
+      });
+    await Promise.all([
+      sayacYaz(anahtar.ipli, yeniIpli),
+      sayacYaz(anahtar.genel, yeniGenel),
+    ]);
 
-    const yeniKilit = kilitDurumu(yeni);
-    if (yeniKilit.kilitli) {
-      return { hata: kilitMesaji(yeniKilit.kalanSn), kullaniciAdi, deneme };
+    const yeniKalanSn = Math.max(
+      kilitDurumu(yeniIpli).kalanSn,
+      kilitDurumu(yeniGenel).kalanSn,
+    );
+
+    // Başarısız denemeler de denetim kaydına giriyor: yalnız başarılı girişler
+    // yazılırken bir saldırı denemesi sonradan görülemiyordu. Şifre ASLA
+    // yazılmıyor; denenen ad kırpılarak yazılıyor.
+    await logYaz(
+      kullanici
+        ? { kullaniciId: kullanici.id, kullaniciAdi: kullanici.kullaniciAdi }
+        : null,
+      {
+        islem:
+          yeniKalanSn > 0
+            ? LOG_ISLEM.GIRIS_KILITLENDI
+            : LOG_ISLEM.GIRIS_BASARISIZ,
+        hedefTip: "Giris",
+        detay:
+          `Denenen ad: ${kayitIcinAd(kullaniciAdi)}` +
+          (kullanici ? "" : " (kayıtlı değil)") +
+          ` · bu adresten ${yeniIpli.basarisiz}. deneme`,
+      },
+    );
+
+    if (yeniKalanSn > 0) {
+      return { hata: kilitMesaji(yeniKalanSn), kullaniciAdi, deneme };
     }
     return { hata: "Kullanıcı adı veya şifre hatalı.", kullaniciAdi, deneme };
   }
@@ -96,9 +143,12 @@ export async function girisYap(
     };
   }
 
-  // Başarılı giriş sayacı sıfırlıyor: kilit, şifresini hatırlayan kullanıcıyı
-  // cezalandırmamalı.
-  await prisma.girisDenemesi.deleteMany({ where: { kullaniciAdi } });
+  // Başarılı giriş bu adresin sayacını sıfırlıyor: kilit, şifresini hatırlayan
+  // kullanıcıyı cezalandırmamalı. Genel sayaç duruyor: başka adreslerden süren
+  // bir saldırıya, sahibi giriş yaptı diye yeni deneme hakkı doğmamalı.
+  await prisma.girisDenemesi.deleteMany({
+    where: { kullaniciAdi: anahtar.ipli },
+  });
 
   await prisma.kullanici.update({
     where: { id: kullanici.id },
@@ -158,6 +208,13 @@ async function jetonuIptalEt(oturum: CozulmusOturum): Promise<void> {
         },
       }),
       prisma.iptalJeton.deleteMany({ where: { bitis: { lt: new Date() } } }),
+      // Çıkış yapılan oturumun ve süresi dolmuşların etkinlik kayıtları da
+      // gereksiz (bkz. hareketsizlik.ts).
+      prisma.oturumEtkinligi.deleteMany({
+        where: {
+          OR: [{ jti: oturum.jetonKimligi }, { bitis: { lt: new Date() } }],
+        },
+      }),
     ]);
   } catch (hata) {
     // Çıkışın kendisi her hâlükârda tamamlanmalı: çerez siliniyor.

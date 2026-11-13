@@ -159,6 +159,11 @@ export function filtredenWhere(
   filtre: CihazFiltresi,
   gorunur: number[] | null,
   bugun: Date = new Date(),
+  /**
+   * Arama metniyle eşleşen cihazların kimlikleri; bilinmiyorsa null ve arama
+   * metin koşuluyla yapılır. Yalnız hız içindir, sonucu değiştirmez.
+   */
+  aramaIdleri: number[] | null = null,
 ): Prisma.StokKalemiWhereInput {
   const kosullar: Prisma.StokKalemiWhereInput[] = [];
 
@@ -207,7 +212,17 @@ export function filtredenWhere(
 
   if (filtre.ara) {
     // Arama normalleştirilmiş metin üzerinde yapılır (Türkçe karakter duyarsız).
-    kosullar.push({ aramaMetni: { contains: aramaNormalize(filtre.ara) } });
+    //
+    // Eşleşenlerin kimlikleri önceden bulunmuşsa koşul onlara iniyor (bkz.
+    // aramaIdleriniBul): az eşleşen bir aramada sıralı liste sorgusu, 50 satır
+    // bulana kadar bütün tabloyu tarih sırasıyla gezip her satırı tek tek
+    // sınıyordu. Kimlik listesi aynı kümeyi tarif ediyor, yalnız veritabanına
+    // nereden başlayacağını söylüyor.
+    kosullar.push(
+      aramaIdleri
+        ? { id: { in: aramaIdleri } }
+        : { aramaMetni: { contains: aramaNormalize(filtre.ara) } },
+    );
   }
 
   if (filtre.vade === "gecen") {

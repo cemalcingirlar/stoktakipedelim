@@ -29,3 +29,23 @@ export async function sifreDogrula(sifre: string, saklanan: string): Promise<boo
   const anahtar = (await scryptAsync(sifre, tuz, ANAHTAR_UZUNLUK)) as Buffer;
   return timingSafeEqual(anahtar, beklenen);
 }
+
+let sahteHash: Promise<string> | null = null;
+
+/**
+ * Kullanıcı var olsun olmasın aynı sürede cevap veren doğrulama.
+ *
+ * Var olmayan kullanıcı adında scrypt hiç çalışmıyordu; cevap gözle görülür
+ * biçimde erken geliyor ve hangi adların kayıtlı olduğu sürelerden
+ * çıkarılabiliyordu. Kayıt yoksa aynı maliyetteki sahte bir hash
+ * doğrulanıyor ve sonuç her zaman false.
+ */
+export async function sifreDogrulaSabitSure(
+  sifre: string,
+  saklanan: string | null | undefined,
+): Promise<boolean> {
+  if (saklanan) return sifreDogrula(sifre, saklanan);
+  sahteHash ??= sifreHashle(randomBytes(24).toString("hex"));
+  await sifreDogrula(sifre, await sahteHash);
+  return false;
+}

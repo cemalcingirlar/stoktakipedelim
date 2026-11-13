@@ -43,6 +43,7 @@ import {
   bekleyenSevkiyatlar,
   magazaStokOzeti,
   satilanlar,
+  sistemUyarilariniOku,
   sonHareketler,
   vadesiGecenCihazSayisi,
 } from "@/lib/sorgular";
@@ -53,7 +54,7 @@ import {
   tarihSaatYaz,
 } from "@/lib/tarih";
 import { gorunurMagazaIdleri } from "@/lib/gorunurluk";
-import { oturumGerekli } from "@/lib/yetki";
+import { adminMi, oturumGerekli } from "@/lib/yetki";
 
 export const metadata = { title: "Panel — Stok Takip" };
 
@@ -131,6 +132,7 @@ export default async function PanelSayfasi({
     personelSatislari,
     stoktakiUrunler,
     satanUrunler,
+    sistemUyarilari,
   ] = await Promise.all([
     magazaStokOzeti(gorunur),
     vadesiGecenCihazSayisi(gorunur),
@@ -145,6 +147,8 @@ export default async function PanelSayfasi({
     kullaniciSatisRaporu(satisAraligi, gorunur),
     stoktaEnCokUrunler(gorunur, stokAdedi),
     enCokSatanUrunler(urunDonemBaslangici(urunDonemi), gorunur, satanAdedi),
+    // Yedek ve giriş uyarıları yalnız yöneticiye: düzeltebilecek kişi o.
+    adminMi(oturum) ? sistemUyarilariniOku(simdi) : Promise.resolve([]),
   ]);
 
   const bugun = bugunAyri ?? cikislar;
@@ -185,6 +189,27 @@ export default async function PanelSayfasi({
             : " · Tüm mağazalar"}
         </p>
       </div>
+
+      {sistemUyarilari.length > 0 ? (
+        <div className="space-y-2" data-test="sistem-uyarilari">
+          {sistemUyarilari.map((u) => (
+            <div
+              key={u.tur}
+              role="alert"
+              data-test={`sistem-uyarisi-${u.tur}`}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3"
+            >
+              <p className="text-sm font-medium text-red-800">{u.mesaj}</p>
+              <Link
+                href={u.baglanti}
+                className="text-sm font-medium text-red-800 underline underline-offset-2"
+              >
+                {u.baglantiMetni}
+              </Link>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <SayiKarti

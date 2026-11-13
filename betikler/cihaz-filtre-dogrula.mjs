@@ -205,6 +205,42 @@ try {
     ((await sayfa.locator("tbody").textContent()) ?? "").includes("gevşetebilirsiniz"),
   );
 
+  // ---- arama kutusu: eşleşenler önce arama dizininden bulunuyor
+  // Az eşleşen aramada liste sorgusu eşleşenlerin kimlikleriyle sınırlanıyor
+  // (bkz. src/lib/aramaIdleri.ts). Sonuç kümesi değişmemeli: numaranın
+  // ORTASINDAN arama tek cihazı, marka araması hepsini, eşleşmeyen arama
+  // hiçbirini vermeli — "eşleşme yok" bütün listeye dönüşmemeli.
+  const ortadan = imei(4).slice(3, 15);
+  await sayfa.goto(`${hedef}/cihazlar?ara=${ortadan}`, { waitUntil: "networkidle" });
+  kontrol(
+    "numaranın ortasından arama tek cihazı buluyor",
+    (await cihazSayisi()) === 1,
+    `${await cihazSayisi()} cihaz (${ortadan})`,
+  );
+  const ortadanSeriler = await sutunDegerleri("Seri No / IMEI");
+  kontrol("bulunan doğru cihaz", ortadanSeriler[0] === imei(4), `${ortadanSeriler[0]}`);
+
+  await sayfa.goto(`${hedef}/cihazlar?ara=alfamarka`, { waitUntil: "networkidle" });
+  kontrol(
+    "marka araması bütün eşleşenleri veriyor",
+    (await cihazSayisi()) === alfaSayisi,
+    `${await cihazSayisi()} cihaz (${alfaSayisi} bekleniyor)`,
+  );
+
+  await sayfa.goto(`${hedef}/cihazlar?ara=alfamarka&durum=SATILDI`, { waitUntil: "networkidle" });
+  kontrol(
+    "arama diğer filtrelerle birlikte daralıyor",
+    (await cihazSayisi()) === 0,
+    `${await cihazSayisi()} cihaz`,
+  );
+
+  await sayfa.goto(`${hedef}/cihazlar?ara=yokboylebirsey${damga}`, { waitUntil: "networkidle" });
+  kontrol(
+    "eşleşmeyen arama boş liste veriyor, bütün listeyi değil",
+    (await cihazSayisi()) === 0,
+    `${await cihazSayisi()} cihaz`,
+  );
+
   // ------------------------------------------- 6) Fiyat aralığı filtresi
   await sayfa.goto(`${hedef}/cihazlar?alisMin=20.000,00`, { waitUntil: "networkidle" });
   const pahaliSayisi = await cihazSayisi();

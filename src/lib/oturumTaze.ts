@@ -4,6 +4,7 @@ import { oturumuOku, type OturumBilgisi } from "./oturum";
 import { oturumBilgisiKur } from "./oturumKur";
 import { prisma } from "./prisma";
 import { jetonAni, oturumGecerliMi } from "./oturumGecerlilik";
+import { etkinlikKarari } from "./hareketsizlik";
 import { saatDiliminiUygula } from "./saatDilimiAyari";
 
 /**
@@ -40,7 +41,7 @@ async function oturumuTazeOkuHam(): Promise<OturumBilgisi | null> {
   const cerez = await oturumuOku();
   if (!cerez) return null;
 
-  const [kullanici, iptal] = await Promise.all([
+  const [kullanici, iptal, etkinlik] = await Promise.all([
     prisma.kullanici.findUnique({
     where: { id: cerez.kullaniciId },
     select: {
@@ -68,6 +69,14 @@ async function oturumuTazeOkuHam(): Promise<OturumBilgisi | null> {
           select: { jti: true },
         })
       : Promise.resolve(null),
+    // Hareketsizlik sınırı için son etkinlik anı; bu da birincil anahtar
+    // araması.
+    cerez.jetonKimligi
+      ? prisma.oturumEtkinligi.findUnique({
+          where: { jti: cerez.jetonKimligi },
+          select: { sonEtkinlik: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   if (!kullanici || !kullanici.aktif) return null;
@@ -86,6 +95,31 @@ async function oturumuTazeOkuHam(): Promise<OturumBilgisi | null> {
     )
   ) {
     return null;
+  }
+
+  // Hareketsizlik: son istekten bu yana fazla zaman geçtiyse oturum kapanır
+  // (bkz. hareketsizlik.ts). Kimliksiz eski jetonlarda ölçülemiyor; onlar
+  // zaten 12 saatte bitiyor.
+  if (cerez.jetonKimligi) {
+    const simdi = new Date();
+    const karar = etkinlikKarari(etkinlik?.sonEtkinlik ?? null, simdi);
+    if (!karar.gecerli) return null;
+    if (karar.yaz) {
+      const bitis = new Date(
+        (cerez.jetonBitisSn ?? Math.floor(simdi.getTime() / 1000) + 43_200) *
+          1000,
+      );
+      try {
+        await prisma.oturumEtkinligi.upsert({
+          where: { jti: cerez.jetonKimligi },
+          update: { sonEtkinlik: simdi },
+          create: { jti: cerez.jetonKimligi, sonEtkinlik: simdi, bitis },
+        });
+      } catch (hata) {
+        // Etkinlik yazılamadı diye istek düşmemeli; bir sonraki istek yazar.
+        console.error("Oturum etkinliği yazılamadı:", hata);
+      }
+    }
   }
 
   return oturumBilgisiKur(kullanici);
