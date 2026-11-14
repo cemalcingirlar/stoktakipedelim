@@ -30,7 +30,17 @@ export default async function UygulamaDuzeni({ children }: LayoutProps<"/">) {
   const aktarimVar = aktarimaUygunKaynaklar(oturum, magazalar).length > 0;
   const temel = aktarimVar
     ? TEMEL_MENU.flatMap((o) =>
-        o.yol === "/sevkiyat" ? [o, { etiket: "Mağaza İçi Aktarım", yol: "/aktarim" }] : [o],
+        o.yol === "/sevkiyat"
+          ? [
+              o,
+              {
+                etiket: "Mağaza İçi Aktarım",
+                // Kullanıcının istediği ek satırlar; menüde alt alta.
+                altSatirlar: ["Nakite Düştü", "Ülkü Hanım Dikkatine"],
+                yol: "/aktarim",
+              },
+            ]
+          : [o],
       )
     : TEMEL_MENU;
 
