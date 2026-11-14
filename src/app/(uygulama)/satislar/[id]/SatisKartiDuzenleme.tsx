@@ -57,22 +57,6 @@ export function SatisKartiDuzenleme({
     {},
   );
 
-  const [musteriId, setMusteriId] = useState(satis.musteriId);
-  const [satanId, setSatanId] = useState(satis.satanKullaniciId);
-  const [odemeTipi, setOdemeTipi] = useState(satis.odemeTipi);
-  const [gun, setGun] = useState(satis.satisGunu);
-  const [not, setNot] = useState(satis.not ?? "");
-  const [aciklama, setAciklama] = useState("");
-  const [fiyatlar, setFiyatlar] = useState<Record<number, string>>(() =>
-    Object.fromEntries(
-      satis.kalemler.map((k) => [k.id, kurusuTLYaz(k.satisFiyatiKurus)]),
-    ),
-  );
-
-  const kuruslar = satis.kalemler.map((k) => tlyiKurusaCevir(fiyatlar[k.id] ?? ""));
-  const fiyatHatasi = kuruslar.some((k) => k === null || k < 0);
-  const toplam = kuruslar.reduce<number>((t, k) => t + (k ?? 0), 0);
-
   const kapali =
     acilisDurumu === null ||
     (durum !== acilisDurumu && durum.basari !== undefined);
@@ -96,6 +80,55 @@ export function SatisKartiDuzenleme({
       </div>
     );
   }
+
+  // Alanlar ayrı bir bileşende ve yalnız form açıkken var: her açılışta
+  // kartın O ANKİ değerleriyle baştan kuruluyor. Dış bileşeni yeniden kurmak
+  // (key ile) eylem durumunu, yani başarı mesajını da silerdi.
+  return (
+    <DuzenlemeFormu
+      satis={satis}
+      bugun={bugun}
+      kullanicilar={kullanicilar}
+      musteriler={musteriler}
+      hata={durum.hata}
+      eylem={eylem}
+      kapat={() => setAcilisDurumu(null)}
+    />
+  );
+}
+
+function DuzenlemeFormu({
+  satis,
+  bugun,
+  kullanicilar,
+  musteriler,
+  hata,
+  eylem,
+  kapat,
+}: {
+  satis: DuzenlenenSatis;
+  bugun: string;
+  kullanicilar: { id: number; adSoyad: string; aktif: boolean }[];
+  musteriler: { id: number; adSoyad: string; telefon: string | null }[];
+  hata: string | undefined;
+  eylem: (form: FormData) => void;
+  kapat: () => void;
+}) {
+  const [musteriId, setMusteriId] = useState(satis.musteriId);
+  const [satanId, setSatanId] = useState(satis.satanKullaniciId);
+  const [odemeTipi, setOdemeTipi] = useState(satis.odemeTipi);
+  const [gun, setGun] = useState(satis.satisGunu);
+  const [not, setNot] = useState(satis.not ?? "");
+  const [aciklama, setAciklama] = useState("");
+  const [fiyatlar, setFiyatlar] = useState<Record<number, string>>(() =>
+    Object.fromEntries(
+      satis.kalemler.map((k) => [k.id, kurusuTLYaz(k.satisFiyatiKurus)]),
+    ),
+  );
+
+  const kuruslar = satis.kalemler.map((k) => tlyiKurusaCevir(fiyatlar[k.id] ?? ""));
+  const fiyatHatasi = kuruslar.some((k) => k === null || k < 0);
+  const toplam = kuruslar.reduce<number>((t, k) => t + (k ?? 0), 0);
 
   function veri(): FormData {
     const form = new FormData();
@@ -128,16 +161,16 @@ export function SatisKartiDuzenleme({
         <h2 className="text-sm font-semibold text-slate-800">Satışı düzenle</h2>
         <button
           type="button"
-          onClick={() => setAcilisDurumu(null)}
+          onClick={kapat}
           className="text-xs font-medium text-slate-500 underline hover:text-slate-800"
         >
           Kapat
         </button>
       </div>
 
-      {durum.hata ? (
+      {hata ? (
         <p role="alert" data-test="satis-karti-hata" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-          {durum.hata}
+          {hata}
         </p>
       ) : null}
 

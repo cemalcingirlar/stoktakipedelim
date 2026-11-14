@@ -115,8 +115,6 @@ export default async function SatisKartiSayfasi({ params }: PageProps<"/satislar
 
       {yonetici ? (
         <SatisKartiDuzenleme
-          // Kayıttan sonra form yeni değerlerle baştan kurulsun.
-          key={`${satis.musteriId}-${satis.satanKullaniciId}-${satis.odemeTipi}-${satis.satisTarihi.getTime()}-${satis.not ?? ""}-${satis.kalemler.map((k) => k.satisFiyatiKurus).join(",")}`}
           bugun={inputTarih(new Date())}
           satis={{
             id: satis.id,
