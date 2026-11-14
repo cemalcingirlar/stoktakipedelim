@@ -22,7 +22,12 @@ function BeklemeNoktasi() {
   );
 }
 
-export type MenuOgesi = { etiket: string; yol: string };
+export type MenuOgesi = {
+  etiket: string;
+  yol: string;
+  /** Etiketin altına, küçük yazıyla alt alta eklenen satırlar. */
+  altSatirlar?: string[];
+};
 
 export function UstMenu({
   firmaAdi,
@@ -111,7 +116,23 @@ export function UstMenu({
                   : "text-slate-300 hover:bg-slate-800 hover:text-white"
               }`}
             >
-              {oge.etiket}
+              {oge.altSatirlar?.length ? (
+                // Çok satırlı etiket: ana ad üstte, ek satırlar altında küçük.
+                <span className="inline-block text-left align-middle leading-tight">
+                  <span className="block">{oge.etiket}</span>
+                  {oge.altSatirlar.map((satir) => (
+                    <span
+                      key={satir}
+                      data-test="menu-alt-satir"
+                      className="block text-[11px] font-normal opacity-80"
+                    >
+                      {satir}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                oge.etiket
+              )}
               <BeklemeNoktasi />
             </Link>
           ))}

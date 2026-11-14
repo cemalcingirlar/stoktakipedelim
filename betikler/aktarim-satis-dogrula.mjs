@@ -357,13 +357,35 @@ try {
     );
   }
 
-  const panelMetni = (await sayfa.locator("main").textContent()) ?? "";
+  // Mağaza içi aktarım SATIŞ ama STOK ÇIKIŞI DEĞİL: cihaz mağazada kalıyor.
+  // Panelin "Stoktan Çıkanlar" kartı onu saymamalı (kullanıcı stokta duran
+  // cihazı çıkmış görüyordu); satış dökümleri yukarıda sınandığı gibi
+  // saymaya devam ediyor.
   kontrol(
-    "Stoktan Çıkanlar kartı mağaza içi aktarımı sayıyor",
-    panelMetni.includes("mağaza içi aktarım"),
+    "panelin Stoktan Çıkanlar listesinde aktarım satışı yok",
+    (await sayfa.locator('[data-test="bugun-aktarim-satisi"]').count()) === 0,
+    `${await sayfa.locator('[data-test="bugun-aktarim-satisi"]').count()} satır`,
   );
+  const haricNotu = sayfa.locator('[data-test="aktarim-haric-notu"]');
+  const haricMetni = (await haricNotu.count()) > 0 ? ((await haricNotu.textContent()) ?? "") : "";
   kontrol(
-    "bugünün listesinde aktarım satışı işaretli",
+    "panel sayılmayan aktarım satışını ayrıca bildiriyor",
+    /mağaza içi aktarım satışı/.test(haricMetni) && /stokta kaldığı için/.test(haricMetni),
+    haricMetni.replace(/\s+/g, " ").slice(0, 110) || "(not yok)",
+  );
+  const cikisSatiri = await sayfa.locator('[data-test="bugun-cihaz-satisi"]').count();
+  const satilanKarti = sayfa.locator("a, div").filter({ hasText: /^Bugün Satılan/ }).first();
+  const satilanMetni = ((await satilanKarti.textContent()) ?? "").replace(/\s+/g, " ");
+  kontrol(
+    "'Bugün Satılan' sayısı aktarım satışını içermiyor",
+    new RegExp(`Bugün Satılan\\s*${cikisSatiri}(\\D|$)`).test(satilanMetni) && /ayrıca \d+ mağaza içi aktarım satışı/.test(satilanMetni),
+    `${satilanMetni.slice(0, 90)} · ${cikisSatiri} gerçek çıkış`,
+  );
+
+  // Satış ekranı satış görünümü: aktarım satışı orada, işaretiyle.
+  await sayfa.goto(`${hedef}/satis`, { waitUntil: "networkidle" });
+  kontrol(
+    "satış ekranındaki Son Satışlar aktarım satışını gösteriyor",
     (await sayfa.locator('[data-test="bugun-aktarim-satisi"]').count()) >= 1,
   );
   // Rozetin yazısı kullanıcının istediği ifade: "sat-geri al" iç terimdi,
@@ -374,6 +396,17 @@ try {
       "mağaza içi aktarım",
     ((await sayfa.locator('[data-test="aktarim-rozeti"]').first().textContent()) ?? "").trim(),
   );
+  kontrol(
+    "satış ekranında 'sayılmıyor' notu yok: orada sayılıyor",
+    (await sayfa.locator('[data-test="aktarim-haric-notu"]').count()) === 0,
+  );
+  const satisOzeti = ((await sayfa.locator('[data-test="cikis-ozeti"]').textContent()) ?? "").replace(/\s+/g, " ");
+  kontrol(
+    "satış ekranının özeti aktarım satışını sayıyor",
+    new RegExp(`^${cikisSatiri + 1} cihaz`).test(satisOzeti.trim()),
+    `${satisOzeti.trim()} · ${cikisSatiri} gerçek + 1 aktarım bekleniyor`,
+  );
+  await sayfa.goto(`${hedef}/panel?satisDonem=gun`, { waitUntil: "networkidle" });
 
   // ------------------------------------------ 9) /rapor ekranı da aynı sayı
   // Rapor aralığı da uygulamanın dilimine göre: test süreci UTC'de.

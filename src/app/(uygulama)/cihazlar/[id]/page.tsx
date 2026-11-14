@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 import { Kart } from "@/bilesenler/Kart";
 import { KunyeDuzenleyici } from "@/bilesenler/KunyeDuzenleyici";
 import { DurumRozeti, Rozet } from "@/bilesenler/Rozet";
-import { kurusuTLYazSembollu } from "@/lib/para";
+import { fiyatDuzeltmeEngeli, kardesKosulu } from "@/lib/alisFiyatiDuzeltme";
+import { kurusuTLYaz, kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import {
   HAREKET_TIP,
@@ -19,6 +20,7 @@ import { beklemeGunu, karKurus } from "@/lib/sutunlar";
 import { tarihSaatYaz, tarihYaz, inputTarih } from "@/lib/tarih";
 import { vadeDurumu, vadeEtiketi } from "@/lib/vade";
 import { adminMi, oturumGerekli } from "@/lib/yetki";
+import { AlisFiyatiDuzeltme } from "./AlisFiyatiDuzeltme";
 import { KayitIptali } from "./KayitIptali";
 import { SatisDuzenleme } from "./SatisDuzenleme";
 import { CIHAZ_ICERIK } from "@/lib/cihazFiltre";
@@ -97,6 +99,14 @@ export default async function CihazDetaySayfasi({
   // Satış düzeltme formu yalnız yöneticide; listeleri de yalnız o zaman çek.
   const yonetici = adminMi(oturum);
   const satisDuzenlenebilir = yonetici && cihaz.durum === STOK_DURUM.SATILDI;
+
+  // Alış fiyatı düzeltme yalnız yöneticide (sunucu eylemi de ayrıca sınıyor).
+  // "Aynı faturadaki aynı ürün" seçeneği için kaç cihaz olduğu sayılıyor.
+  const fiyatDuzeltilebilir = yonetici && fiyatDuzeltmeEngeli(cihaz) === null;
+  const kardes = fiyatDuzeltilebilir ? kardesKosulu(cihaz) : null;
+  const kardesSayisi = kardes
+    ? await prisma.stokKalemi.count({ where: kardes })
+    : 0;
   const [duzenlemeKullanicilari, duzenlemeMusterileri] = satisDuzenlenebilir
     ? await Promise.all([
         prisma.kullanici.findMany({
@@ -246,8 +256,21 @@ export default async function CihazDetaySayfasi({
               <Satir etiket="Giriş Tarihi">{tarihYaz(cihaz.girisTarihi)}</Satir>
               <Satir etiket="Tedarikçi">{cihaz.tedarikci?.ad ?? "—"}</Satir>
               <Satir etiket="Alış Fiyatı">
-                {kurusuTLYazSembollu(cihaz.alisFiyatiKurus)}
+                <span data-test="alis-fiyati">
+                  {kurusuTLYazSembollu(cihaz.alisFiyatiKurus)}
+                </span>
               </Satir>
+              {fiyatDuzeltilebilir ? (
+                // Satırın altında, kartın tam genişliğinde: form dar sağ
+                // sütuna sığmıyor.
+                <div className="border-b border-slate-100 py-2 text-right">
+                  <AlisFiyatiDuzeltme
+                    cihazId={cihaz.id}
+                    simdikiFiyat={kurusuTLYaz(cihaz.alisFiyatiKurus)}
+                    kardesSayisi={kardesSayisi}
+                  />
+                </div>
+              ) : null}
               <Satir etiket="Fatura">
                 {cihaz.alisFaturasi ? (
                   <Link

@@ -1,6 +1,7 @@
 import { Link } from "@/bilesenler/Bag";
 import { DonemSecici } from "@/bilesenler/DonemSecici";
 import { Kart } from "@/bilesenler/Kart";
+import { aktarimNotu } from "@/lib/cikisOzeti";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import type { SatisDonemi } from "@/lib/satisDonemi";
 import type { SatilanSatiri } from "@/lib/sorgular";
@@ -11,6 +12,10 @@ export type CikisOzeti = {
   adet: number;
   ciroKurus: number;
   karKurus: number;
+  /** Dönemdeki mağaza içi aktarım satışı sayısı. */
+  aktarimAdedi?: number;
+  /** Aktarım satışları bu özetin dışında mı (stok görünümü)? */
+  aktarimHaric?: boolean;
 };
 
 /**
@@ -51,6 +56,10 @@ export function CikisKarti({
     };
   };
 }) {
+  const haricNotu = aktarimNotu({
+    aktarimAdedi: ozet.aktarimAdedi ?? 0,
+    aktarimHaric: ozet.aktarimHaric ?? false,
+  });
   return (
     <Kart
       baslikYolu={cihazListesiYolu}
@@ -80,6 +89,19 @@ export function CikisKarti({
         </div>
       }
     >
+      {haricNotu ? (
+        // Stok görünümünde sayılmayan mağaza içi aktarım satışları: rakam
+        // satış raporuyla tutmadığında nedenini söylüyor.
+        <p
+          data-test="aktarim-haric-notu"
+          className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900"
+        >
+          {haricNotu}{" "}
+          <Link href="/satis" className="font-medium underline underline-offset-2">
+            Satış ekranı
+          </Link>
+        </p>
+      ) : null}
       {ozet.adet === 0 ? (
         <p className="text-sm text-slate-500" data-test="cikis-bos">
           {bosNotu}
