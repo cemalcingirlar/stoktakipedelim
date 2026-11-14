@@ -136,10 +136,15 @@ export default async function PanelSayfasi({
   ] = await Promise.all([
     magazaStokOzeti(gorunur),
     vadesiGecenCihazSayisi(gorunur),
-    satilanlar(gorunur, cikisAraligi),
+    // Panel STOK görünümü: mağaza içi aktarım satışları stoktan çıkış değil,
+    // sayılmıyor (bkz. src/lib/cikisOzeti.ts). Satış ekranı ve satış
+    // raporları onları göstermeye devam ediyor.
+    satilanlar(gorunur, cikisAraligi, 10, false),
     // Liste başka bir döneme bakıyorsa bugünün özeti ayrıca gerekiyor; liste
     // kısmı kullanılmadığı için tek satır çekiliyor.
-    bugunSeciliMi ? Promise.resolve(null) : satilanlar(gorunur, bugunAraligi, 1),
+    bugunSeciliMi
+      ? Promise.resolve(null)
+      : satilanlar(gorunur, bugunAraligi, 1, false),
     bekleyenSevkiyatlar(gorunur),
     sonHareketler(gorunur, 10),
     hareketRaporu(donem, gorunur),
@@ -225,14 +230,15 @@ export default async function PanelSayfasi({
         <SayiKarti
           etiket="Bugün Satılan"
           deger={`${bugun.adet}`}
+          // Sayı stoktan ÇIKAN cihaz: mağaza içi aktarım satışında cihaz
+          // mağazada kaldığı için sayıya girmiyor, ayrıca belirtiliyor.
           altBilgi={
-            bugun.adet > 0
-              ? `${kurusuTLYazSembollu(bugun.ciroKurus)} ciro${
-                  bugun.aktarimAdedi > 0
-                    ? ` · ${bugun.aktarimAdedi} mağaza içi aktarım`
-                    : ""
-                }`
-              : "bugün satış yok"
+            (bugun.adet > 0
+              ? `${kurusuTLYazSembollu(bugun.ciroKurus)} ciro`
+              : "bugün stoktan çıkan yok") +
+            (bugun.aktarimAdedi > 0
+              ? ` · ayrıca ${bugun.aktarimAdedi} mağaza içi aktarım satışı`
+              : "")
           }
           vurgu={bugun.adet > 0 ? "basari" : "normal"}
           yol={bugun.adet > 0 ? bugunCikanlarYolu : "/satis"}

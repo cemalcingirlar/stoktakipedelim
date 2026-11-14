@@ -1,6 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { gorunurMagazalar, hareketKosulu, magazaKosulu } from "./gorunurluk";
+import { cikisToplami } from "./cikisOzeti";
 import { prisma } from "./prisma";
 import { LOG_ISLEM, STOK_DURUM, TRANSFER_DURUM } from "./sabitler";
 import {
@@ -137,13 +138,16 @@ export type SatilanSatiri = {
 };
 
 /**
- * Verilen aralıkta stoktan çıkanlar. Personel için yalnız yetkili olduğu
+ * Verilen aralıkta satılanlar. Personel için yalnız yetkili olduğu
  * mağazalar; yönetici için (magazaIdleri null) tümü.
  *
- * Mağaza içi aktarımdaki sat-geri al işlemleri de listede: kasaya giren tutar
- * açısından bunlar da o günün satışı. Cihaz stokta kaldığı için cihaz
- * listesinde "satıldı" olarak görünmüyorlar, bu yüzden burada ayrıca
- * işaretleniyorlar.
+ * Mağaza içi aktarımdaki sat-geri al işlemleri SATIŞ ama STOK ÇIKIŞI DEĞİL:
+ * kasaya tutar giriyor, cihaz mağazada kalıyor. `aktarimDahil` bunu çağırana
+ * bırakıyor (bkz. src/lib/cikisOzeti.ts):
+ *   - satış ekranı (true): listede ve toplamda, "mağaza içi aktarım"
+ *     işaretiyle;
+ *   - panelin "Stoktan Çıkanlar" kartı (false): listede ve toplamda yok,
+ *     yalnız kaç tane olduğu ayrıca bildiriliyor.
  *
  * Toplamlar listeden değil ayrı bir toplama sorgusundan geliyor: panel ilk
  * `listeAdedi` kaydı gösteriyor, ama "aralıkta kaç cihaz, ne kadar ciro"
@@ -155,6 +159,7 @@ export async function satilanlar(
   magazaIdleri: number[] | null,
   aralik: { baslangic: Date; bitis: Date },
   listeAdedi = 10,
+  aktarimDahil = true,
 ) {
   const zaman = { gte: gunBasi(aralik.baslangic), lte: gunSonu(aralik.bitis) };
   const magazaKosulu = magazaIdleri ? { magazaId: { in: magazaIdleri } } : {};
@@ -187,7 +192,8 @@ export async function satilanlar(
     prisma.aktarimSatisi.findMany({
       where: aktarimKosulu,
       orderBy: { satisTarihi: "desc" },
-      take: listeAdedi,
+      // Stok görünümünde aktarım satırları listeye girmiyor.
+      take: aktarimDahil ? listeAdedi : 0,
       select: {
         id: true,
         satisTarihi: true,
@@ -252,23 +258,24 @@ export async function satilanlar(
     // İki kaynaktan da `listeAdedi` kadar çekildi; birleşince fazlası atılıyor.
     .slice(0, listeAdedi);
 
-  const ciroKurus =
-    (cihazToplam._sum.satisFiyatiKurus ?? 0) +
-    (aktarimToplam._sum.satisFiyatiKurus ?? 0);
-  const karKurus =
-    (cihazToplam._sum.satisFiyatiKurus ?? 0) -
-    (cihazToplam._sum.alisFiyatiKurus ?? 0) +
-    (aktarimToplam._sum.satisFiyatiKurus ?? 0) -
-    (aktarimToplam._sum.maliyetKurus ?? 0);
+  const toplam = cikisToplami(
+    {
+      adet: cihazToplam._count._all,
+      satisKurus: cihazToplam._sum.satisFiyatiKurus ?? 0,
+      maliyetKurus: cihazToplam._sum.alisFiyatiKurus ?? 0,
+    },
+    {
+      adet: aktarimToplam._count._all,
+      satisKurus: aktarimToplam._sum.satisFiyatiKurus ?? 0,
+      maliyetKurus: aktarimToplam._sum.maliyetKurus ?? 0,
+    },
+    aktarimDahil,
+  );
 
   return {
     /** Yalnız ilk `listeAdedi` kayıt; toplamlar tamamı üzerinden. */
     kalemler: satirlar,
-    adet: cihazToplam._count._all + aktarimToplam._count._all,
-    ciroKurus,
-    karKurus,
-    /** Bunların kaçı aktarımdaki sat-geri al işlemi. */
-    aktarimAdedi: aktarimToplam._count._all,
+    ...toplam,
   };
 }
 

@@ -204,7 +204,9 @@ export async function satisiDuzenle(
     );
 
     await logYaz(oturum, {
-      islem: LOG_ISLEM.STOK_DUZENLE,
+      // Satış kartından yapılan düzeltmeyle aynı tür: kayıtlarda "satış
+      // düzeltmeleri" tek süzgeçle bulunabilsin.
+      islem: LOG_ISLEM.SATIS_DUZENLE,
       hedefTip: "StokKalemi",
       hedefId: cihaz.id,
       detay:

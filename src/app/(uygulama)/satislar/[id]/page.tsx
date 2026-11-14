@@ -7,8 +7,9 @@ import { gorebilirMi, gorunurMagazaIdleri } from "@/lib/gorunurluk";
 import { kurusuTLYazSembollu } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { ODEME_TIPI_ETIKET, type OdemeTipi } from "@/lib/sabitler";
-import { tarihYaz } from "@/lib/tarih";
-import { oturumGerekli } from "@/lib/yetki";
+import { inputTarih, tarihYaz } from "@/lib/tarih";
+import { adminMi, oturumGerekli } from "@/lib/yetki";
+import { SatisKartiDuzenleme } from "./SatisKartiDuzenleme";
 
 export const metadata = { title: "Satış Kartı — Stok Takip" };
 
@@ -56,6 +57,38 @@ export default async function SatisKartiSayfasi({ params }: PageProps<"/satislar
   const gorunur = gorunurMagazaIdleri(oturum);
   if (!satis.kalemler.some((k) => gorebilirMi(gorunur, k.magazaId))) notFound();
 
+  // Düzenleme yalnız yöneticide (sunucu eylemi de ayrıca sınıyor); seçim
+  // listeleri de yalnız o zaman çekiliyor.
+  const yonetici = adminMi(oturum);
+  const [kullanicilar, musteriler] = yonetici
+    ? await Promise.all([
+        prisma.kullanici.findMany({
+          // Satışın şimdiki sahibi pasif olsa da listede kalmalı; yoksa form
+          // açılır açılmaz satışı başka birine atamış olurdu.
+          where: { OR: [{ aktif: true }, { id: satis.satanKullaniciId }] },
+          orderBy: { adSoyad: "asc" },
+          select: { id: true, adSoyad: true, aktif: true },
+        }),
+        prisma.musteri.findMany({
+          orderBy: { adSoyad: "asc" },
+          take: 500,
+          select: { id: true, adSoyad: true, telefon: true },
+        }),
+      ])
+    : [[], []];
+  // Müşteri listesi sınırlı; satışın kendi müşterisi sınırın dışında kalmışsa
+  // eklenir — aynı sebep: form müşteriyi sessizce değiştirmemeli.
+  const musteriSecenekleri = musteriler.some((m) => m.id === satis.musteriId)
+    ? musteriler
+    : [
+        {
+          id: satis.musteri.id,
+          adSoyad: satis.musteri.adSoyad,
+          telefon: satis.musteri.telefon,
+        },
+        ...musteriler,
+      ];
+
   const toplam = satis.kalemler.reduce((t, k) => t + (k.satisFiyatiKurus ?? 0), 0);
   const magazalar = [...new Set(satis.kalemler.map((k) => k.magaza.ad))];
 
@@ -79,6 +112,30 @@ export default async function SatisKartiSayfasi({ params }: PageProps<"/satislar
           Müşteri Kaydı →
         </Link>
       </div>
+
+      {yonetici ? (
+        <SatisKartiDuzenleme
+          // Kayıttan sonra form yeni değerlerle baştan kurulsun.
+          key={`${satis.musteriId}-${satis.satanKullaniciId}-${satis.odemeTipi}-${satis.satisTarihi.getTime()}-${satis.not ?? ""}-${satis.kalemler.map((k) => k.satisFiyatiKurus).join(",")}`}
+          bugun={inputTarih(new Date())}
+          satis={{
+            id: satis.id,
+            musteriId: satis.musteriId,
+            satanKullaniciId: satis.satanKullaniciId,
+            odemeTipi: satis.odemeTipi,
+            satisGunu: inputTarih(satis.satisTarihi),
+            not: satis.not,
+            kalemler: satis.kalemler.map((k) => ({
+              id: k.id,
+              ad: `${k.marka} ${k.model}`,
+              kod: k.seriNo ?? k.barkod ?? "",
+              satisFiyatiKurus: k.satisFiyatiKurus ?? 0,
+            })),
+          }}
+          kullanicilar={kullanicilar}
+          musteriler={musteriSecenekleri}
+        />
+      ) : null}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <Kart baslik="Müşteri ve Satış">
