@@ -13,6 +13,15 @@ import {
   gerekceSorunu,
   iptalGeriAlmaEngeli,
 } from "@/lib/kayitIptali";
+import {
+  duzeltmeAciklamasi,
+  duzeltmeGerekceSorunu,
+  fiyatDegisiyorMu,
+  fiyatDuzeltmeEngeli,
+  kardesKosulu,
+  yeniFiyatiCoz,
+} from "@/lib/alisFiyatiDuzeltme";
+import { kurusuTLYazSembollu } from "@/lib/para";
 import { satisBagiKarari } from "@/lib/satisKarti";
 import { cakismadaYenidenDene, satisNoUret } from "@/lib/satisNo";
 
@@ -461,5 +470,115 @@ export async function cihazIptaliniGeriAl(
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("İptal geri alınamadı:", hata);
     return { hata: "İptal geri alınamadı. Lütfen tekrar deneyin." };
+  }
+}
+
+/**
+ * Alış fiyatını düzeltir.
+ *
+ * Yalnız yöneticide: alış fiyatı stok değerini, kârı ve tedarikçiye olan
+ * borcu doğrudan değiştiriyor. Yetki burada, sunucuda sınanıyor; formun
+ * ekranda görünmemesi bir koruma değil.
+ *
+ * İstenirse aynı faturadaki aynı ürünün diğer cihazlarına da uygulanıyor
+ * (bkz. kardesKosulu). Her cihazın tarihçesine eski fiyat, yeni fiyat ve
+ * gerekçe ayrı ayrı yazılıyor; sonradan bakıldığında fiyatın neden değiştiği
+ * o cihazın kendi sayfasında görülebilmeli.
+ */
+export async function alisFiyatiniDuzelt(
+  _onceki: SatisDuzenlemeDurumu,
+  form: FormData,
+): Promise<SatisDuzenlemeDurumu> {
+  try {
+    const oturum = await adminZorunlu();
+
+    const cihazId = Number(form.get("cihazId"));
+    if (!Number.isInteger(cihazId) || cihazId <= 0)
+      return { hata: "Cihaz bulunamadı." };
+
+    const fiyat = yeniFiyatiCoz(String(form.get("yeniFiyat") ?? ""));
+    if (!fiyat.tamam) return { hata: fiyat.hata };
+
+    const gerekce = String(form.get("gerekce") ?? "").trim();
+    const gerekceHatasi = duzeltmeGerekceSorunu(gerekce);
+    if (gerekceHatasi) return { hata: gerekceHatasi };
+
+    const hepsi = form.get("hepsi") === "on";
+
+    const cihaz = await prisma.stokKalemi.findUnique({
+      where: { id: cihazId },
+    });
+    if (!cihaz) return { hata: "Cihaz bulunamadı." };
+
+    const engel = fiyatDuzeltmeEngeli(cihaz);
+    if (engel) return { hata: engel };
+
+    if (!fiyatDegisiyorMu(cihaz.alisFiyatiKurus, fiyat.kurus)) {
+      return { hata: "Yeni fiyat şimdiki fiyatla aynı." };
+    }
+
+    const kosul = hepsi ? kardesKosulu(cihaz) : null;
+    const aciklama = duzeltmeAciklamasi(
+      cihaz.alisFiyatiKurus,
+      fiyat.kurus,
+      gerekce,
+    );
+
+    const duzeltilen = await prisma.$transaction(async (tx) => {
+      // Kardeşler işlemin İÇİNDE okunuyor: arada biri ayrıca düzeltilirse
+      // (fiyatı artık farklıysa) kapsamdan kendiliğinden çıkıyor.
+      const kardesler = kosul
+        ? await tx.stokKalemi.findMany({
+            where: kosul,
+            select: { id: true, magazaId: true },
+          })
+        : [];
+      const hedefler = [
+        { id: cihaz.id, magazaId: cihaz.magazaId },
+        ...kardesler,
+      ];
+
+      await tx.stokKalemi.updateMany({
+        where: { id: { in: hedefler.map((h) => h.id) } },
+        data: { alisFiyatiKurus: fiyat.kurus },
+      });
+      await tx.stokHareketi.createMany({
+        data: hedefler.map((h) => ({
+          stokKalemiId: h.id,
+          tip: HAREKET_TIP.DUZELTME,
+          hedefMagazaId: h.magazaId,
+          kullaniciId: oturum.kullaniciId,
+          aciklama,
+        })),
+      });
+      return hedefler.length;
+    });
+
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.STOK_DUZENLE,
+      hedefTip: "StokKalemi",
+      hedefId: cihaz.id,
+      detay:
+        `Alış fiyatı düzeltildi: ${cihaz.marka} ${cihaz.model} ` +
+        `(${cihaz.seriNo ?? cihaz.barkod ?? "kodsuz"}) · ` +
+        `${kurusuTLYazSembollu(cihaz.alisFiyatiKurus)} → ${kurusuTLYazSembollu(fiyat.kurus)}` +
+        (duzeltilen > 1 ? ` · aynı faturadaki ${duzeltilen} cihaz` : "") +
+        ` · gerekçe: ${gerekce}`,
+    });
+
+    cihazYollariniTazele(cihaz.id);
+    if (cihaz.alisFaturasiId)
+      revalidatePath(`/faturalar/${cihaz.alisFaturasiId}`);
+
+    return {
+      basari:
+        duzeltilen > 1
+          ? `${duzeltilen} cihazın alış fiyatı ${kurusuTLYazSembollu(fiyat.kurus)} olarak düzeltildi.`
+          : `Alış fiyatı ${kurusuTLYazSembollu(fiyat.kurus)} olarak düzeltildi.`,
+    };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { hata: hata.message };
+    console.error("Alış fiyatı düzeltilemedi:", hata);
+    return { hata: "Alış fiyatı düzeltilemedi. Lütfen tekrar deneyin." };
   }
 }
