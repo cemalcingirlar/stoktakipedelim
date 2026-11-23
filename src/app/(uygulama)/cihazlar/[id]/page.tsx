@@ -21,6 +21,7 @@ import { tarihSaatYaz, tarihYaz, inputTarih } from "@/lib/tarih";
 import { vadeDurumu, vadeEtiketi } from "@/lib/vade";
 import { adminMi, oturumGerekli } from "@/lib/yetki";
 import { AlisFiyatiDuzeltme } from "./AlisFiyatiDuzeltme";
+import { AktarimSatislari } from "./AktarimSatislari";
 import { KayitIptali } from "./KayitIptali";
 import { SatisDuzenleme } from "./SatisDuzenleme";
 import { CIHAZ_ICERIK } from "@/lib/cihazFiltre";
@@ -145,6 +146,38 @@ export default async function CihazDetaySayfasi({
           : Promise.resolve(1),
       ])
     : [[], 1];
+
+  // Mağaza içi aktarım satışları: cihaz stokta kalıyor ama satış raporlara
+  // giriyor. Düzeltme ve geri alma bu kartta (yalnız yönetici).
+  const aktarimSatislari = await prisma.aktarimSatisi.findMany({
+    where: { stokKalemiId: cihaz.id },
+    orderBy: { id: "desc" },
+    include: {
+      magaza: { select: { ad: true } },
+      musteri: { select: { adSoyad: true } },
+      satanKullanici: { select: { adSoyad: true } },
+    },
+  });
+  const [aktarimKullanicilari, aktarimMusterileri] =
+    yonetici && aktarimSatislari.length > 0
+      ? await Promise.all([
+          prisma.kullanici.findMany({
+            where: {
+              OR: [
+                { aktif: true },
+                { id: { in: aktarimSatislari.map((a) => a.satanKullaniciId) } },
+              ],
+            },
+            orderBy: { adSoyad: "asc" },
+            select: { id: true, adSoyad: true, aktif: true },
+          }),
+          prisma.musteri.findMany({
+            orderBy: { adSoyad: "asc" },
+            take: 500,
+            select: { id: true, adSoyad: true, telefon: true },
+          }),
+        ])
+      : [[], []];
 
   const bugun = new Date();
   const vade = vadeDurumu(cihaz.alisFaturasi, bugun);
@@ -388,9 +421,41 @@ export default async function CihazDetaySayfasi({
             </Kart>
           ) : null}
 
+          {aktarimSatislari.length > 0 ? (
+            <Kart baslik={`Mağaza İçi Aktarım Satışları (${aktarimSatislari.length})`}>
+              <AktarimSatislari
+                yonetici={yonetici}
+                satislar={aktarimSatislari.map((a) => ({
+                  id: a.id,
+                  tarihYazi: tarihSaatYaz(a.satisTarihi),
+                  satisGunu: inputTarih(a.satisTarihi),
+                  magazaAdi: a.magaza.ad,
+                  musteriId: a.musteriId,
+                  musteriAdi: a.musteri?.adSoyad ?? null,
+                  satanKullaniciId: a.satanKullaniciId,
+                  satanAdi: a.satanKullanici.adSoyad,
+                  odemeTipi: a.odemeTipi,
+                  satisFiyatiKurus: a.satisFiyatiKurus,
+                  maliyetKurus: a.maliyetKurus,
+                  yeniAlisFiyatiKurus: a.yeniAlisFiyatiKurus,
+                  not: a.not,
+                }))}
+                secenekler={{
+                  bugun: inputTarih(new Date()),
+                  kullanicilar: aktarimKullanicilari,
+                  musteriler: aktarimMusterileri,
+                }}
+              />
+            </Kart>
+          ) : null}
+
           {yonetici ? (
-            <Kart baslik="Kayıt İptali">
-              <KayitIptali cihazId={cihaz.id} durum={cihaz.durum} />
+            <Kart baslik="Cihaz Kaydını İptal Et">
+              <KayitIptali
+                cihazId={cihaz.id}
+                durum={cihaz.durum}
+                aktarimSatisiVar={aktarimSatislari.length > 0}
+              />
             </Kart>
           ) : null}
 

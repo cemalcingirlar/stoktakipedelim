@@ -26,9 +26,12 @@ import {
 export function KayitIptali({
   cihazId,
   durum,
+  aktarimSatisiVar = false,
 }: {
   cihazId: number;
   durum: string;
+  /** Cihazın mağaza içi aktarım satışı var mı? Varsa ayrıca uyarılıyor. */
+  aktarimSatisiVar?: boolean;
 }) {
   const iptalli = durum === "IPTAL";
   // Engel varsa düğme yerine sebebi gösteriliyor. Sunucu eylemi zaten
@@ -82,11 +85,25 @@ export function KayitIptali({
 
   return (
     <div className="space-y-2">
+      {/* "Kaydı iptal et" yazısı satış kaydını iptal ediyor gibi okunuyordu:
+          kullanıcı aktarım satışını düzeltmek isterken cihazı iptal etti ve
+          cihaz stoktan düştü. Ne iptal edildiği artık açıkça yazıyor. */}
       <p className="text-sm text-slate-600">
-        Sehven girilmiş bir kayıtsa iptal edin. Kayıt silinmez: durumu
-        &quot;İptal Edildi&quot; olur, stok toplamlarından düşer ve tarihçede
-        kimin hangi gerekçeyle iptal ettiği kalır.
+        <strong>Satışı değil, cihazın kendisini</strong> iptal eder: sehven
+        girilmiş bir cihaz kaydı içindir. Cihaz stoktan düşer, durumu
+        &quot;İptal Edildi&quot; olur; kayıt silinmez ve tarihçede kimin hangi
+        gerekçeyle iptal ettiği kalır.
       </p>
+      {aktarimSatisiVar ? (
+        <p
+          data-test="iptal-aktarim-uyarisi"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          Bu cihazın mağaza içi aktarım satışı var. Satışı düzeltmek ya da geri
+          almak için bu düğmeyi değil, yukarıdaki{" "}
+          <strong>Mağaza İçi Aktarım Satışları</strong> kartını kullanın.
+        </p>
+      ) : null}
 
       {!acik ? (
         <button
@@ -95,7 +112,7 @@ export function KayitIptali({
           onClick={() => setAcik(true)}
           className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-50"
         >
-          Kaydı İptal Et
+          Cihazı İptal Et
         </button>
       ) : (
         <form action={iptalEt} className="space-y-2" data-test="iptal-formu">
