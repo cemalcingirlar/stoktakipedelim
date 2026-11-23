@@ -22,6 +22,14 @@ import {
   yeniFiyatiCoz,
 } from "@/lib/alisFiyatiDuzeltme";
 import { kurusuTLYazSembollu } from "@/lib/para";
+import {
+  aktarimDuzeltmeMetni,
+  aktarimGeriAlmaMetni,
+  aktarimSatisFarki,
+  maliyetKarari,
+  type AktarimSatisDurumu,
+} from "@/lib/aktarimSatisDuzeltme";
+import { satisFiyatiSorunu, yeniSatisTarihi } from "@/lib/satisDuzeltme";
 import { satisBagiKarari } from "@/lib/satisKarti";
 import { cakismadaYenidenDene, satisNoUret } from "@/lib/satisNo";
 
@@ -582,5 +590,246 @@ export async function alisFiyatiniDuzelt(
     if (hata instanceof YetkiHatasi) return { hata: hata.message };
     console.error("Alış fiyatı düzeltilemedi:", hata);
     return { hata: "Alış fiyatı düzeltilemedi. Lütfen tekrar deneyin." };
+  }
+}
+
+// ------------------------------------------------ mağaza içi aktarım satışı
+
+/** Aktarım satışı düzeltme/geri alma sonrası tazelenen sayfalar. */
+function aktarimSatisYollariniTazele(cihazId: number, musteriIdleri: (number | null)[]): void {
+  cihazYollariniTazele(cihazId);
+  revalidatePath("/satis");
+  revalidatePath("/aktarim");
+  revalidatePath("/musteriler");
+  for (const id of musteriIdleri) if (id) revalidatePath(`/musteriler/${id}`);
+}
+
+const aktarimDuzeltmeSemasi = z.object({
+  aktarimSatisId: z.number().int().positive(),
+  musteriId: z.number().int().positive().nullable(),
+  satanKullaniciId: z.number().int().positive("Satışı yapan kişiyi seçin."),
+  odemeTipi: z.enum(
+    Object.values(ODEME_TIPI) as [string, ...string[]],
+    "Ödeme tipi seçin.",
+  ),
+  satisTarihi: z.string(),
+  satisFiyatiKurus: z.number(),
+  not: z.string().trim().max(300, "Not çok uzun.").nullable(),
+  aciklama: z.string().trim().max(300, "Açıklama çok uzun.").nullable(),
+});
+
+/**
+ * Mağaza içi aktarım satışını düzeltir: müşteri, satışı yapan, ödeme tipi,
+ * tarih, satış fiyatı, not.
+ *
+ * Yalnız yöneticide; yetki burada sınanıyor. Neyin neyden neye değiştiği
+ * cihazın tarihçesine ve işlem kaydına yazılıyor. Cihazın stok durumuna ve
+ * alış fiyatına dokunulmuyor (alış fiyatı için ayrı düzeltme var).
+ */
+export async function aktarimSatisiniDuzelt(
+  _onceki: SatisDuzenlemeDurumu,
+  form: FormData,
+): Promise<SatisDuzenlemeDurumu> {
+  try {
+    const oturum = await adminZorunlu();
+
+    let ham: unknown;
+    try {
+      ham = JSON.parse(String(form.get("veri") ?? ""));
+    } catch {
+      return { hata: "Veri okunamadı. Sayfayı yenileyip tekrar deneyin." };
+    }
+    const cozum = aktarimDuzeltmeSemasi.safeParse(ham);
+    if (!cozum.success) return { hata: cozum.error.issues[0].message };
+    const veri = cozum.data;
+
+    const kayit = await prisma.aktarimSatisi.findUnique({
+      where: { id: veri.aktarimSatisId },
+      include: {
+        musteri: { select: { adSoyad: true } },
+        satanKullanici: { select: { adSoyad: true } },
+        stokKalemi: { select: { id: true, marka: true, model: true, seriNo: true, barkod: true } },
+      },
+    });
+    if (!kayit) return { hata: "Satış kaydı bulunamadı. Sayfayı yenileyin." };
+
+    const fiyatSorunu = satisFiyatiSorunu(veri.satisFiyatiKurus, "Satış fiyatı");
+    if (fiyatSorunu) return { hata: fiyatSorunu };
+    if (veri.satisFiyatiKurus === 0) return { hata: "Satış fiyatı girilmeli." };
+
+    const tarih = yeniSatisTarihi(kayit.satisTarihi, veri.satisTarihi);
+    if (!tarih.tamam) return { hata: tarih.hata };
+
+    const [musteri, satan] = await Promise.all([
+      veri.musteriId === null
+        ? Promise.resolve(null)
+        : prisma.musteri.findUnique({
+            where: { id: veri.musteriId },
+            select: { id: true, adSoyad: true },
+          }),
+      prisma.kullanici.findUnique({
+        where: { id: veri.satanKullaniciId },
+        select: { id: true, adSoyad: true, aktif: true },
+      }),
+    ]);
+    if (veri.musteriId !== null && !musteri) return { hata: "Müşteri bulunamadı." };
+    if (!satan) return { hata: "Satışı yapan kişi bulunamadı." };
+    if (!satan.aktif && satan.id !== kayit.satanKullaniciId) {
+      return { hata: "Satışı yapan kişi pasif; aktif bir kullanıcı seçin." };
+    }
+
+    const eski: AktarimSatisDurumu = {
+      musteriId: kayit.musteriId,
+      musteriAdi: kayit.musteri?.adSoyad ?? null,
+      satanKullaniciId: kayit.satanKullaniciId,
+      satanAdi: kayit.satanKullanici.adSoyad,
+      odemeTipi: kayit.odemeTipi,
+      satisTarihi: kayit.satisTarihi,
+      satisFiyatiKurus: kayit.satisFiyatiKurus,
+      not: kayit.not,
+    };
+    const yeni: AktarimSatisDurumu = {
+      musteriId: musteri?.id ?? null,
+      musteriAdi: musteri?.adSoyad ?? null,
+      satanKullaniciId: satan.id,
+      satanAdi: satan.adSoyad,
+      odemeTipi: veri.odemeTipi,
+      satisTarihi: tarih.tarih,
+      satisFiyatiKurus: veri.satisFiyatiKurus,
+      not: veri.not && veri.not !== "" ? veri.not : null,
+    };
+
+    const fark = aktarimSatisFarki(eski, yeni);
+    if (fark.length === 0) return { hata: "Değişiklik yapılmadı." };
+    const metin = aktarimDuzeltmeMetni(fark, veri.aciklama);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.aktarimSatisi.update({
+        where: { id: kayit.id },
+        data: {
+          musteriId: yeni.musteriId,
+          satanKullaniciId: yeni.satanKullaniciId,
+          odemeTipi: yeni.odemeTipi,
+          satisTarihi: yeni.satisTarihi,
+          satisFiyatiKurus: yeni.satisFiyatiKurus,
+          not: yeni.not,
+        },
+      });
+      await tx.stokHareketi.create({
+        data: {
+          stokKalemiId: kayit.stokKalemiId,
+          tip: HAREKET_TIP.DUZELTME,
+          kaynakMagazaId: kayit.magazaId,
+          kullaniciId: oturum.kullaniciId,
+          aciklama: metin,
+        },
+      });
+    });
+
+    const c = kayit.stokKalemi;
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.SATIS_DUZENLE,
+      hedefTip: "AktarimSatisi",
+      hedefId: kayit.id,
+      detay: `${c.marka} ${c.model} (${c.seriNo ?? c.barkod ?? "kodsuz"}) · ${metin}`,
+    });
+
+    aktarimSatisYollariniTazele(c.id, [eski.musteriId, yeni.musteriId]);
+    return { basari: `Satış düzeltildi (${fark.length} değişiklik); işlem kaydına yazıldı.` };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { hata: hata.message };
+    console.error("Aktarım satışı düzeltilemedi:", hata);
+    return { hata: "Satış düzeltilemedi. Lütfen tekrar deneyin." };
+  }
+}
+
+/**
+ * Mağaza içi aktarım satışını geri alır: satış kaydı silinir, satış ve kâr
+ * raporlarından düşer. Cihazın stok durumuna dokunulmuyor — bu satışta cihaz
+ * zaten stoktan çıkmamıştı.
+ *
+ * Sat-geri al cihazın alış fiyatını geri alış fiyatına çekmişti; güvenliyse
+ * satış öncesi fiyata dönülüyor (bkz. maliyetKarari). Gerekçe zorunlu;
+ * tarihçeye ve işlem kaydına yazılıyor.
+ */
+export async function aktarimSatisiniGeriAl(
+  _onceki: SatisDuzenlemeDurumu,
+  form: FormData,
+): Promise<SatisDuzenlemeDurumu> {
+  try {
+    const oturum = await adminZorunlu();
+
+    const id = Number(form.get("aktarimSatisId"));
+    if (!Number.isInteger(id) || id <= 0) return { hata: "Satış kaydı bulunamadı." };
+
+    const gerekce = String(form.get("gerekce") ?? "").trim();
+    const gerekceHatasi = gerekceSorunu(gerekce);
+    if (gerekceHatasi) return { hata: gerekceHatasi };
+
+    const kayit = await prisma.aktarimSatisi.findUnique({
+      where: { id },
+      include: {
+        musteri: { select: { adSoyad: true } },
+        stokKalemi: {
+          select: { id: true, marka: true, model: true, seriNo: true, barkod: true, alisFiyatiKurus: true },
+        },
+      },
+    });
+    if (!kayit) return { hata: "Satış kaydı bulunamadı. Sayfayı yenileyin." };
+
+    const sonraki = await prisma.aktarimSatisi.count({
+      where: { stokKalemiId: kayit.stokKalemiId, id: { gt: kayit.id } },
+    });
+    const maliyet = maliyetKarari({
+      sonAktarimMi: sonraki === 0,
+      cihazAlisKurus: kayit.stokKalemi.alisFiyatiKurus,
+      satisYeniAlisKurus: kayit.yeniAlisFiyatiKurus,
+      satisMaliyetKurus: kayit.maliyetKurus,
+    });
+    const metin = aktarimGeriAlmaMetni({
+      musteriAdi: kayit.musteri?.adSoyad ?? null,
+      satisFiyatiKurus: kayit.satisFiyatiKurus,
+      satisTarihi: kayit.satisTarihi,
+      maliyet,
+      gerekce,
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.aktarimSatisi.delete({ where: { id: kayit.id } });
+      if (maliyet.geriYukle) {
+        await tx.stokKalemi.update({
+          where: { id: kayit.stokKalemiId },
+          data: { alisFiyatiKurus: maliyet.yeniKurus },
+        });
+      }
+      await tx.stokHareketi.create({
+        data: {
+          stokKalemiId: kayit.stokKalemiId,
+          tip: HAREKET_TIP.DUZELTME,
+          kaynakMagazaId: kayit.magazaId,
+          kullaniciId: oturum.kullaniciId,
+          aciklama: metin,
+        },
+      });
+    });
+
+    const c = kayit.stokKalemi;
+    await logYaz(oturum, {
+      islem: LOG_ISLEM.SATIS_DUZENLE,
+      hedefTip: "AktarimSatisi",
+      hedefId: kayit.id,
+      detay: `${c.marka} ${c.model} (${c.seriNo ?? c.barkod ?? "kodsuz"}) · ${metin}`,
+    });
+
+    aktarimSatisYollariniTazele(c.id, [kayit.musteriId]);
+    return {
+      basari: maliyet.geriYukle
+        ? "Satış geri alındı; alış fiyatı satış öncesine döndü."
+        : "Satış geri alındı.",
+    };
+  } catch (hata) {
+    if (hata instanceof YetkiHatasi) return { hata: hata.message };
+    console.error("Aktarım satışı geri alınamadı:", hata);
+    return { hata: "Satış geri alınamadı. Lütfen tekrar deneyin." };
   }
 }

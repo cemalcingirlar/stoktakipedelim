@@ -16,7 +16,14 @@ import { formTarihiCevir,
 import { kurusuTLYaz } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { saticiSorunu, type SaticiAdayi } from "@/lib/satici";
-import { HAREKET_TIP, LOG_ISLEM, ODEME_TIPI, STOK_DURUM } from "@/lib/sabitler";
+import {
+  HAREKET_TIP,
+  LOG_ISLEM,
+  ODEME_TIPI,
+  STOK_DURUM,
+  STOK_DURUM_ETIKET,
+  type StokDurum,
+} from "@/lib/sabitler";
 import {
   YetkiHatasi,
   magazaIslemiZorunlu,
@@ -177,10 +184,18 @@ export async function dukkanIciAktar(
           mesaj: `${aranan} bir sevkiyatta, önce kabul edilmeli.`,
         };
       }
+      if (cihaz.durum === STOK_DURUM.IPTAL) {
+        return {
+          durum: "HATA" as const,
+          mesaj:
+            `${aranan} iptal edilmiş, aktarılamaz. Yanlışlıkla iptal edildiyse ` +
+            "cihazın sayfasından iptali geri alın.",
+        };
+      }
       if (cihaz.durum !== STOK_DURUM.STOKTA) {
         return {
           durum: "HATA" as const,
-          mesaj: `${aranan} stokta değil (${cihaz.durum}), aktarılamaz.`,
+          mesaj: `${aranan} stokta değil (${STOK_DURUM_ETIKET[cihaz.durum as StokDurum] ?? cihaz.durum}), aktarılamaz.`,
         };
       }
       if (cihaz.magazaId === hedefMagazaId) {
